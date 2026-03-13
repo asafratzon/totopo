@@ -1,0 +1,32 @@
+# =============================================================================
+# Template repo .gitignore
+# =============================================================================
+# NOTE: .totopo/.env is intentionally committed in this template repo
+# so the key names are documented. When copying to a real project, uncomment
+# the line below so your actual keys are never committed.
+# =============================================================================
+
+# Uncomment this when using in a real project:
+# .totopo/.env
+
+# Node
+node_modules/
+.pnpm-store/
+.next/
+.npm/
+npm-debug.log*
+
+# Environment files at root (never commit these)
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+*.swp
+*.swo
+.vscode/
+.claude/

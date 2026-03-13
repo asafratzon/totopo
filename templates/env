@@ -1,0 +1,19 @@
+# =============================================================================
+# totopo — API Keys
+# =============================================================================
+# Fill in your keys before starting the container.
+# Add .totopo/.env to your project's .gitignore — keys must never be committed.
+# =============================================================================
+
+# Anthropic (Claude Code — optional if using Pro subscription via browser auth)
+ANTHROPIC_API_KEY=
+
+# Kilo AI
+KILO_API_KEY=
+
+# OpenCode supports multiple providers — add whichever you use
+OPENAI_API_KEY=
+GEMINI_API_KEY=
+
+# Optional: OpenRouter (gives access to many models via one key)
+OPENROUTER_API_KEY=

@@ -1,0 +1,96 @@
+#!/bin/bash
+# =============================================================================
+# ai.sh — totopo entry point
+# Run this from your project directory (or via npx totopo).
+# =============================================================================
+
+set -euo pipefail
+
+# ─── Guard: inside container ─────────────────────────────────────────────────
+if [ "$(whoami)" = "devuser" ]; then
+  echo ""
+  echo "  You are running totopo from inside the dev container."
+  echo "  Open a terminal on your host machine and run:"
+  echo ""
+  echo "    totopo  (or ./path/to/ai.sh from your project directory)"
+  echo ""
+  exit 1
+fi
+
+# ─── Paths ───────────────────────────────────────────────────────────────────
+PACKAGE_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+
+if [ -z "$REPO_ROOT" ]; then
+  echo ""
+  echo "  No git repository found."
+  echo ""
+  echo "  totopo requires a git repository. Run 'git init' first, then re-run totopo."
+  echo ""
+  exit 1
+fi
+
+export TOTOPO_PACKAGE_DIR="$PACKAGE_DIR"
+export TOTOPO_REPO_ROOT="$REPO_ROOT"
+
+# ─── Node.js check ──────────────────────────────────────────────────────────
+if ! command -v node &>/dev/null; then
+  echo ""
+  echo "  Node.js is required to run totopo."
+  echo "  Install it from https://nodejs.org/ (v18+)"
+  echo ""
+  exit 1
+fi
+
+# ─── Auto-install dependencies (dev flow — npx handles this automatically) ──
+if [ ! -d "$PACKAGE_DIR/node_modules" ]; then
+  echo "  Installing totopo dependencies..."
+  (cd "$PACKAGE_DIR" && pnpm install --silent 2>/dev/null)
+fi
+
+# ─── Onboarding ──────────────────────────────────────────────────────────────
+if [ ! -f "$REPO_ROOT/.totopo/devcontainer.json" ]; then
+  node --import tsx/esm "$PACKAGE_DIR/scripts/onboard.ts"
+  if [ ! -f "$REPO_ROOT/.totopo/devcontainer.json" ]; then
+    exit 0
+  fi
+fi
+
+# ─── Doctor (silent pre-check) ───────────────────────────────────────────────
+if ! node --import tsx/esm "$PACKAGE_DIR/scripts/doctor.ts"; then
+  echo "  Fix the issues above and re-run totopo."
+  echo ""
+  exit 1
+fi
+
+# ─── Gather state for menu ──────────────────────────────────────────────────
+PROJECT_NAME="$(basename "$REPO_ROOT")"
+WORKSPACE_NAME="totopo-$PROJECT_NAME"
+
+ACTIVE_COUNT=$(docker ps --filter "name=totopo-" --format "{{.Names}}" 2>/dev/null | wc -l | tr -d '[:space:]')
+
+HAS_KEY=false
+if [ -f "$REPO_ROOT/.totopo/.env" ]; then
+  while IFS='=' read -r key value; do
+    [[ "$key" =~ ^[[:space:]]*# ]] && continue
+    [[ -z "$key" ]] && continue
+    value="$(echo "$value" | tr -d '[:space:]')"
+    if [ -n "$value" ]; then HAS_KEY=true; break; fi
+  done < "$REPO_ROOT/.totopo/.env"
+fi
+
+# ─── Interactive menu (clack) ────────────────────────────────────────────────
+# stdout → /dev/tty (clack UI displayed on terminal)
+# stderr → captured (selected action string)
+set +e
+action=$(node --import tsx/esm "$PACKAGE_DIR/scripts/menu.ts" "$PROJECT_NAME" "$ACTIVE_COUNT" "$HAS_KEY" 2>&1 >/dev/tty)
+set -e
+
+# ─── Execute selection ───────────────────────────────────────────────────────
+case "$action" in
+  dev)     node --import tsx/esm "$PACKAGE_DIR/scripts/dev.ts" ;;
+  stop)    node --import tsx/esm "$PACKAGE_DIR/scripts/stop.ts" ;;
+  reset)   node --import tsx/esm "$PACKAGE_DIR/scripts/reset.ts" ;;
+  doctor)  node --import tsx/esm "$PACKAGE_DIR/scripts/doctor.ts" --verbose ;;
+  quit|*)  exit 0 ;;
+esac
