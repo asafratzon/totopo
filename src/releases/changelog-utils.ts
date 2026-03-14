@@ -157,6 +157,39 @@ export function getReleaseNotes(version: string): string {
 	return lines.join("\n").trim();
 }
 
+// ─── npm registry polling ─────────────────────────────────────────────────────
+
+import { spawnSync } from "node:child_process";
+
+/**
+ * Poll the npm registry until `version` appears, then resolve.
+ * Rejects if the version doesn't appear within `timeoutMs`.
+ */
+export async function waitForNpmVersion(
+	packageName: string,
+	version: string,
+	{ intervalMs = 2000, timeoutMs = 30000 } = {},
+): Promise<void> {
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		const r = spawnSync("npm", ["view", packageName, "versions", "--json"], {
+			encoding: "utf8",
+			stdio: "pipe",
+		});
+		try {
+			const parsed = JSON.parse(r.stdout.trim());
+			const versions: string[] = Array.isArray(parsed) ? parsed : [parsed];
+			if (versions.includes(version)) return;
+		} catch {
+			// registry temporarily unreachable — keep polling
+		}
+		await new Promise((res) => setTimeout(res, intervalMs));
+	}
+	throw new Error(
+		`Timed out waiting for ${packageName}@${version} to appear in npm registry`,
+	);
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function bumpPatch(v: string): string {
