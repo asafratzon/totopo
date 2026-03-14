@@ -55,17 +55,14 @@ mkdirSync(totopoDir, { recursive: true });
 cpSync(join(templatesDir, "Dockerfile"), join(totopoDir, "Dockerfile"));
 cpSync(join(templatesDir, "post-start.mjs"), join(totopoDir, "post-start.mjs"));
 
-// Substitute project name in devcontainer.json using JSON parse/stringify
+// Substitute project name in devcontainer.json (plain string replace — file has // comments)
 const dcTemplate = readFileSync(
 	join(templatesDir, "devcontainer.json"),
 	"utf8",
 );
-const dcJson: unknown = JSON.parse(
-	dcTemplate.replace(/TOTOPO_PROJECT_NAME/g, projectName),
-);
 writeFileSync(
 	join(totopoDir, "devcontainer.json"),
-	`${JSON.stringify(dcJson, null, 2)}\n`,
+	dcTemplate.replace(/TOTOPO_PROJECT_NAME/g, projectName),
 );
 
 log.success("Copied config templates to .totopo/");
