@@ -1,9 +1,10 @@
 // =============================================================================
 // release.ts — promote rc to latest
-// Usage: pnpm release  (run from host, not inside container)
+// Usage: pnpm rc:promote  (run from host, not inside container)
 //
-// Strips the -rc-N suffix from the current version, updates package.json,
-// commits, tags, pushes, and publishes as latest.
+// Reads the current rc version from the npm registry, strips the
+// -rc-N suffix, updates package.json, commits, tags, pushes, and publishes
+// as latest.
 // =============================================================================
 
 import { execSync, spawnSync } from "node:child_process";
@@ -17,52 +18,61 @@ const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as {
 };
 const { name } = pkg;
 
-const currentVersion = pkg.version;
-const baseVersion = currentVersion.replace(/-rc-\d+$/, "");
-const isRc = currentVersion !== baseVersion;
+intro(`${name} — promote rc to latest`);
+log.message(
+	"Make sure you are logged in to npm before proceeding (npm whoami).",
+);
 
-intro(`${name} — release`);
+// ─── Fetch rc from registry ───────────────────────────────────────────────────
+log.step("Checking npm registry for rc...");
 
-// ─── Verify an rc was published ──────────────────────────────────────────────
-if (isRc) {
-	log.info(
-		`Current version: ${currentVersion} → will release as ${baseVersion}`,
-	);
-} else {
-	log.info(
-		`Current version: ${currentVersion} (no rc suffix — releasing as-is)`,
-	);
-}
-
-// ─── Check registry ──────────────────────────────────────────────────────────
-log.step(`Checking npm registry...`);
-
-const probe = spawnSync("npm", ["view", name, "versions", "--json"], {
+const probe = spawnSync("npm", ["view", name, "dist-tags", "--json"], {
 	encoding: "utf8",
 	stdio: "pipe",
 });
 
+let distTags: Record<string, string> = {};
+try {
+	distTags = JSON.parse(probe.stdout.trim());
+} catch {
+	log.error("Could not fetch dist-tags from npm registry.");
+	process.exit(1);
+}
+
+const latestRcVersion = distTags["rc"];
+
+if (!latestRcVersion) {
+	log.error("No rc tag found in npm registry.");
+	log.message("Run pnpm rc first to publish a release candidate.");
+	process.exit(1);
+}
+
+const baseVersion = latestRcVersion.replace(/-rc-\d+$/, "");
+
+if (baseVersion === latestRcVersion) {
+	log.error(`rc points to ${latestRcVersion} which has no -rc-N suffix.`);
+	process.exit(1);
+}
+
+log.success(`rc: ${latestRcVersion} → will release as ${baseVersion}`);
+
+// ─── Check base version not already released ──────────────────────────────────
+const allVersionsProbe = spawnSync(
+	"npm",
+	["view", name, "versions", "--json"],
+	{ encoding: "utf8", stdio: "pipe" },
+);
 let allVersions: string[] = [];
 try {
-	const parsed = JSON.parse(probe.stdout.trim());
+	const parsed = JSON.parse(allVersionsProbe.stdout.trim());
 	allVersions = Array.isArray(parsed) ? parsed : [parsed];
 } catch {
-	// no versions yet
+	// ignore
 }
 
 if (allVersions.includes(baseVersion)) {
 	log.error(`${name}@${baseVersion} is already published on npm.`);
-	log.message("Bump the version in package.json before releasing.");
 	process.exit(1);
-}
-
-const rcVersions = allVersions.filter((v) =>
-	v.startsWith(`${baseVersion}-rc-`),
-);
-if (rcVersions.length === 0 && isRc) {
-	log.warn(
-		`No rc versions found for ${baseVersion} — are you sure this was tested?`,
-	);
 }
 
 // ─── Confirm ─────────────────────────────────────────────────────────────────
@@ -75,20 +85,19 @@ if (!ok || ok === Symbol.for("cancel")) {
 	process.exit(0);
 }
 
-// ─── Bump package.json ───────────────────────────────────────────────────────
+// ─── Update package.json ─────────────────────────────────────────────────────
 pkg.version = baseVersion;
 writeFileSync(pkgPath, `${JSON.stringify(pkg, null, "\t")}\n`);
 log.success(`package.json → ${baseVersion}`);
 
 // ─── Commit ──────────────────────────────────────────────────────────────────
-execSync(`git add ${pkgPath}`, { stdio: "inherit" });
-execSync(`git commit -m "chore: release v${baseVersion}"`, {
-	stdio: "inherit",
-});
-
-// ─── Tag + push ──────────────────────────────────────────────────────────────
 const tag = `v${baseVersion}`;
 
+log.step("git commit");
+execSync(`git add ${pkgPath}`, { stdio: "inherit" });
+execSync(`git commit -m "chore: release ${tag}"`, { stdio: "inherit" });
+
+// ─── Tag + push ──────────────────────────────────────────────────────────────
 log.step("git push");
 execSync("git push", { stdio: "inherit" });
 
@@ -101,6 +110,11 @@ execSync("git push --tags", { stdio: "inherit" });
 // ─── Publish ─────────────────────────────────────────────────────────────────
 log.step("pnpm publish --access public");
 execSync("pnpm publish --access public", { stdio: "inherit" });
+
+// ─── Remove rc tag ───────────────────────────────────────────────────────────
+log.step(`Removing rc tag from npm registry...`);
+execSync(`npm dist-tag rm ${name} rc`, { stdio: "inherit" });
+log.success("rc tag removed — npx totopo@rc will no longer resolve");
 
 // ─── Done ────────────────────────────────────────────────────────────────────
 outro(`${name}@${baseVersion} published as latest`);
