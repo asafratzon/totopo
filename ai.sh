@@ -18,7 +18,14 @@ if [ "$(whoami)" = "devuser" ]; then
 fi
 
 # ─── Paths ───────────────────────────────────────────────────────────────────
-PACKAGE_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Resolve symlinks so PACKAGE_DIR points to the real package root, not .bin/
+SOURCE="$0"
+while [ -L "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+PACKAGE_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 
 if [ -z "$REPO_ROOT" ]; then
