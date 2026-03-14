@@ -6,6 +6,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.1.3] — 2026-03-14
+
+### Fixed
+
+- Onboarding crash — `devcontainer.json` template contains `//` comments (valid devcontainer spec, invalid `JSON.parse`); substitution now uses plain string replace, preserving comments in the output
+
+---
+
 ## [0.1.2] — 2026-03-14
 
 ### Fixed

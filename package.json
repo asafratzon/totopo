@@ -1,6 +1,6 @@
 {
 	"name": "totopo",
-	"version": "0.1.2",
+	"version": "0.1.3",
 	"description": "Secure AI Box — isolated dev environments for AI coding assistants",
 	"type": "module",
 	"bin": {
@@ -30,7 +30,8 @@
 		"typecheck": "tsc --noEmit",
 		"lint": "biome check .",
 		"format": "biome format --write .",
-		"fix:all": "biome check --write ."
+		"fix:all": "biome check --write .",
+		"rc": "tsx scripts/rc.ts"
 	},
 	"engines": {
 		"node": ">=18"
