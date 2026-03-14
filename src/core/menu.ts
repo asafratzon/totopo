@@ -14,8 +14,8 @@ const hasKey = hasKeyStr === "true";
 // ─── Status box ──────────────────────────────────────────────────────────────
 const sessionLabel =
 	activeCount === 1
-		? "1 active dev container"
-		: `${activeCount} active dev containers`;
+		? "1 container running"
+		: `${activeCount} containers running`;
 const lines = [];
 lines.push(`status: ${sessionLabel}`);
 lines.push(`api keys: ${hasKey ? "configured" : "none"} (.totopo/.env)`);

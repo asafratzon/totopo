@@ -7,12 +7,21 @@ Two distinct concerns — keep them separate:
 ```
 totopo PACKAGE (this repo — distributed via npx in future)
 ├── ai.sh              ← entry point (run from user's project directory)
-├── scripts/           ← totopo logic; never copied to user projects
-│   ├── doctor.ts
-│   ├── dev.ts
-│   ├── stop.ts
-│   ├── reset.ts
-│   └── onboard.ts
+├── src/
+│   ├── core/          ← user-facing CLI (included in npm package)
+│   │   ├── dev.ts
+│   │   ├── doctor.ts
+│   │   ├── menu.ts
+│   │   ├── onboard.ts
+│   │   ├── reset.ts
+│   │   └── stop.ts
+│   └── releases/      ← developer release tooling (NOT in npm package)
+│       ├── rc.ts
+│       ├── release.ts
+│       ├── sync-github-releases.ts
+│       ├── changelog-utils.ts
+│       ├── generate-changelog.ts
+│       └── changelog.yaml   ← source of truth for all release notes
 └── templates/         ← copied into user's .totopo/ during onboarding
     ├── Dockerfile
     ├── devcontainer.json
@@ -45,17 +54,26 @@ USER'S PROJECT (any git repo where totopo is used)
 
 ---
 
-## Phase 9 — npm Distribution (v0.1.0)
+## Phase 9 — npm Distribution (v0.1.x) ← IN PROGRESS
 
 > Focus: get totopo published and invocable via `npx totopo` as a real package.
-> Once this lands, all future work iterates as releases.
 
-- [x] **Package name** — `totopo` registered on npm; consistent with `.totopo/` directory in every user's project
-- [x] **Repo hygiene** — audit for npm package best practices: `LICENSE`, `CHANGELOG.md`, `.npmignore`, `engines` field, `files` field, correct `bin` entry, `README` fit for npm page
-- [x] **Rename** — all references updated from `aibox` → `totopo`, `.aibox/` → `.totopo/`
-- [ ] **`npx totopo` works** — verify end-to-end: `npx totopo` from a clean project directory runs the onboarding flow correctly
-- [ ] **Version scheme** — confirm v0.1.0 as first publish; document versioning approach in `CHANGELOG.md`
-- [ ] **Publish** — `npm publish` (or `pnpm publish`) with correct access and tags
+- [x] **Package name** — `totopo` registered on npm
+- [x] **Repo hygiene** — `LICENSE`, `CHANGELOG.md`, `.npmignore`, `engines`, `files`, `bin`, README
+- [x] **Rename** — all references updated from `aibox` → `totopo`
+- [x] **Release tooling** — `pnpm rc`, `pnpm rc:promote`, `pnpm sync-releases` scripts
+- [x] **Published** — v0.1.3 is current `latest` on npm
+
+### Completed in this session
+- [x] **Directory restructure** — `scripts/` split into `src/core/` (npm) and `src/releases/` (dev-only)
+- [x] **changelog.yaml source of truth** — `src/releases/changelog.yaml` replaces manual CHANGELOG.md edits
+- [x] **generate-changelog** — `pnpm generate-changelog` regenerates CHANGELOG.md from yaml
+- [x] **rc.ts** — now prompts for changelog notes, hard-blocks if no notes exist, appends to yaml
+- [x] **release.ts** — validates yaml has entries, squashes rc notes, regenerates CHANGELOG.md on promote
+- [x] **sync-github-releases.ts** — reads release notes from changelog.yaml (not raw CHANGELOG.md)
+
+### Next task
+- [ ] **`npx totopo` works end-to-end** — verify in a clean project directory
 
 ---
 

@@ -63,14 +63,14 @@ TSX="$PACKAGE_DIR/node_modules/.bin/tsx"
 
 # ─── Onboarding ──────────────────────────────────────────────────────────────
 if [ ! -f "$REPO_ROOT/.totopo/devcontainer.json" ]; then
-  "$TSX" "$PACKAGE_DIR/scripts/onboard.ts"
+  "$TSX" "$PACKAGE_DIR/src/core/onboard.ts"
   if [ ! -f "$REPO_ROOT/.totopo/devcontainer.json" ]; then
     exit 0
   fi
 fi
 
 # ─── Doctor (silent pre-check) ───────────────────────────────────────────────
-if ! "$TSX" "$PACKAGE_DIR/scripts/doctor.ts"; then
+if ! "$TSX" "$PACKAGE_DIR/src/core/doctor.ts"; then
   echo "  Fix the issues above and re-run totopo."
   echo ""
   exit 1
@@ -96,14 +96,14 @@ fi
 # stdout → /dev/tty (clack UI displayed on terminal)
 # stderr → captured (selected action string)
 set +e
-action=$("$TSX" "$PACKAGE_DIR/scripts/menu.ts" "$PROJECT_NAME" "$ACTIVE_COUNT" "$HAS_KEY" 2>&1 >/dev/tty)
+action=$("$TSX" "$PACKAGE_DIR/src/core/menu.ts" "$PROJECT_NAME" "$ACTIVE_COUNT" "$HAS_KEY" 2>&1 >/dev/tty)
 set -e
 
 # ─── Execute selection ───────────────────────────────────────────────────────
 case "$action" in
-  dev)     "$TSX" "$PACKAGE_DIR/scripts/dev.ts" ;;
-  stop)    "$TSX" "$PACKAGE_DIR/scripts/stop.ts" ;;
-  reset)   "$TSX" "$PACKAGE_DIR/scripts/reset.ts" ;;
-  doctor)  "$TSX" "$PACKAGE_DIR/scripts/doctor.ts" --verbose ;;
+  dev)     "$TSX" "$PACKAGE_DIR/src/core/dev.ts" ;;
+  stop)    "$TSX" "$PACKAGE_DIR/src/core/stop.ts" ;;
+  reset)   "$TSX" "$PACKAGE_DIR/src/core/reset.ts" ;;
+  doctor)  "$TSX" "$PACKAGE_DIR/src/core/doctor.ts" --verbose ;;
   quit|*)  exit 0 ;;
 esac
