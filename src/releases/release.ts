@@ -12,7 +12,11 @@
 import { execSync, spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { cancel, confirm, intro, log, outro } from "@clack/prompts";
-import { readChangelog, squashAndPromote } from "./changelog-utils.js";
+import {
+	readChangelog,
+	squashAndPromote,
+	waitForNpmVersion,
+} from "./changelog-utils.js";
 import { syncGithubReleases } from "./sync-github-releases.js";
 
 const pkgPath = "package.json";
@@ -158,6 +162,11 @@ execSync(`git tag ${tag}`, { stdio: "inherit" });
 
 log.step("git push --tags");
 execSync("git push --tags", { stdio: "inherit" });
+
+// ─── Wait for npm registry to propagate ──────────────────────────────────────
+log.step(`Waiting for ${name}@${baseVersion} to appear in npm registry...`);
+await waitForNpmVersion(name, baseVersion);
+log.success("npm registry updated");
 
 // ─── Sync GitHub releases (register the new release) ─────────────────────────
 await syncGithubReleases(name);
