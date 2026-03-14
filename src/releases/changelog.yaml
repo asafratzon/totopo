@@ -35,4 +35,14 @@ releases:
 # pnpm rc appends entries; pnpm rc:promote squashes and promotes to releases above
 in_progress:
   base_version: "0.1.4"
-  entries: []
+  entries:
+    - rc_version: "0.1.4-rc-1"
+      date: "2026-03-14"
+      fixed:
+        - "npx totopo fails on second invocation — auto-install now checks for tsx binary directly instead of node_modules/ directory (node_modules may exist but be incomplete after pnpm store cleanup or partial npx cache)"
+        - "gh CLI auth error now surfaced in sync-github-releases warning instead of swallowed silently"
+      changed:
+        - "scripts/ restructured into src/core/ (user-facing CLI, included in npm package) and src/releases/ (developer release tooling, excluded from npm)"
+        - "src/releases/changelog.yaml introduced as source of truth for release notes; CHANGELOG.md is now a generated artifact (pnpm generate-changelog)"
+        - "pnpm rc:promote now squashes rc changelog entries and regenerates CHANGELOG.md automatically"
+        - "Onboarding info box uses centered, rounded style"

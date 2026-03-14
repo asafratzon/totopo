@@ -3,9 +3,12 @@
 // Usage: pnpm rc  (run from host, not inside container)
 //
 // Determines the correct next rc version by checking the npm registry,
-// aligns package.json to match, prompts for changelog notes, then commits,
-// publishes to npm, pushes tags to GitHub (only after npm publish succeeds),
-// and optionally creates a GitHub pre-release via gh CLI.
+// aligns package.json to match, then commits, publishes to npm, pushes
+// tags to GitHub (only after npm publish succeeds), and creates a GitHub
+// pre-release via gh CLI.
+//
+// Changelog notes must be added to src/releases/changelog.yaml BEFORE
+// running pnpm rc. The script hard-blocks if in_progress.entries is empty.
 //
 // Version alignment rules:
 //   - Base version already released (e.g. 0.1.3 in registry) → bump patch → 0.1.4-rc-1
@@ -15,8 +18,8 @@
 
 import { execSync, spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
-import { cancel, confirm, intro, log, outro, text } from "@clack/prompts";
-import { appendRcNotes, readChangelog } from "./changelog-utils.js";
+import { cancel, confirm, intro, log, outro } from "@clack/prompts";
+import { readChangelog } from "./changelog-utils.js";
 import { syncGithubReleases } from "./sync-github-releases.js";
 
 const pkgPath = "package.json";
@@ -32,6 +35,21 @@ const baseVersion = pkg.version.replace(/-rc-\d+$/, "");
 intro(`${name} — release candidate`);
 log.message(
 	"Make sure you are logged in to npm before proceeding (npm whoami).",
+);
+
+// ─── Early changelog check ────────────────────────────────────────────────────
+const changelog = readChangelog();
+if (changelog.in_progress.entries.length === 0) {
+	log.error(
+		`No changelog entries found for ${changelog.in_progress.base_version}.`,
+	);
+	log.message(
+		"Add entries to src/releases/changelog.yaml under in_progress.entries, then re-run pnpm rc.",
+	);
+	process.exit(1);
+}
+log.success(
+	`changelog.yaml has ${changelog.in_progress.entries.length} entry/entries for ${changelog.in_progress.base_version}`,
 );
 
 // ─── Sync GitHub releases ─────────────────────────────────────────────────────
@@ -103,89 +121,6 @@ if (pkg.version !== nextVersion) {
 	log.success(`package.json updated to ${nextVersion}`);
 } else {
 	log.info(`package.json already at ${nextVersion} — no change needed`);
-}
-
-// ─── Changelog notes ─────────────────────────────────────────────────────────
-const changelog = readChangelog();
-const hasExistingEntries = changelog.in_progress.entries.length > 0;
-
-log.message(
-	hasExistingEntries
-		? `changelog.yaml has ${changelog.in_progress.entries.length} existing rc entry/entries for ${targetBase}. Add more notes? (blank to skip)`
-		: "Release notes are required. Enter items for each category (comma-separated, blank to skip).",
-);
-
-function parseItems(raw: string | symbol): string[] {
-	if (typeof raw !== "string") return [];
-	return raw
-		.split(",")
-		.map((s) => s.trim())
-		.filter(Boolean);
-}
-
-const addedRaw = await text({
-	message: "Added (new features):",
-	placeholder: "blank to skip",
-});
-if (addedRaw === Symbol.for("cancel")) {
-	cancel("Aborted.");
-	process.exit(0);
-}
-
-const changedRaw = await text({
-	message: "Changed:",
-	placeholder: "blank to skip",
-});
-if (changedRaw === Symbol.for("cancel")) {
-	cancel("Aborted.");
-	process.exit(0);
-}
-
-const fixedRaw = await text({
-	message: "Fixed:",
-	placeholder: "blank to skip",
-});
-if (fixedRaw === Symbol.for("cancel")) {
-	cancel("Aborted.");
-	process.exit(0);
-}
-
-const securityRaw = await text({
-	message: "Security:",
-	placeholder: "blank to skip",
-});
-if (securityRaw === Symbol.for("cancel")) {
-	cancel("Aborted.");
-	process.exit(0);
-}
-
-const added = parseItems(addedRaw);
-const changed = parseItems(changedRaw);
-const fixed = parseItems(fixedRaw);
-const security = parseItems(securityRaw);
-
-const hasNewNotes =
-	added.length + changed.length + fixed.length + security.length > 0;
-
-if (!hasNewNotes && !hasExistingEntries) {
-	cancel(
-		"At least one changelog entry is required before publishing an rc. Re-run pnpm rc and add notes.",
-	);
-	process.exit(1);
-}
-
-if (hasNewNotes) {
-	const today = new Date().toISOString().slice(0, 10);
-	const notes = {
-		...(added.length ? { added } : {}),
-		...(changed.length ? { changed } : {}),
-		...(fixed.length ? { fixed } : {}),
-		...(security.length ? { security } : {}),
-	};
-	appendRcNotes(nextVersion, today, notes);
-	log.success("Changelog notes saved to src/releases/changelog.yaml");
-} else {
-	log.info("No new notes — using existing changelog entries.");
 }
 
 // ─── Confirm publish ─────────────────────────────────────────────────────────

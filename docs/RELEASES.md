@@ -52,15 +52,31 @@ Two tags are maintained:
 
 ## Release Workflow
 
-### 1. Publish a release candidate
+### 1. Add changelog notes
+
+Before running `pnpm rc`, add entries to `src/releases/changelog.yaml` under `in_progress.entries`:
+
+```yaml
+in_progress:
+  base_version: "x.y.z"
+  entries:
+    - rc_version: "x.y.z-rc-1"
+      date: "YYYY-MM-DD"
+      fixed:
+        - "Description of fix"
+```
+
+`pnpm rc` hard-blocks if `in_progress.entries` is empty.
+
+### 2. Publish a release candidate
 
 ```bash
 pnpm rc
 ```
 
-Auto-increments the rc version based on registry state. Prompts for changelog notes (required on first rc for a base version). Commits `package.json` and `src/releases/changelog.yaml`, tags, and publishes as `rc`. Repeat until confirmed working.
+Auto-increments the rc version based on registry state. Commits `package.json` and `src/releases/changelog.yaml`, tags, and publishes as `rc`. Repeat until confirmed working.
 
-### 2. Promote to latest
+### 3. Promote to latest
 
 ```bash
 pnpm rc:promote
@@ -68,7 +84,7 @@ pnpm rc:promote
 
 Validates `changelog.yaml` has entries, squashes all rc entries by category, regenerates `CHANGELOG.md`, updates `package.json`, commits, publishes as `latest`, removes `rc` dist-tag, and creates a GitHub release via `gh` CLI.
 
-### 3. Sync GitHub releases (optional)
+### 4. Sync GitHub releases (optional)
 
 If GitHub releases are out of sync with npm:
 
