@@ -32,7 +32,8 @@
 		"format": "biome format --write .",
 		"fix:all": "biome check --write .",
 		"rc": "tsx scripts/rc.ts",
-		"release": "tsx scripts/release.ts"
+		"rc:promote": "tsx scripts/release.ts",
+		"sync-releases": "tsx scripts/sync-github-releases.ts"
 	},
 	"engines": {
 		"node": ">=18"

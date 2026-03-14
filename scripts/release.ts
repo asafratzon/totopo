@@ -2,14 +2,16 @@
 // release.ts — promote rc to latest
 // Usage: pnpm rc:promote  (run from host, not inside container)
 //
-// Reads the current rc version from the npm registry, strips the
-// -rc-N suffix, updates package.json, commits, tags, pushes, and publishes
-// as latest.
+// Reads the current rc version from the npm registry, strips the -rc-N
+// suffix, updates package.json, commits, publishes to npm, removes the rc
+// dist-tag, pushes tags to GitHub (only after npm publish succeeded), and
+// optionally creates a GitHub release with CHANGELOG.md notes via gh CLI.
 // =============================================================================
 
 import { execSync, spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { cancel, confirm, intro, log, outro } from "@clack/prompts";
+import { syncGithubReleases } from "./sync-github-releases.js";
 
 const pkgPath = "package.json";
 const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as {
@@ -22,6 +24,10 @@ intro(`${name} — promote rc to latest`);
 log.message(
 	"Make sure you are logged in to npm before proceeding (npm whoami).",
 );
+
+// ─── Sync GitHub releases ─────────────────────────────────────────────────────
+log.step("Syncing GitHub releases with npm...");
+await syncGithubReleases(name);
 
 // ─── Fetch rc from registry ───────────────────────────────────────────────────
 log.step("Checking npm registry for rc...");
@@ -39,7 +45,7 @@ try {
 	process.exit(1);
 }
 
-const latestRcVersion = distTags["rc"];
+const latestRcVersion = distTags.rc;
 
 if (!latestRcVersion) {
 	log.error("No rc tag found in npm registry.");
@@ -90,31 +96,34 @@ pkg.version = baseVersion;
 writeFileSync(pkgPath, `${JSON.stringify(pkg, null, "\t")}\n`);
 log.success(`package.json → ${baseVersion}`);
 
-// ─── Commit ──────────────────────────────────────────────────────────────────
+// ─── Commit + push code ───────────────────────────────────────────────────────
 const tag = `v${baseVersion}`;
 
 log.step("git commit");
 execSync(`git add ${pkgPath}`, { stdio: "inherit" });
 execSync(`git commit -m "chore: release ${tag}"`, { stdio: "inherit" });
 
-// ─── Tag + push ──────────────────────────────────────────────────────────────
 log.step("git push");
 execSync("git push", { stdio: "inherit" });
 
+// ─── Publish to npm ───────────────────────────────────────────────────────────
+log.step("pnpm publish --access public");
+execSync("pnpm publish --access public", { stdio: "inherit" });
+
+// ─── Remove rc dist-tag ───────────────────────────────────────────────────────
+log.step("Removing rc tag from npm registry...");
+execSync(`npm dist-tag rm ${name} rc`, { stdio: "inherit" });
+log.success("rc tag removed — npx totopo@rc will no longer resolve");
+
+// ─── Tag + push to GitHub (only after npm publish succeeded) ──────────────────
 log.step(`git tag ${tag}`);
 execSync(`git tag ${tag}`, { stdio: "inherit" });
 
 log.step("git push --tags");
 execSync("git push --tags", { stdio: "inherit" });
 
-// ─── Publish ─────────────────────────────────────────────────────────────────
-log.step("pnpm publish --access public");
-execSync("pnpm publish --access public", { stdio: "inherit" });
-
-// ─── Remove rc tag ───────────────────────────────────────────────────────────
-log.step(`Removing rc tag from npm registry...`);
-execSync(`npm dist-tag rm ${name} rc`, { stdio: "inherit" });
-log.success("rc tag removed — npx totopo@rc will no longer resolve");
+// ─── Sync GitHub releases (register the new release) ─────────────────────────
+await syncGithubReleases(name);
 
 // ─── Done ────────────────────────────────────────────────────────────────────
 outro(`${name}@${baseVersion} published as latest`);
