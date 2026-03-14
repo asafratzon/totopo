@@ -12,7 +12,9 @@
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.6",
+		"@types/js-yaml": "^4.0.9",
 		"@types/node": "^25.4.0",
+		"js-yaml": "4.1.1",
 		"typescript": "^5.9.3"
 	},
 	"pnpm": {
@@ -31,9 +33,10 @@
 		"lint": "biome check .",
 		"format": "biome format --write .",
 		"fix:all": "biome check --write .",
-		"rc": "tsx scripts/rc.ts",
-		"rc:promote": "tsx scripts/release.ts",
-		"sync-releases": "tsx scripts/sync-github-releases.ts"
+		"generate-changelog": "tsx src/releases/generate-changelog.ts",
+		"rc": "tsx src/releases/rc.ts",
+		"rc:promote": "tsx src/releases/release.ts",
+		"sync-releases": "tsx src/releases/sync-github-releases.ts"
 	},
 	"engines": {
 		"node": ">=18"
@@ -56,7 +59,7 @@
 	],
 	"files": [
 		"ai.sh",
-		"scripts/",
+		"src/core/",
 		"templates/",
 		"tsconfig.json",
 		"LICENSE"

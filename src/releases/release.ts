@@ -3,14 +3,16 @@
 // Usage: pnpm rc:promote  (run from host, not inside container)
 //
 // Reads the current rc version from the npm registry, strips the -rc-N
-// suffix, updates package.json, commits, publishes to npm, removes the rc
-// dist-tag, pushes tags to GitHub (only after npm publish succeeded), and
-// optionally creates a GitHub release with CHANGELOG.md notes via gh CLI.
+// suffix, validates changelog.yaml has notes, squashes rc entries, regenerates
+// CHANGELOG.md, updates package.json, commits, publishes to npm, removes the
+// rc dist-tag, pushes tags to GitHub (only after npm publish succeeded), and
+// creates a GitHub release with notes from changelog.yaml via gh CLI.
 // =============================================================================
 
 import { execSync, spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { cancel, confirm, intro, log, outro } from "@clack/prompts";
+import { readChangelog, squashAndPromote } from "./changelog-utils.js";
 import { syncGithubReleases } from "./sync-github-releases.js";
 
 const pkgPath = "package.json";
@@ -81,6 +83,28 @@ if (allVersions.includes(baseVersion)) {
 	process.exit(1);
 }
 
+// ─── Validate changelog entries ───────────────────────────────────────────────
+log.step("Validating changelog.yaml...");
+const changelog = readChangelog();
+
+if (changelog.in_progress.base_version !== baseVersion) {
+	log.error(
+		`changelog.yaml in_progress.base_version is ${changelog.in_progress.base_version}, but promoting ${baseVersion}. Update changelog.yaml manually.`,
+	);
+	process.exit(1);
+}
+
+if (changelog.in_progress.entries.length === 0) {
+	log.error(
+		"changelog.yaml has no entries for this release. Run pnpm rc and add notes first.",
+	);
+	process.exit(1);
+}
+
+log.success(
+	`Found ${changelog.in_progress.entries.length} rc entry/entries to squash for ${baseVersion}`,
+);
+
 // ─── Confirm ─────────────────────────────────────────────────────────────────
 const ok = await confirm({
 	message: `Publish ${name}@${baseVersion} as latest?`,
@@ -91,6 +115,17 @@ if (!ok || ok === Symbol.for("cancel")) {
 	process.exit(0);
 }
 
+// ─── Squash rc entries + update changelog.yaml ───────────────────────────────
+log.step("Squashing rc entries and updating changelog.yaml...");
+const today = new Date().toISOString().slice(0, 10);
+squashAndPromote(baseVersion, today);
+log.success("changelog.yaml updated");
+
+// ─── Regenerate CHANGELOG.md ─────────────────────────────────────────────────
+log.step("Regenerating CHANGELOG.md...");
+execSync("pnpm generate-changelog", { stdio: "inherit" });
+log.success("CHANGELOG.md regenerated");
+
 // ─── Update package.json ─────────────────────────────────────────────────────
 pkg.version = baseVersion;
 writeFileSync(pkgPath, `${JSON.stringify(pkg, null, "\t")}\n`);
@@ -100,7 +135,9 @@ log.success(`package.json → ${baseVersion}`);
 const tag = `v${baseVersion}`;
 
 log.step("git commit");
-execSync(`git add ${pkgPath}`, { stdio: "inherit" });
+execSync(`git add ${pkgPath} CHANGELOG.md src/releases/changelog.yaml`, {
+	stdio: "inherit",
+});
 execSync(`git commit -m "chore: release ${tag}"`, { stdio: "inherit" });
 
 log.step("git push");

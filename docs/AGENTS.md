@@ -48,7 +48,8 @@ Never declare a checkpoint if the codebase is broken or half-migrated.
 | Layer              | Tool                          |
 | ------------------ | ----------------------------- |
 | Entry point        | `ai.sh` (bash — keep minimal) |
-| Scripts            | `scripts/*.ts` via tsx        |
+| Core scripts       | `src/core/*.ts` via tsx       |
+| Release tooling    | `src/releases/*.ts` via tsx   |
 | Terminal UI        | `@clack/prompts`              |
 | Container          | Docker + DevPod               |
 | Runtime / packages | Node.js + pnpm                |
@@ -57,7 +58,7 @@ Never declare a checkpoint if the codebase is broken or half-migrated.
 ## Rules
 
 - **Security is non-negotiable** — never weaken container isolation; explain security implications of any change touching isolation, git config, or permissions
-- `ai.sh` is the only bash file — all logic lives in `scripts/*.ts`
+- `ai.sh` is the only bash file — all logic lives in `src/core/*.ts` (CLI) or `src/releases/*.ts` (dev tooling)
 - All totopo config in `.totopo/` — DevPod always gets `--devcontainer-path .totopo/devcontainer.json`
 - Propose before implementing anything non-trivial
 - **Never commit without explicit user instruction** — during work, ask "ready to commit?" if it feels like a natural point; only commit when the user says so

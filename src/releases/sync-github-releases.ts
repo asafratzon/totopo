@@ -1,6 +1,6 @@
 // =============================================================================
 // sync-github-releases.ts — align GitHub releases with npm registry
-// Usage: pnpm tsx scripts/sync-github-releases.ts
+// Usage: pnpm sync-releases
 //        or import { syncGithubReleases } from "./sync-github-releases.js"
 //
 // Fetches all published npm versions and all existing GitHub releases,
@@ -9,28 +9,20 @@
 // =============================================================================
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { log } from "@clack/prompts";
+import { getReleaseNotes } from "./changelog-utils.js";
 
-function run(cmd: string, args: string[]): { stdout: string; ok: boolean } {
+function run(
+	cmd: string,
+	args: string[],
+): { stdout: string; stderr: string; ok: boolean } {
 	const r = spawnSync(cmd, args, { encoding: "utf8", stdio: "pipe" });
-	return { stdout: r.stdout?.trim() ?? "", ok: r.status === 0 };
-}
-
-function changelogSection(version: string): string {
-	if (!existsSync("CHANGELOG.md")) return "";
-	const lines = readFileSync("CHANGELOG.md", "utf8").split("\n");
-	let found = false;
-	const section: string[] = [];
-	for (const line of lines) {
-		if (line.startsWith(`## [${version}]`)) {
-			found = true;
-			continue;
-		}
-		if (found && line.startsWith("## [")) break;
-		if (found) section.push(line);
-	}
-	return section.join("\n").trim();
+	return {
+		stdout: r.stdout?.trim() ?? "",
+		stderr: r.stderr?.trim() ?? "",
+		ok: r.status === 0,
+	};
 }
 
 export async function syncGithubReleases(packageName: string): Promise<void> {
@@ -67,7 +59,9 @@ export async function syncGithubReleases(packageName: string): Promise<void> {
 		const releases = JSON.parse(ghResult.stdout) as { tagName: string }[];
 		ghTags = new Set(releases.map((r) => r.tagName));
 	} catch {
-		log.warn("Could not fetch GitHub releases — skipping sync");
+		log.warn(
+			`Could not fetch GitHub releases — skipping sync${ghResult.stderr ? `: ${ghResult.stderr}` : ""}`,
+		);
 		return;
 	}
 
@@ -89,7 +83,7 @@ export async function syncGithubReleases(packageName: string): Promise<void> {
 		const baseVersion = version.replace(/-rc-\d+$/, "");
 		const notes = isRc
 			? `Release candidate for ${baseVersion}`
-			: changelogSection(version) || `Release ${tag}`;
+			: getReleaseNotes(version) || `Release ${tag}`;
 
 		const args = [
 			"release",
