@@ -49,8 +49,11 @@ if ! command -v node &>/dev/null; then
   exit 1
 fi
 
-# ─── Auto-install dependencies (dev flow — npx handles this automatically) ──
-if [ ! -d "$PACKAGE_DIR/node_modules" ]; then
+# ─── Auto-install dependencies ───────────────────────────────────────────────
+# Check for tsx binary directly — node_modules/ may exist but be incomplete
+# (e.g. pnpm store cleaned, or npx cache partially populated)
+TSX="$PACKAGE_DIR/node_modules/.bin/tsx"
+if [ ! -f "$TSX" ]; then
   echo "  Installing totopo dependencies..."
   if command -v pnpm &>/dev/null; then
     (cd "$PACKAGE_DIR" && pnpm install --silent 2>/dev/null)
@@ -58,8 +61,6 @@ if [ ! -d "$PACKAGE_DIR/node_modules" ]; then
     (cd "$PACKAGE_DIR" && npm install --silent 2>/dev/null)
   fi
 fi
-
-TSX="$PACKAGE_DIR/node_modules/.bin/tsx"
 
 # ─── Onboarding ──────────────────────────────────────────────────────────────
 if [ ! -f "$REPO_ROOT/.totopo/devcontainer.json" ]; then

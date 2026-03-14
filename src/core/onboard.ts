@@ -40,6 +40,12 @@ intro("totopo — First-time setup");
 box(
 	`project  : ${projectName}\nlocation : ${totopoDir}`,
 	"No .totopo/ config found — totopo will create it now.",
+	{
+		contentAlign: "center",
+		titleAlign: "center",
+		width: "auto",
+		rounded: true,
+	},
 );
 
 const ok = await confirm({ message: "Continue?" });
