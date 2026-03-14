@@ -6,6 +6,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.1.2] — 2026-03-14
+
+### Fixed
+
+- `npx totopo` symlink resolution — `PACKAGE_DIR` now correctly resolves to the package root when invoked via npx (was resolving to `.bin/` directory, causing wrong `node_modules` and `tsx` paths)
+
+---
+
 ## [0.1.1] — 2026-03-14
 
 ### Fixed

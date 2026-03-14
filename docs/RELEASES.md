@@ -26,6 +26,21 @@ Each release entry in `CHANGELOG.md` must include:
 
 Only include sections that have entries. Keep entries concise — one line per item.
 
+## Pre-release Testing
+
+To publish for testing without affecting `npx totopo` (latest) for existing users:
+
+```bash
+pnpm publish --access public --tag next
+npx totopo@next   # test in a clean directory
+```
+
+Once verified, promote to latest:
+
+```bash
+npm dist-tag add totopo@X.Y.Z latest
+```
+
 ## Release Checklist
 
 Before every `npm publish`:
