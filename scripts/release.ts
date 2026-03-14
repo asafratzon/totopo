@@ -1,10 +1,9 @@
 // =============================================================================
-// rc.ts — publish a release candidate
-// Usage: pnpm rc  (run from host, not inside container)
+// release.ts — promote rc to latest
+// Usage: pnpm release  (run from host, not inside container)
 //
-// Reads the base version from package.json (e.g. 0.1.2), finds the highest
-// already-published rc for that base (e.g. 0.1.2-rc-1), and publishes the
-// next one (e.g. 0.1.2-rc-2). Updates package.json and commits.
+// Strips the -rc-N suffix from the current version, updates package.json,
+// commits, tags, pushes, and publishes as latest.
 // =============================================================================
 
 import { execSync, spawnSync } from "node:child_process";
@@ -18,15 +17,25 @@ const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as {
 };
 const { name } = pkg;
 
-// Strip any existing -rc-N suffix to get the base version
-const baseVersion = pkg.version.replace(/-rc-\d+$/, "");
+const currentVersion = pkg.version;
+const baseVersion = currentVersion.replace(/-rc-\d+$/, "");
+const isRc = currentVersion !== baseVersion;
 
-intro(`${name} — release candidate`);
+intro(`${name} — release`);
 
-// ─── Find next rc number ─────────────────────────────────────────────────────
-log.step(
-	`Checking npm registry for existing ${baseVersion} release candidates...`,
-);
+// ─── Verify an rc was published ──────────────────────────────────────────────
+if (isRc) {
+	log.info(
+		`Current version: ${currentVersion} → will release as ${baseVersion}`,
+	);
+} else {
+	log.info(
+		`Current version: ${currentVersion} (no rc suffix — releasing as-is)`,
+	);
+}
+
+// ─── Check registry ──────────────────────────────────────────────────────────
+log.step(`Checking npm registry...`);
 
 const probe = spawnSync("npm", ["view", name, "versions", "--json"], {
 	encoding: "utf8",
@@ -38,29 +47,27 @@ try {
 	const parsed = JSON.parse(probe.stdout.trim());
 	allVersions = Array.isArray(parsed) ? parsed : [parsed];
 } catch {
-	// no versions published yet
+	// no versions yet
+}
+
+if (allVersions.includes(baseVersion)) {
+	log.error(`${name}@${baseVersion} is already published on npm.`);
+	log.message("Bump the version in package.json before releasing.");
+	process.exit(1);
 }
 
 const rcVersions = allVersions.filter((v) =>
 	v.startsWith(`${baseVersion}-rc-`),
 );
-const maxN = rcVersions.reduce((max, v) => {
-	const n = Number.parseInt(v.replace(`${baseVersion}-rc-`, ""), 10);
-	return Number.isNaN(n) ? max : Math.max(max, n);
-}, 0);
-
-const rcVersion = `${baseVersion}-rc-${maxN + 1}`;
-const tag = `v${rcVersion}`;
-
-log.success(
-	rcVersions.length > 0
-		? `Latest rc: ${baseVersion}-rc-${maxN} → publishing ${rcVersion}`
-		: `No prior rc found → publishing ${rcVersion}`,
-);
+if (rcVersions.length === 0 && isRc) {
+	log.warn(
+		`No rc versions found for ${baseVersion} — are you sure this was tested?`,
+	);
+}
 
 // ─── Confirm ─────────────────────────────────────────────────────────────────
 const ok = await confirm({
-	message: `Push + tag ${tag} + publish as rc?`,
+	message: `Publish ${name}@${baseVersion} as latest?`,
 });
 
 if (!ok || ok === Symbol.for("cancel")) {
@@ -69,15 +76,19 @@ if (!ok || ok === Symbol.for("cancel")) {
 }
 
 // ─── Bump package.json ───────────────────────────────────────────────────────
-pkg.version = rcVersion;
+pkg.version = baseVersion;
 writeFileSync(pkgPath, `${JSON.stringify(pkg, null, "\t")}\n`);
-log.success(`package.json → ${rcVersion}`);
+log.success(`package.json → ${baseVersion}`);
 
 // ─── Commit ──────────────────────────────────────────────────────────────────
 execSync(`git add ${pkgPath}`, { stdio: "inherit" });
-execSync(`git commit -m "chore: rc ${tag}"`, { stdio: "inherit" });
+execSync(`git commit -m "chore: release v${baseVersion}"`, {
+	stdio: "inherit",
+});
 
 // ─── Tag + push ──────────────────────────────────────────────────────────────
+const tag = `v${baseVersion}`;
+
 log.step("git push");
 execSync("git push", { stdio: "inherit" });
 
@@ -88,11 +99,11 @@ log.step("git push --tags");
 execSync("git push --tags", { stdio: "inherit" });
 
 // ─── Publish ─────────────────────────────────────────────────────────────────
-log.step(`pnpm publish --access public --tag rc`);
-execSync("pnpm publish --access public --tag rc", { stdio: "inherit" });
+log.step("pnpm publish --access public");
+execSync("pnpm publish --access public", { stdio: "inherit" });
 
 // ─── Done ────────────────────────────────────────────────────────────────────
-outro(`${name}@${rcVersion} published as rc`);
-console.log(`  Test:              npx totopo@rc`);
-console.log(`  Promote to latest: pnpm release`);
+outro(`${name}@${baseVersion} published as latest`);
+console.log(`  Verify: https://www.npmjs.com/package/${name}`);
+console.log(`  Test:   npx ${name}`);
 console.log("");

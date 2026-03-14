@@ -31,7 +31,8 @@
 		"lint": "biome check .",
 		"format": "biome format --write .",
 		"fix:all": "biome check --write .",
-		"rc": "tsx scripts/rc.ts"
+		"rc": "tsx scripts/rc.ts",
+		"release": "tsx scripts/release.ts"
 	},
 	"engines": {
 		"node": ">=18"
