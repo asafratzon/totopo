@@ -90,6 +90,6 @@ USER'S PROJECT (any git repo where totopo is used)
 
 ## Backlog
 
-- [ ] Fix onboarding — currently fails when run from a temp-test dir on host machine; investigate and fix
+- [x] Fix onboarding — tsx moved to dependencies, ai.sh uses package-local tsx binary; pnpm added to Dockerfile ✅
 - [ ] Add troubleshooting option to the interactive menu
 - [ ] Make DevPod workspace prefix more unique — current `totopo-<project>` could conflict with user's other Docker containers; consider something like `totopo-pod-<project>` or similar (discuss naming when picked up)
