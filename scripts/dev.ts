@@ -10,49 +10,49 @@ import { log, outro } from "@clack/prompts";
 
 const workspaceDir = process.env.TOTOPO_REPO_ROOT;
 if (!workspaceDir) {
-  log.error("TOTOPO_REPO_ROOT not set — run via ai.sh");
-  process.exit(1);
+	log.error("TOTOPO_REPO_ROOT not set — run via ai.sh");
+	process.exit(1);
 }
 
 const workspaceName = `totopo-${basename(workspaceDir)}`;
 
 // Check if workspace already exists
 const listResult = spawnSync("devpod", ["list", "--output", "json"], {
-  encoding: "utf8",
+	encoding: "utf8",
 });
 const workspaceExists = listResult.stdout?.includes(`"id":"${workspaceName}"`);
 
 if (workspaceExists) {
-  log.step(`Connecting to workspace '${workspaceName}'...`);
+	log.step(`Connecting to workspace '${workspaceName}'...`);
 } else {
-  log.step("Starting dev container...");
-  const up = spawnSync(
-    "devpod",
-    [
-      "up",
-      workspaceDir,
-      "--devcontainer-path",
-      ".totopo/devcontainer.json",
-      "--ide",
-      "none",
-      "--id",
-      workspaceName,
-    ],
-    { stdio: "inherit" },
-  );
-  if (up.status !== 0) {
-    outro("Failed to start dev container.");
-    process.exit(up.status ?? 1);
-  }
-  log.step("Connecting via SSH...");
+	log.step("Starting dev container...");
+	const up = spawnSync(
+		"devpod",
+		[
+			"up",
+			workspaceDir,
+			"--devcontainer-path",
+			".totopo/devcontainer.json",
+			"--ide",
+			"none",
+			"--id",
+			workspaceName,
+		],
+		{ stdio: "inherit" },
+	);
+	if (up.status !== 0) {
+		outro("Failed to start dev container.");
+		process.exit(up.status ?? 1);
+	}
+	log.step("Connecting via SSH...");
 }
 
 const ssh = spawnSync(
-  "devpod",
-  ["ssh", workspaceName, "--workdir", "/workspace"],
-  {
-    stdio: "inherit",
-  },
+	"devpod",
+	["ssh", workspaceName, "--workdir", "/workspace"],
+	{
+		stdio: "inherit",
+	},
 );
 
 process.exit(ssh.status ?? 0);

@@ -1,55 +1,23 @@
-# Secure AI Dev Environment
+# totopo
 
-A reusable, hardened development container template for Next.js projects with AI coding assistants (Claude, Kilo, OpenCode).
+Spin up a secure, isolated AI coding environment in any git project — in one command.
 
 ## Status
 
-⚠️ This package is currently in **early development (v0.1)** and is considered **experimental**. The API, behavior, and internal structure may change without notice as the project evolves. It is published primarily for exploration and early feedback, and should **not yet be relied upon in production environments**.
+⚠️ **Early development (v0.1)** — experimental. API and behavior may change. Not yet recommended for production use.
 
 ## How It Works
 
-Your code and VSCodium stay on your host machine as normal. The AI tools and all development activity run inside an isolated Docker container, connected to your terminal via SSH.
-
-**DevPod** is the glue — it reads the `.totopo/` configuration, builds the Docker image, manages the container lifecycle, and sets up the SSH tunnel so your terminal session lands inside the container automatically.
+`npx totopo` sets up a hardened Docker container in your project with AI coding assistants (Claude, Kilo, OpenCode) pre-installed. Your code stays on your host machine. The AI tools run isolated inside the container.
 
 ```
 Host machine
-├── VSCodium          → edits files normally (bind-mounted from container)
+├── your editor       → edits files normally (bind-mounted from container)
 ├── terminal          → SSH'd into container via DevPod
 │   ├── claude        → AI tools run here, isolated
 │   ├── kilo
 │   └── opencode
 └── git push/pull     → only possible from host, blocked inside container
-```
-
-`./ai.sh` is the single entry point — it lets you start or stop the container.
-
----
-
-## Repository Structure
-
-```
-.
-├── .totopo/
-│   ├── .env                # API keys — fill in before first start
-│   ├── Dockerfile          # Image: Node 22, AI tools, git protocol block
-│   ├── devcontainer.json   # Dev container config: mounts, startup hook
-│   ├── post-start.mjs      # Security checks + readiness output on every start
-│   └── README.md           # Security model details
-├── scripts/                # totopo logic — not copied to user projects
-│   ├── dev.ts
-│   ├── stop.ts
-│   ├── reset.ts
-│   ├── doctor.ts
-│   └── onboard.ts
-├── templates/              # Copied into user's .totopo/ during onboarding
-│   ├── Dockerfile
-│   ├── devcontainer.json
-│   ├── post-start.mjs
-│   └── env
-├── .gitignore
-├── ai.sh                   # Entry point — run from your project directory
-└── README.md               # This file
 ```
 
 ---
@@ -73,48 +41,43 @@ This only needs to be done once per machine.
 
 ## Quick Start
 
-### 1. Fill in your API keys
-
-Edit `.totopo/.env`:
+### 1. Run totopo in your project directory
 
 ```bash
-ANTHROPIC_API_KEY=sk-ant-...
-KILO_API_KEY=your-kilo-key-here
+cd your-project
+npx totopo
 ```
+
+If `.totopo/` doesn't exist yet, the onboarding flow runs automatically — it creates the container config, prompts for API keys, and updates `.gitignore`.
 
 ### 2. Start the container
 
-```bash
-./ai.sh
-```
+Select **Start session** from the menu. The first run builds the Docker image (a few minutes). Subsequent starts are fast.
 
-Select **Start session**. First run builds the image (a few minutes). Subsequent starts are fast.
+### 3. Verify
 
-### 3. Verify startup
-
-Security checks run automatically on every start. Re-run anytime from inside the container:
+Security checks run automatically on every container start. Re-run anytime from inside the container:
 
 ```bash
 status
 ```
 
-### 4. Stop the container
+### 4. Stop
 
-```bash
-./ai.sh
-```
-
-Select **Stop all**.
+Run `npx totopo` again and select **Stop all**.
 
 ---
 
-## Container Management
+## What gets created in your project
 
-| Command           | Description                                  |
-| ----------------- | -------------------------------------------- |
-| `./ai.sh`         | Start, stop, or reset the container          |
-| `./ai.sh` → Reset | Wipe all workspaces + images and start fresh |
-| `devpod list`     | List active workspaces                       |
+```
+your-project/
+└── .totopo/
+    ├── .env              # API keys — gitignored, never committed
+    ├── Dockerfile        # Container image definition
+    ├── devcontainer.json # Dev container config
+    └── post-start.mjs   # Security + readiness check on every start
+```
 
 ---
 
@@ -144,7 +107,7 @@ status      # Re-run security + readiness check
 
 Remote git operations are blocked inside the container. Push from your host terminal instead.
 
-See `.totopo/README.md` for full details.
+See `.totopo/README.md` for full details on the security model.
 
 ---
 
@@ -162,17 +125,10 @@ git push / pull / fetch
 
 ---
 
-## Using This Template
-
-When using totopo in a real project, run `ai.sh` from your project directory — the onboarding flow will create `.totopo/` automatically. You do not need to copy `scripts/` — those stay with the totopo package.
-
----
-
 ## Troubleshooting
 
 **Container fails to start** — the startup check prints exactly which check failed and why.
 
-**API key warnings** — check `.totopo/.env` has the correct variable names, then run `devpod up . --recreate`.
+**API key warnings** — check `.totopo/.env` has the correct variable names, then use **Reset** from the totopo menu to rebuild the container.
 
-**AI tool not found** — rebuild with `devpod up . --recreate`. Do not install tools manually inside a running container as changes won't persist.
-
+**AI tool not found** — use **Reset** from the totopo menu to rebuild the container image. Do not install tools manually inside a running container as changes won't persist.

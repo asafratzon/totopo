@@ -1,6 +1,6 @@
 # .totopo — Security & Configuration Reference
 
-This directory contains everything that defines and secures the dev container. It is designed to be self-contained — when copying this template to a real project, copy the entire `.totopo/` directory as-is.
+This directory contains everything that defines and secures the dev container. It is created automatically by `npx totopo` during onboarding.
 
 ---
 
@@ -86,13 +86,12 @@ status
 | `kilo`     | `@kilocode/cli`             | Kilo AI   |
 | `opencode` | `opencode-ai`               | OpenCode  |
 
-Tools are installed globally during image build. Do not install or update them manually inside a running container — changes will not persist. To update a tool, bump its version in the `Dockerfile` and rebuild with `devpod up . --recreate`.
+Tools are installed globally during image build. Do not install or update them manually inside a running container — changes will not persist. To update a tool, bump its version in `Dockerfile` then use **Reset** from the totopo menu to rebuild.
 
 ---
 
-## Copying to a Real Project
+## Getting Started
 
-1. Copy the entire `.totopo/` directory to your project root
-2. **Add `.totopo/.env` to that project's `.gitignore`** — in this template repo the `.env` is committed intentionally (it only contains placeholder values). In a real project with real keys it must never be committed
-3. Fill in real API keys in `.totopo/.env`
-4. Run `devpod up . --recreate` to build the image
+Run `npx totopo` from your project directory. The onboarding flow creates this `.totopo/` directory automatically, prompts for API keys, and adds `.env` to your `.gitignore`.
+
+To update a tool version, bump it in `Dockerfile` then use **Reset** from the totopo menu to rebuild the image.
