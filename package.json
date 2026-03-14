@@ -1,61 +1,61 @@
 {
-  "name": "totopo",
-  "version": "0.1.0",
-  "description": "Secure AI Box — isolated dev environments for AI coding assistants",
-  "type": "module",
-  "bin": {
-    "totopo": "./ai.sh"
-  },
-  "dependencies": {
-    "@clack/prompts": "^1.1.0",
-    "tsx": "^4.21.0"
-  },
-  "devDependencies": {
-    "@biomejs/biome": "^2.4.6",
-    "@types/node": "^25.4.0",
-    "typescript": "^5.9.3"
-  },
-  "pnpm": {
-    "supportedArchitectures": {
-      "cpu": [
-        "arm64"
-      ],
-      "os": [
-        "linux",
-        "darwin"
-      ]
-    }
-  },
-  "scripts": {
-    "typecheck": "tsc --noEmit",
-    "lint": "biome check .",
-    "format": "biome format --write .",
-    "fix:all": "biome check --write ."
-  },
-  "engines": {
-    "node": ">=18"
-  },
-  "license": "MIT",
-  "author": "Asaf Ratzon",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/asafratzon/totopo"
-  },
-  "homepage": "https://github.com/asafratzon/totopo#readme",
-  "keywords": [
-    "ai",
-    "claude",
-    "docker",
-    "devpod",
-    "isolation",
-    "security",
-    "devcontainer"
-  ],
-  "files": [
-    "ai.sh",
-    "scripts/",
-    "templates/",
-    "tsconfig.json",
-    "LICENSE"
-  ]
+	"name": "totopo",
+	"version": "0.1.1",
+	"description": "Secure AI Box — isolated dev environments for AI coding assistants",
+	"type": "module",
+	"bin": {
+		"totopo": "./ai.sh"
+	},
+	"dependencies": {
+		"@clack/prompts": "^1.1.0",
+		"tsx": "^4.21.0"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.4.6",
+		"@types/node": "^25.4.0",
+		"typescript": "^5.9.3"
+	},
+	"pnpm": {
+		"supportedArchitectures": {
+			"cpu": [
+				"arm64"
+			],
+			"os": [
+				"linux",
+				"darwin"
+			]
+		}
+	},
+	"scripts": {
+		"typecheck": "tsc --noEmit",
+		"lint": "biome check .",
+		"format": "biome format --write .",
+		"fix:all": "biome check --write ."
+	},
+	"engines": {
+		"node": ">=18"
+	},
+	"license": "MIT",
+	"author": "Asaf Ratzon",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/asafratzon/totopo"
+	},
+	"homepage": "https://github.com/asafratzon/totopo#readme",
+	"keywords": [
+		"ai",
+		"claude",
+		"docker",
+		"devpod",
+		"isolation",
+		"security",
+		"devcontainer"
+	],
+	"files": [
+		"ai.sh",
+		"scripts/",
+		"templates/",
+		"tsconfig.json",
+		"LICENSE"
+	]
 }

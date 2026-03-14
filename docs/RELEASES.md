@@ -33,12 +33,16 @@ Before every `npm publish`:
 - [ ] All Phase tasks for this version checked off in `docs/WORK.md`
 - [ ] `CHANGELOG.md` updated with new version entry
 - [ ] `package.json` version bumped
-- [ ] `npm run typecheck` passes
-- [ ] `npm run lint` passes
-- [ ] `npm pack --dry-run` inspected — only expected files in tarball
+- [ ] `pnpm typecheck` passes
+- [ ] `pnpm lint` passes
+- [ ] `pnpm pack --dry-run` inspected — only expected files in tarball
 - [ ] Commit all changes: `git commit -m "chore: release vX.Y.Z"`
 - [ ] Tag: `git tag vX.Y.Z`
 - [ ] User pushes tag from host: `git push && git push --tags`
-- [ ] `npm publish --access public`
+- [ ] Create GitHub release from CHANGELOG.md (run on host):
+  ```bash
+  gh release create vX.Y.Z --title "vX.Y.Z" --notes "$(awk '/^## \[X\.Y\.Z\]/{found=1; next} found && /^## \[/{exit} found{print}' CHANGELOG.md)"
+  ```
+- [ ] `pnpm publish --access public`
 - [ ] Verify on https://www.npmjs.com/package/totopo
 - [ ] Test: `npx totopo@X.Y.Z` in a clean project directory

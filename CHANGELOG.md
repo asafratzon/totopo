@@ -6,6 +6,21 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.1.1] — 2026-03-14
+
+### Fixed
+
+- `npx totopo` onboarding failure — `tsx` moved to `dependencies` and resolved from the package directory rather than expected globally
+- Container startup status now shows pnpm version alongside node and npm
+
+### Changed
+
+- `pnpm` added to container image (Dockerfile + template)
+- `ai.sh` auto-install falls back to npm if pnpm is unavailable
+- README rewritten to reflect `npx totopo` workflow; removed stale Next.js reference and internal repo structure
+
+---
+
 ## [0.1.0] — 2026-03-13
 
 ### Added
