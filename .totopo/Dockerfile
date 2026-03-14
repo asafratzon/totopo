@@ -42,6 +42,7 @@ RUN git config --system protocol.allow never && \
 # Global npm tools — installed as root so they land in /usr/local/bin
 # ---------------------------------------------------------------------------
 RUN npm install -g \
+    pnpm \
     @anthropic-ai/claude-code \
     @kilocode/cli \
     opencode-ai \
