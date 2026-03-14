@@ -3,7 +3,9 @@
 // Usage: pnpm rc  (run from host, not inside container)
 //
 // Determines the correct next rc version by checking the npm registry,
-// aligns package.json to match, then commits, tags, pushes, and publishes.
+// aligns package.json to match, then commits, publishes to npm, pushes
+// tags to GitHub (only after npm publish succeeds), and optionally creates
+// a GitHub pre-release via gh CLI.
 //
 // Version alignment rules:
 //   - Base version already released (e.g. 0.1.3 in registry) → bump patch → 0.1.4-rc-1
@@ -14,6 +16,7 @@
 import { execSync, spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { cancel, confirm, intro, log, outro } from "@clack/prompts";
+import { syncGithubReleases } from "./sync-github-releases.js";
 
 const pkgPath = "package.json";
 const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as {
@@ -29,6 +32,10 @@ intro(`${name} — release candidate`);
 log.message(
 	"Make sure you are logged in to npm before proceeding (npm whoami).",
 );
+
+// ─── Sync GitHub releases ─────────────────────────────────────────────────────
+log.step("Syncing GitHub releases with npm...");
+await syncGithubReleases(name);
 
 // ─── Fetch all published versions ────────────────────────────────────────────
 log.step("Checking npm registry...");
@@ -101,7 +108,7 @@ if (pkg.version !== nextVersion) {
 const tag = `v${nextVersion}`;
 
 const publishOk = await confirm({
-	message: `Commit, push, tag ${tag}, and publish as rc?`,
+	message: `Commit, publish to npm, then push ${tag} to GitHub?`,
 });
 
 if (!publishOk || publishOk === Symbol.for("cancel")) {
@@ -109,24 +116,27 @@ if (!publishOk || publishOk === Symbol.for("cancel")) {
 	process.exit(0);
 }
 
-// ─── Commit ──────────────────────────────────────────────────────────────────
-log.step(`git commit`);
+// ─── Commit + push code ───────────────────────────────────────────────────────
+log.step("git commit");
 execSync(`git add ${pkgPath}`, { stdio: "inherit" });
 execSync(`git commit -m "chore: rc ${tag}"`, { stdio: "inherit" });
 
-// ─── Tag + push ──────────────────────────────────────────────────────────────
 log.step("git push");
 execSync("git push", { stdio: "inherit" });
 
+// ─── Publish to npm ───────────────────────────────────────────────────────────
+log.step("pnpm publish --access public --tag rc");
+execSync("pnpm publish --access public --tag rc", { stdio: "inherit" });
+
+// ─── Tag + push to GitHub (only after npm publish succeeded) ──────────────────
 log.step(`git tag ${tag}`);
 execSync(`git tag ${tag}`, { stdio: "inherit" });
 
 log.step("git push --tags");
 execSync("git push --tags", { stdio: "inherit" });
 
-// ─── Publish ─────────────────────────────────────────────────────────────────
-log.step("pnpm publish --access public --tag rc");
-execSync("pnpm publish --access public --tag rc", { stdio: "inherit" });
+// ─── Sync GitHub releases (register the new rc) ───────────────────────────────
+await syncGithubReleases(name);
 
 // ─── Done ────────────────────────────────────────────────────────────────────
 outro(`${name}@${nextVersion} published as rc`);
