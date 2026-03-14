@@ -57,7 +57,6 @@ Host machine
 ## Prerequisites
 
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-- [VSCodium](https://vscodium.com/)
 - [DevPod CLI](https://devpod.sh/docs/getting-started/install)
 
 ### One-time DevPod setup
@@ -177,9 +176,3 @@ When using totopo in a real project, run `ai.sh` from your project directory —
 
 **AI tool not found** — rebuild with `devpod up . --recreate`. Do not install tools manually inside a running container as changes won't persist.
 
-## Personal notes to review with claude:
-
-- update readme: IDE should not be pre-requiste.
-- ensure container prefix is more unique? boxa
-- add to backlog: fix onboarding - it currently fails (temp-test dir on host machine)
-- update all docs/package.json description to be more related to boxa (Cage for agent.. rather then previous 'box' terminology).
