@@ -32,7 +32,7 @@ Never declare a checkpoint if the codebase is broken or half-migrated.
 - Claude Code runs **inside the dev container**; user SSHs in from host terminal
 - Repo is bind-mounted — edits are immediately visible on the host
 - Remote git (push/pull/fetch) is **blocked inside the container** — user pushes from host
-- Never guess CLI flags for `devpod`, `docker`, etc. — ask the user to run `--help` on the host
+- Never suggest devpod or docker commands directly — users interact exclusively through the totopo menu (start/stop/reset)
 
 ## Project
 
