@@ -26,38 +26,48 @@ Each release entry in `CHANGELOG.md` must include:
 
 Only include sections that have entries. Keep entries concise — one line per item.
 
-## Pre-release Testing
+## npm dist-tags
 
-To publish for testing without affecting `npx totopo` (latest) for existing users:
+Two tags are maintained:
+
+| Tag | Points to | Used by |
+| --- | --- | --- |
+| `latest` | last stable release (e.g. `0.1.4`) | `npx totopo` |
+| `rc` | current release candidate (e.g. `0.1.4-rc-2`) | `npx totopo@rc` |
+
+## Release Workflow
+
+### 1. Publish a release candidate
 
 ```bash
-pnpm publish --access public --tag next
-npx totopo@next   # test in a clean directory
+pnpm rc
 ```
 
-Once verified, promote to latest:
+Auto-increments the rc version based on registry state, commits, tags, and publishes as `rc`. Repeat until confirmed working.
+
+### 2. Promote to latest
 
 ```bash
-npm dist-tag add totopo@X.Y.Z latest
+pnpm rc:promote
+```
+
+Reads `rc` from the registry, strips the `-rc-N` suffix, publishes the clean version as `latest`.
+
+### 3. Create GitHub release
+
+```bash
+gh release create vX.Y.Z --title "vX.Y.Z" --notes "$(awk '/^## \[X\.Y\.Z\]/{found=1; next} found && /^## \[/{exit} found{print}' CHANGELOG.md)"
 ```
 
 ## Release Checklist
 
-Before every `npm publish`:
-
 - [ ] All Phase tasks for this version checked off in `docs/WORK.md`
 - [ ] `CHANGELOG.md` updated with new version entry
-- [ ] `package.json` version bumped
 - [ ] `pnpm typecheck` passes
 - [ ] `pnpm lint` passes
 - [ ] `pnpm pack --dry-run` inspected — only expected files in tarball
-- [ ] Commit all changes: `git commit -m "chore: release vX.Y.Z"`
-- [ ] Tag: `git tag vX.Y.Z`
-- [ ] User pushes tag from host: `git push && git push --tags`
-- [ ] Create GitHub release from CHANGELOG.md (run on host):
-  ```bash
-  gh release create vX.Y.Z --title "vX.Y.Z" --notes "$(awk '/^## \[X\.Y\.Z\]/{found=1; next} found && /^## \[/{exit} found{print}' CHANGELOG.md)"
-  ```
-- [ ] `pnpm publish --access public`
+- [ ] `pnpm rc` — publish and test (`npx totopo@rc`)
+- [ ] `pnpm rc:promote` — promote to latest
+- [ ] GitHub release created from CHANGELOG.md
 - [ ] Verify on https://www.npmjs.com/package/totopo
-- [ ] Test: `npx totopo@X.Y.Z` in a clean project directory
+- [ ] Test: `npx totopo` in a clean project directory
