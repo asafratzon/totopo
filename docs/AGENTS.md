@@ -9,7 +9,7 @@
 
 ## Every session end
 
-Update `docs/WORK.md` (check off done items, add discovered sub-tasks), then ask the user if they want to commit before sending the checkpoint message.
+Update `docs/WORK.md` — move completed work out of "Working Now / Next", add any discovered sub-tasks or new goals to "Upcoming", keep descriptions brief. Then ask the user if they want to commit before sending the checkpoint message.
 
 ## Checkpoint message
 
