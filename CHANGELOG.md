@@ -7,6 +7,26 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.1.4] — 2026-03-15
+
+### Changed
+
+- scripts/ restructured into src/core/ (user-facing CLI, included in npm package) and src/releases/ (developer release tooling, excluded from npm)
+- src/releases/changelog.yaml introduced as source of truth for release notes; CHANGELOG.md is now a generated artifact (pnpm generate-changelog)
+- pnpm rc:promote now squashes rc changelog entries and regenerates CHANGELOG.md automatically
+- Onboarding info box uses centered, rounded style
+
+### Fixed
+
+- npx totopo fails on second invocation — auto-install now checks for tsx binary directly instead of node_modules/ directory (node_modules may exist but be incomplete after pnpm store cleanup or partial npx cache)
+- gh CLI auth error now surfaced in sync-github-releases warning instead of swallowed silently
+- Start session fails on stopped workspace — devpod up is now always run before ssh (it is idempotent), fixing the 'cannot build in this mode' error when the container existed but was not running
+- GitHub release sync reported nothing to sync immediately after publish — now polls npm registry until the new version is visible before syncing
+- pnpm rc no longer prompts for changelog notes interactively — hard-blocks at startup if in_progress.entries is empty, directing the user to edit changelog.yaml first
+- Container startup fails — post-start.mjs imported @clack/prompts which is not available inside the container; replaced with plain ANSI console output using Node.js built-ins only
+
+---
+
 ## [0.1.3] — 2026-03-14
 
 ### Fixed
