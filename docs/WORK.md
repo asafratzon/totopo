@@ -41,73 +41,34 @@ USER'S PROJECT (any git repo where totopo is used)
 
 ---
 
-## Completed
+## Working Now / Next
 
-- **Phase 1** — Migrate config to `.totopo/` ✅
-- **Phase 2** — Doctor command (Docker, DevPod, provider checks; silent pre-menu, verbose on demand) ✅
-- **Phase 3** — Clean package vs project separation; `scripts/` stays with totopo, `templates/` copied to user projects ✅
-- **Phase 4** — Onboarding flow: detects missing `.totopo/`, copies templates, substitutes project name, creates `.env`, updates `.gitignore` ✅
-- **Phase 5** — Post-onboarding fixes: macOS compat, push-blocked test fix, existing workspace detection ✅
-- **Phase 6** — Port cleanup + `totopo-<project>` workspace naming ✅
-- **Phase 7** — Main menu UX: clack-based interactive menu, status box, project name, API key indicator ✅
-- **Phase 8** — TypeScript + pnpm + Biome toolchain; cross-platform binaries; `@clack/prompts` v1.1.0 ✅
+- **Verify `npx totopo` end-to-end** — test in a clean project directory that the full flow works: install via npx, onboarding, dev session start/stop
 
 ---
 
-## Phase 9 — npm Distribution (v0.1.x) ← IN PROGRESS
+## Upcoming
 
-> Focus: get totopo published and invocable via `npx totopo` as a real package.
+Brief descriptions for planning; each is input for plan mode before we decide to work on it.
 
-- [x] **Package name** — `totopo` registered on npm
-- [x] **Repo hygiene** — `LICENSE`, `CHANGELOG.md`, `.npmignore`, `engines`, `files`, `bin`, README
-- [x] **Rename** — all references updated from `aibox` → `totopo`
-- [x] **Release tooling** — `pnpm rc`, `pnpm rc:promote`, `pnpm sync-releases` scripts
-- [x] **Published** — v0.1.3 is current `latest` on npm
+- **Dockerfile: full runtime support** — add Python, Go, Rust, Java and audit common tools; update post-start.mjs checks and templates
 
-### Completed in this session
-- [x] **Directory restructure** — `scripts/` split into `src/core/` (npm) and `src/releases/` (dev-only)
-- [x] **changelog.yaml source of truth** — `src/releases/changelog.yaml` replaces manual CHANGELOG.md edits
-- [x] **generate-changelog** — `pnpm generate-changelog` regenerates CHANGELOG.md from yaml
-- [x] **rc.ts** — now prompts for changelog notes, hard-blocks if no notes exist, appends to yaml
-- [x] **release.ts** — validates yaml has entries, squashes rc notes, regenerates CHANGELOG.md on promote
-- [x] **sync-github-releases.ts** — reads release notes from changelog.yaml (not raw CHANGELOG.md)
+- **Dockerfile: runtime mode** — let the user decide if he wants the full dev container with all dev tools in their latest stable versions, or have only the the tools that are available on host machine and in the same versions so that both dev container and host behave in a similar fashion. If user selects the host-versions, this should be checked on every session startup since possibly user updated his local versions or added new tools etc. Should be manageable via settings menu and configurable per repo, so the setting should probably be saved/come from .totopo dir.
 
-### Next task
-- [ ] **`npx totopo` works end-to-end** — verify in a clean project directory
+- **Settings submenu** — view/edit API keys, check for updates, uninstall (remove `.totopo/` and stop container)
 
----
+- **Docs** — polish README for npm page (install, quickstart, security model); contribution guide
 
-## Phase 10 — Dockerfile: Full Runtime Support
+- **Workspace scoping** — support three modes when starting a session: repo root (current default), current directory, or current directory selectively (user picks which files/folders to mount). Complement with built-in agent context injection so the agent knows it lives in a dev container, may need host help for some operations, and in selective-mount mode is aware it should confirm before creating files or folders that are not mounted
 
-> The vision promises a universal dev environment. Deferred until after v0.1.0 ships.
+- **Troubleshoot menu option** — add a troubleshoot entry to the main menu (scope TBD)
 
-- [ ] Add Python
-- [ ] Add Go
-- [ ] Add Rust
-- [ ] Add Java (JDK)
-- [ ] Add common tools: curl, wget, jq, unzip, ca-certificates (audit existing)
-- [ ] Update `post-start.mjs` runtime checks to cover new runtimes
-- [ ] Update `templates/Dockerfile` to match
+- **Tech choices review** — audit tech decisions across the package, dev container, and repo; output a DECISIONS.md explaining rationale for each major choice
 
----
+- **Security status review** — assess current security posture, gaps, and tradeoffs; output a SECURITY.md as a concise reference
 
-## Phase 11 — Settings
+- **Stop: select which workspace** — when multiple workspaces are running, let the user choose which to stop (related to workspace scoping but implemented separately)
 
-- [ ] Settings submenu: view/edit API keys, check for updates
-- [ ] Uninstall option: remove `.totopo/` and stop any running container
+- **DevPod workspace naming** — current `totopo-<project>` could conflict with user's other Docker containers; consider a more unique prefix, possibly `totopo-managed-<project>`? (discuss when picked up)
 
----
-
-## Phase 12 — Docs
-
-- [ ] Polish `README.md` for npm page (install via `npx`, quickstart, security model)
-- [ ] Document security model in depth
-- [ ] Contribution guide
-
----
-
-## Backlog
-
-- [x] Fix onboarding — tsx moved to dependencies, ai.sh uses package-local tsx binary; pnpm added to Dockerfile ✅
-- [ ] Add troubleshooting option to the interactive menu
-- [ ] Make DevPod workspace prefix more unique — current `totopo-<project>` could conflict with user's other Docker containers; consider something like `totopo-pod-<project>` or similar (discuss naming when picked up)
+- **Terminal output review** — review and refine all terminal printings across every flow for consistency, clarity, and polish

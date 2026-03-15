@@ -48,7 +48,7 @@ Two tags are maintained:
 | Tag | Points to | Used by |
 | --- | --- | --- |
 | `latest` | last stable release (e.g. `0.1.4`) | `npx totopo` |
-| `rc` | current release candidate (e.g. `0.1.4-rc-2`) | `npx totopo@rc` |
+| `rc` | current release candidate (e.g. `0.1.5-rc-2`) | `npx totopo@rc` |
 
 ## Release Workflow
 
