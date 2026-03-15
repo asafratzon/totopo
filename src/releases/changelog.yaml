@@ -52,3 +52,7 @@ in_progress:
         - "Start session fails on stopped workspace — devpod up is now always run before ssh (it is idempotent), fixing the 'cannot build in this mode' error when the container existed but was not running"
         - "GitHub release sync reported nothing to sync immediately after publish — now polls npm registry until the new version is visible before syncing"
         - "pnpm rc no longer prompts for changelog notes interactively — hard-blocks at startup if in_progress.entries is empty, directing the user to edit changelog.yaml first"
+    - rc_version: "0.1.4-rc-3"
+      date: "2026-03-15"
+      fixed:
+        - "Container startup fails — post-start.mjs imported @clack/prompts which is not available inside the container; replaced with plain ANSI console output using Node.js built-ins only"
