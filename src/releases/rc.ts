@@ -24,8 +24,8 @@ import { syncGithubReleases } from "./sync-github-releases.js";
 
 const pkgPath = "package.json";
 const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as {
-	name: string;
-	version: string;
+    name: string;
+    version: string;
 };
 const { name } = pkg;
 
@@ -34,22 +34,22 @@ const baseVersion = pkg.version.replace(/-rc-\d+$/, "");
 
 intro(`${name} — release candidate`);
 log.message(
-	"Make sure you are logged in to npm before proceeding (npm whoami).",
+    "Make sure you are logged in to npm before proceeding (npm whoami).",
 );
 
 // ─── Early changelog check ────────────────────────────────────────────────────
 const changelog = readChangelog();
 if (changelog.in_progress.entries.length === 0) {
-	log.error(
-		`No changelog entries found for ${changelog.in_progress.base_version}.`,
-	);
-	log.message(
-		"Add entries to src/releases/changelog.yaml under in_progress.entries, then re-run pnpm rc.",
-	);
-	process.exit(1);
+    log.error(
+        `No changelog entries found for ${changelog.in_progress.base_version}.`,
+    );
+    log.message(
+        "Add entries to src/releases/changelog.yaml under in_progress.entries, then re-run pnpm rc.",
+    );
+    process.exit(1);
 }
 log.success(
-	`changelog.yaml has ${changelog.in_progress.entries.length} entry/entries for ${changelog.in_progress.base_version}`,
+    `changelog.yaml has ${changelog.in_progress.entries.length} entry/entries for ${changelog.in_progress.base_version}`,
 );
 
 // ─── Sync GitHub releases ─────────────────────────────────────────────────────
@@ -60,85 +60,87 @@ await syncGithubReleases(name);
 log.step("Checking npm registry...");
 
 const probe = spawnSync("npm", ["view", name, "versions", "--json"], {
-	encoding: "utf8",
-	stdio: "pipe",
+    encoding: "utf8",
+    stdio: "pipe",
 });
 
 let allVersions: string[] = [];
 try {
-	const parsed = JSON.parse(probe.stdout.trim());
-	allVersions = Array.isArray(parsed) ? parsed : [parsed];
+    const parsed = JSON.parse(probe.stdout.trim());
+    allVersions = Array.isArray(parsed) ? parsed : [parsed];
 } catch {
-	// package not yet published
+    // package not yet published
 }
 
 // ─── Compute next version ────────────────────────────────────────────────────
 function bumpPatch(v: string): string {
-	const parts = v.split(".");
-	parts[2] = String(Number(parts[2]) + 1);
-	return parts.join(".");
+    const parts = v.split(".");
+    parts[2] = String(Number(parts[2]) + 1);
+    return parts.join(".");
 }
 
 let targetBase = baseVersion;
 
 if (allVersions.includes(baseVersion)) {
-	// Base version already released — must bump patch
-	targetBase = bumpPatch(baseVersion);
-	log.warn(
-		`${name}@${baseVersion} is already released → bumping base to ${targetBase}`,
-	);
+    // Base version already released — must bump patch
+    targetBase = bumpPatch(baseVersion);
+    log.warn(
+        `${name}@${baseVersion} is already released → bumping base to ${targetBase}`,
+    );
 }
 
 const rcVersions = allVersions
-	.filter((v) => v.startsWith(`${targetBase}-rc-`))
-	.map((v) => Number.parseInt(v.replace(`${targetBase}-rc-`, ""), 10))
-	.filter((n) => !Number.isNaN(n));
+    .filter((v) => v.startsWith(`${targetBase}-rc-`))
+    .map((v) => Number.parseInt(v.replace(`${targetBase}-rc-`, ""), 10))
+    .filter((n) => !Number.isNaN(n));
 
 const maxN = rcVersions.length > 0 ? Math.max(...rcVersions) : 0;
 const nextRcN = maxN + 1;
 const nextVersion = `${targetBase}-rc-${nextRcN}`;
 
 if (maxN > 0) {
-	log.info(`Latest rc in registry: ${targetBase}-rc-${maxN}`);
+    log.info(`Latest rc in registry: ${targetBase}-rc-${maxN}`);
 }
 log.success(`Next rc version: ${nextVersion}`);
 
 // ─── Align package.json if needed ────────────────────────────────────────────
 if (pkg.version !== nextVersion) {
-	log.warn(`package.json is at ${pkg.version} — will update to ${nextVersion}`);
+    log.warn(
+        `package.json is at ${pkg.version} — will update to ${nextVersion}`,
+    );
 
-	const alignOk = await confirm({
-		message: `Update package.json from ${pkg.version} → ${nextVersion}?`,
-	});
+    const alignOk = await confirm({
+        message: `Update package.json from ${pkg.version} → ${nextVersion}?`,
+    });
 
-	if (!alignOk || alignOk === Symbol.for("cancel")) {
-		cancel("Aborted.");
-		process.exit(0);
-	}
+    if (!alignOk || alignOk === Symbol.for("cancel")) {
+        cancel("Aborted.");
+        process.exit(0);
+    }
 
-	pkg.version = nextVersion;
-	writeFileSync(pkgPath, `${JSON.stringify(pkg, null, "\t")}\n`);
-	log.success(`package.json updated to ${nextVersion}`);
+    pkg.version = nextVersion;
+    writeFileSync(pkgPath, `${JSON.stringify(pkg, null, "\t")}\n`);
+    log.success(`package.json updated to ${nextVersion}`);
 } else {
-	log.info(`package.json already at ${nextVersion} — no change needed`);
+    log.info(`package.json already at ${nextVersion} — no change needed`);
 }
 
 // ─── Confirm publish ─────────────────────────────────────────────────────────
 const tag = `v${nextVersion}`;
 
 const publishOk = await confirm({
-	message: `Commit, publish to npm, then push ${tag} to GitHub?`,
+    message: `Commit, publish to npm, then push ${tag} to GitHub?`,
 });
 
 if (!publishOk || publishOk === Symbol.for("cancel")) {
-	cancel("Aborted.");
-	process.exit(0);
+    cancel("Aborted.");
+    process.exit(0);
 }
 
 // ─── Commit + push code ───────────────────────────────────────────────────────
 log.step("git commit");
 execSync(`git add ${pkgPath} src/releases/changelog.yaml`, {
-	stdio: "inherit",
+    stdio: "inherit",
 });
 execSync(`git commit -m "chore: rc ${tag}"`, { stdio: "inherit" });
 

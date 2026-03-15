@@ -1,40 +1,40 @@
 {
-	"name": "TOTOPO_PROJECT_NAME",
+    "name": "TOTOPO_PROJECT_NAME",
 
-	// Build from local Dockerfile
-	"build": {
-		"dockerfile": "Dockerfile",
-		"context": ".."
-	},
+    // Build from local Dockerfile
+    "build": {
+        "dockerfile": "Dockerfile",
+        "context": ".."
+    },
 
-	// Mount the repo as the workspace — nothing else is visible
-	"workspaceFolder": "/workspace",
-	"workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
+    // Mount the repo as the workspace — nothing else is visible
+    "workspaceFolder": "/workspace",
+    "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
 
-	// Pass API keys from a local .env file — never baked into the image
-	// Create .totopo/.env on your host (see README.md)
-	"runArgs": [
-		"--name",
-		"totopo-${localWorkspaceFolderBasename}",
-		"--env-file",
-		"${localWorkspaceFolder}/.totopo/.env"
-	],
+    // Pass API keys from a local .env file — never baked into the image
+    // Create .totopo/.env on your host (see README.md)
+    "runArgs": [
+        "--name",
+        "totopo-${localWorkspaceFolderBasename}",
+        "--env-file",
+        "${localWorkspaceFolder}/.totopo/.env"
+    ],
 
-	// Run security + readiness checks every time container starts
-	"postStartCommand": "node /workspace/.totopo/post-start.mjs",
+    // Run security + readiness checks every time container starts
+    "postStartCommand": "node /workspace/.totopo/post-start.mjs",
 
-	// Terminal-only — no extensions installed
-	"customizations": {
-		"vscode": {
-			"extensions": [],
-			"settings": {
-				// Do not forward host git credentials into the container
-				"remote.containers.gitCredentialHelperConfigLocation": "none"
-			}
-		}
-	},
+    // Terminal-only — no extensions installed
+    "customizations": {
+        "vscode": {
+            "extensions": [],
+            "settings": {
+                // Do not forward host git credentials into the container
+                "remote.containers.gitCredentialHelperConfigLocation": "none"
+            }
+        }
+    },
 
-	// Drop capabilities — container cannot gain new privileges
-	"capAdd": [],
-	"securityOpt": ["no-new-privileges:true"]
+    // Drop capabilities — container cannot gain new privileges
+    "capAdd": [],
+    "securityOpt": ["no-new-privileges:true"]
 }
