@@ -1,58 +1,70 @@
 releases:
-  - version: "0.1.3"
-    date: "2026-03-14"
-    fixed:
-      - "Onboarding crash — devcontainer.json template contains // comments (valid devcontainer spec, invalid JSON.parse); substitution now uses plain string replace, preserving comments in the output"
-
-  - version: "0.1.2"
-    date: "2026-03-14"
-    fixed:
-      - "npx totopo symlink resolution — PACKAGE_DIR now correctly resolves to the package root when invoked via npx (was resolving to .bin/ directory, causing wrong node_modules and tsx paths)"
-
-  - version: "0.1.1"
-    date: "2026-03-14"
-    fixed:
-      - "npx totopo onboarding failure — tsx moved to dependencies and resolved from the package directory rather than expected globally"
-      - "Container startup status now shows pnpm version alongside node and npm"
+  - version: 0.1.4
+    date: "2026-03-15"
     changed:
-      - "pnpm added to container image (Dockerfile + template)"
-      - "ai.sh auto-install falls back to npm if pnpm is unavailable"
-      - "README rewritten to reflect npx totopo workflow; removed stale Next.js reference and internal repo structure"
-
-  - version: "0.1.0"
+      - >-
+        scripts/ restructured into src/core/ (user-facing CLI, included in npm package) and src/releases/ (developer
+        release tooling, excluded from npm)
+      - >-
+        src/releases/changelog.yaml introduced as source of truth for release notes; CHANGELOG.md is now a generated
+        artifact (pnpm generate-changelog)
+      - pnpm rc:promote now squashes rc changelog entries and regenerates CHANGELOG.md automatically
+      - Onboarding info box uses centered, rounded style
+    fixed:
+      - >-
+        npx totopo fails on second invocation — auto-install now checks for tsx binary directly instead of node_modules/
+        directory (node_modules may exist but be incomplete after pnpm store cleanup or partial npx cache)
+      - gh CLI auth error now surfaced in sync-github-releases warning instead of swallowed silently
+      - >-
+        Start session fails on stopped workspace — devpod up is now always run before ssh (it is idempotent), fixing the
+        'cannot build in this mode' error when the container existed but was not running
+      - >-
+        GitHub release sync reported nothing to sync immediately after publish — now polls npm registry until the new
+        version is visible before syncing
+      - >-
+        pnpm rc no longer prompts for changelog notes interactively — hard-blocks at startup if in_progress.entries is
+        empty, directing the user to edit changelog.yaml first
+      - >-
+        Container startup fails — post-start.mjs imported @clack/prompts which is not available inside the container;
+        replaced with plain ANSI console output using Node.js built-ins only
+  - version: 0.1.3
+    date: "2026-03-14"
+    fixed:
+      - >-
+        Onboarding crash — devcontainer.json template contains // comments (valid devcontainer spec, invalid
+        JSON.parse); substitution now uses plain string replace, preserving comments in the output
+  - version: 0.1.2
+    date: "2026-03-14"
+    fixed:
+      - >-
+        npx totopo symlink resolution — PACKAGE_DIR now correctly resolves to the package root when invoked via npx (was
+        resolving to .bin/ directory, causing wrong node_modules and tsx paths)
+  - version: 0.1.1
+    date: "2026-03-14"
+    fixed:
+      - >-
+        npx totopo onboarding failure — tsx moved to dependencies and resolved from the package directory rather than
+        expected globally
+      - Container startup status now shows pnpm version alongside node and npm
+    changed:
+      - pnpm added to container image (Dockerfile + template)
+      - ai.sh auto-install falls back to npm if pnpm is unavailable
+      - README rewritten to reflect npx totopo workflow; removed stale Next.js reference and internal repo structure
+  - version: 0.1.0
     date: "2026-03-13"
     added:
       - "Interactive clack-based menu: Start session, Stop all, Reset, Doctor"
-      - "Automatic onboarding: detects missing .totopo/, copies templates, substitutes project name, creates .env, updates .gitignore"
+      - >-
+        Automatic onboarding: detects missing .totopo/, copies templates, substitutes project name, creates .env,
+        updates .gitignore
       - "Doctor command: checks Docker, DevPod, provider, and API key readiness (silent pre-menu, verbose on demand)"
-      - "Security model: non-root container user (devuser uid 1001), git remote blocked via protocol.allow never, no credential forwarding, no privilege escalation (no-new-privileges:true)"
-      - "TypeScript source via tsx — no compile step required"
+      - >-
+        Security model: non-root container user (devuser uid 1001), git remote blocked via protocol.allow never, no
+        credential forwarding, no privilege escalation (no-new-privileges:true)
+      - TypeScript source via tsx — no compile step required
       - "Workspace naming convention: totopo-<project>"
-      - "Port cleanup on stop/reset"
-      - "Status box with project name and API key indicator in menu UI"
-
-# In-progress release (rc iterations accumulate here)
-# pnpm rc appends entries; pnpm rc:promote squashes and promotes to releases above
+      - Port cleanup on stop/reset
+      - Status box with project name and API key indicator in menu UI
 in_progress:
-  base_version: "0.1.4"
-  entries:
-    - rc_version: "0.1.4-rc-1"
-      date: "2026-03-14"
-      fixed:
-        - "npx totopo fails on second invocation — auto-install now checks for tsx binary directly instead of node_modules/ directory (node_modules may exist but be incomplete after pnpm store cleanup or partial npx cache)"
-        - "gh CLI auth error now surfaced in sync-github-releases warning instead of swallowed silently"
-      changed:
-        - "scripts/ restructured into src/core/ (user-facing CLI, included in npm package) and src/releases/ (developer release tooling, excluded from npm)"
-        - "src/releases/changelog.yaml introduced as source of truth for release notes; CHANGELOG.md is now a generated artifact (pnpm generate-changelog)"
-        - "pnpm rc:promote now squashes rc changelog entries and regenerates CHANGELOG.md automatically"
-        - "Onboarding info box uses centered, rounded style"
-    - rc_version: "0.1.4-rc-2"
-      date: "2026-03-15"
-      fixed:
-        - "Start session fails on stopped workspace — devpod up is now always run before ssh (it is idempotent), fixing the 'cannot build in this mode' error when the container existed but was not running"
-        - "GitHub release sync reported nothing to sync immediately after publish — now polls npm registry until the new version is visible before syncing"
-        - "pnpm rc no longer prompts for changelog notes interactively — hard-blocks at startup if in_progress.entries is empty, directing the user to edit changelog.yaml first"
-    - rc_version: "0.1.4-rc-3"
-      date: "2026-03-15"
-      fixed:
-        - "Container startup fails — post-start.mjs imported @clack/prompts which is not available inside the container; replaced with plain ANSI console output using Node.js built-ins only"
+  base_version: 0.1.5
+  entries: []
