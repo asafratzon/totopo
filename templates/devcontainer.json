@@ -13,12 +13,7 @@
 
     // Pass API keys from a local .env file — never baked into the image
     // Create .totopo/.env on your host (see README.md)
-    "runArgs": [
-        "--name",
-        "totopo-${localWorkspaceFolderBasename}",
-        "--env-file",
-        "${localWorkspaceFolder}/.totopo/.env"
-    ],
+    "runArgs": ["--name", "totopo-${localWorkspaceFolderBasename}", "--env-file", "${localWorkspaceFolder}/.totopo/.env"],
 
     // Run security + readiness checks every time container starts
     "postStartCommand": "node /workspace/.totopo/post-start.mjs",

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// =============================================================================
+// =========================================================================================================================================
 // scripts/dev.ts — Start the dev container and SSH in
 // Called by ai.sh — do not run directly.
-// =============================================================================
+// =========================================================================================================================================
 
 import { spawnSync } from "node:child_process";
 import { basename } from "node:path";
@@ -14,22 +14,14 @@ if (!workspaceDir) {
     process.exit(1);
 }
 
+// Derive a stable workspace ID — "totopo-" prefix lets reset/stop scripts identify managed workspaces
 const workspaceName = `totopo-${basename(workspaceDir)}`;
 
 // Always run devpod up — it's idempotent (starts if stopped, no-op if running)
 log.step("Starting dev container...");
 const up = spawnSync(
     "devpod",
-    [
-        "up",
-        workspaceDir,
-        "--devcontainer-path",
-        ".totopo/devcontainer.json",
-        "--ide",
-        "none",
-        "--id",
-        workspaceName,
-    ],
+    ["up", workspaceDir, "--devcontainer-path", ".totopo/devcontainer.json", "--ide", "none", "--id", workspaceName],
     { stdio: "inherit" },
 );
 if (up.status !== 0) {
@@ -38,12 +30,8 @@ if (up.status !== 0) {
 }
 log.step("Connecting via SSH...");
 
-const ssh = spawnSync(
-    "devpod",
-    ["ssh", workspaceName, "--workdir", "/workspace"],
-    {
-        stdio: "inherit",
-    },
-);
+const ssh = spawnSync("devpod", ["ssh", workspaceName, "--workdir", "/workspace"], {
+    stdio: "inherit",
+});
 
 process.exit(ssh.status ?? 0);
