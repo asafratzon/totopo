@@ -16,36 +16,27 @@ if (!workspaceDir) {
 
 const workspaceName = `totopo-${basename(workspaceDir)}`;
 
-// Check if workspace already exists
-const listResult = spawnSync("devpod", ["list", "--output", "json"], {
-	encoding: "utf8",
-});
-const workspaceExists = listResult.stdout?.includes(`"id":"${workspaceName}"`);
-
-if (workspaceExists) {
-	log.step(`Connecting to workspace '${workspaceName}'...`);
-} else {
-	log.step("Starting dev container...");
-	const up = spawnSync(
-		"devpod",
-		[
-			"up",
-			workspaceDir,
-			"--devcontainer-path",
-			".totopo/devcontainer.json",
-			"--ide",
-			"none",
-			"--id",
-			workspaceName,
-		],
-		{ stdio: "inherit" },
-	);
-	if (up.status !== 0) {
-		outro("Failed to start dev container.");
-		process.exit(up.status ?? 1);
-	}
-	log.step("Connecting via SSH...");
+// Always run devpod up — it's idempotent (starts if stopped, no-op if running)
+log.step("Starting dev container...");
+const up = spawnSync(
+	"devpod",
+	[
+		"up",
+		workspaceDir,
+		"--devcontainer-path",
+		".totopo/devcontainer.json",
+		"--ide",
+		"none",
+		"--id",
+		workspaceName,
+	],
+	{ stdio: "inherit" },
+);
+if (up.status !== 0) {
+	outro("Failed to start dev container.");
+	process.exit(up.status ?? 1);
 }
+log.step("Connecting via SSH...");
 
 const ssh = spawnSync(
 	"devpod",
