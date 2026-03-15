@@ -13,22 +13,22 @@ import { execSync, spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { cancel, confirm, intro, log, outro } from "@clack/prompts";
 import {
-	readChangelog,
-	squashAndPromote,
-	waitForNpmVersion,
+    readChangelog,
+    squashAndPromote,
+    waitForNpmVersion,
 } from "./changelog-utils.js";
 import { syncGithubReleases } from "./sync-github-releases.js";
 
 const pkgPath = "package.json";
 const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as {
-	name: string;
-	version: string;
+    name: string;
+    version: string;
 };
 const { name } = pkg;
 
 intro(`${name} — promote rc to latest`);
 log.message(
-	"Make sure you are logged in to npm before proceeding (npm whoami).",
+    "Make sure you are logged in to npm before proceeding (npm whoami).",
 );
 
 // ─── Sync GitHub releases ─────────────────────────────────────────────────────
@@ -39,52 +39,52 @@ await syncGithubReleases(name);
 log.step("Checking npm registry for rc...");
 
 const probe = spawnSync("npm", ["view", name, "dist-tags", "--json"], {
-	encoding: "utf8",
-	stdio: "pipe",
+    encoding: "utf8",
+    stdio: "pipe",
 });
 
 let distTags: Record<string, string> = {};
 try {
-	distTags = JSON.parse(probe.stdout.trim());
+    distTags = JSON.parse(probe.stdout.trim());
 } catch {
-	log.error("Could not fetch dist-tags from npm registry.");
-	process.exit(1);
+    log.error("Could not fetch dist-tags from npm registry.");
+    process.exit(1);
 }
 
 const latestRcVersion = distTags.rc;
 
 if (!latestRcVersion) {
-	log.error("No rc tag found in npm registry.");
-	log.message("Run pnpm rc first to publish a release candidate.");
-	process.exit(1);
+    log.error("No rc tag found in npm registry.");
+    log.message("Run pnpm rc first to publish a release candidate.");
+    process.exit(1);
 }
 
 const baseVersion = latestRcVersion.replace(/-rc-\d+$/, "");
 
 if (baseVersion === latestRcVersion) {
-	log.error(`rc points to ${latestRcVersion} which has no -rc-N suffix.`);
-	process.exit(1);
+    log.error(`rc points to ${latestRcVersion} which has no -rc-N suffix.`);
+    process.exit(1);
 }
 
 log.success(`rc: ${latestRcVersion} → will release as ${baseVersion}`);
 
 // ─── Check base version not already released ──────────────────────────────────
 const allVersionsProbe = spawnSync(
-	"npm",
-	["view", name, "versions", "--json"],
-	{ encoding: "utf8", stdio: "pipe" },
+    "npm",
+    ["view", name, "versions", "--json"],
+    { encoding: "utf8", stdio: "pipe" },
 );
 let allVersions: string[] = [];
 try {
-	const parsed = JSON.parse(allVersionsProbe.stdout.trim());
-	allVersions = Array.isArray(parsed) ? parsed : [parsed];
+    const parsed = JSON.parse(allVersionsProbe.stdout.trim());
+    allVersions = Array.isArray(parsed) ? parsed : [parsed];
 } catch {
-	// ignore
+    // ignore
 }
 
 if (allVersions.includes(baseVersion)) {
-	log.error(`${name}@${baseVersion} is already published on npm.`);
-	process.exit(1);
+    log.error(`${name}@${baseVersion} is already published on npm.`);
+    process.exit(1);
 }
 
 // ─── Validate changelog entries ───────────────────────────────────────────────
@@ -92,31 +92,31 @@ log.step("Validating changelog.yaml...");
 const changelog = readChangelog();
 
 if (changelog.in_progress.base_version !== baseVersion) {
-	log.error(
-		`changelog.yaml in_progress.base_version is ${changelog.in_progress.base_version}, but promoting ${baseVersion}. Update changelog.yaml manually.`,
-	);
-	process.exit(1);
+    log.error(
+        `changelog.yaml in_progress.base_version is ${changelog.in_progress.base_version}, but promoting ${baseVersion}. Update changelog.yaml manually.`,
+    );
+    process.exit(1);
 }
 
 if (changelog.in_progress.entries.length === 0) {
-	log.error(
-		"changelog.yaml has no entries for this release. Run pnpm rc and add notes first.",
-	);
-	process.exit(1);
+    log.error(
+        "changelog.yaml has no entries for this release. Run pnpm rc and add notes first.",
+    );
+    process.exit(1);
 }
 
 log.success(
-	`Found ${changelog.in_progress.entries.length} rc entry/entries to squash for ${baseVersion}`,
+    `Found ${changelog.in_progress.entries.length} rc entry/entries to squash for ${baseVersion}`,
 );
 
 // ─── Confirm ─────────────────────────────────────────────────────────────────
 const ok = await confirm({
-	message: `Publish ${name}@${baseVersion} as latest?`,
+    message: `Publish ${name}@${baseVersion} as latest?`,
 });
 
 if (!ok || ok === Symbol.for("cancel")) {
-	cancel("Aborted.");
-	process.exit(0);
+    cancel("Aborted.");
+    process.exit(0);
 }
 
 // ─── Squash rc entries + update changelog.yaml ───────────────────────────────
@@ -140,7 +140,7 @@ const tag = `v${baseVersion}`;
 
 log.step("git commit");
 execSync(`git add ${pkgPath} CHANGELOG.md src/releases/changelog.yaml`, {
-	stdio: "inherit",
+    stdio: "inherit",
 });
 execSync(`git commit -m "chore: release ${tag}"`, { stdio: "inherit" });
 
