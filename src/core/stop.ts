@@ -1,12 +1,13 @@
 #!/usr/bin/env node
-// =============================================================================
+// =========================================================================================================================================
 // scripts/stop.ts — Stop and remove all totopo dev container workspaces
 // Called by ai.sh — do not run directly.
-// =============================================================================
+// =========================================================================================================================================
 
 import { spawnSync } from "node:child_process";
 import { log, outro } from "@clack/prompts";
 
+// ─── Find all running totopo workspaces ──────────────────────────────────────────────────────────────────────────────────────────────────
 const listResult = spawnSync("devpod", ["list", "--output", "json"], {
     encoding: "utf8",
 });
@@ -24,6 +25,7 @@ if (workspaces.length === 0) {
     process.exit(0);
 }
 
+// ─── Stop and remove each workspace ──────────────────────────────────────────────────────────────────────────────────────────────────────
 log.step("Stopping all totopo workspaces...");
 
 for (const ws of workspaces) {

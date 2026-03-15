@@ -22,10 +22,8 @@ const dim = (s) => `\x1b[2m${s}\x1b[0m`;
 
 let errors = 0;
 
-const ok = (label, detail) =>
-    log.success(`${label.padEnd(24)}${detail ? dim(detail) : ""}`);
-const warn = (label, detail) =>
-    log.warn(`${label.padEnd(24)}${detail ? dim(detail) : ""}`);
+const ok = (label, detail) => log.success(`${label.padEnd(24)}${detail ? dim(detail) : ""}`);
+const warn = (label, detail) => log.warn(`${label.padEnd(24)}${detail ? dim(detail) : ""}`);
 const fail = (label, detail) => {
     log.error(`${label.padEnd(24)}${detail || ""}`);
     errors++;

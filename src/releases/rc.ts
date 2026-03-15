@@ -1,4 +1,4 @@
-// =============================================================================
+// =========================================================================================================================================
 // rc.ts — publish a release candidate
 // Usage: pnpm rc  (run from host, not inside container)
 //
@@ -14,7 +14,7 @@
 //   - Base version already released (e.g. 0.1.3 in registry) → bump patch → 0.1.4-rc-1
 //   - Registry has 0.1.4-rc-5 as latest rc → next is always 0.1.4-rc-6
 //     regardless of what package.json currently says
-// =============================================================================
+// =========================================================================================================================================
 
 import { execSync, spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -33,30 +33,22 @@ const { name } = pkg;
 const baseVersion = pkg.version.replace(/-rc-\d+$/, "");
 
 intro(`${name} — release candidate`);
-log.message(
-    "Make sure you are logged in to npm before proceeding (npm whoami).",
-);
+log.message("Make sure you are logged in to npm before proceeding (npm whoami).");
 
-// ─── Early changelog check ────────────────────────────────────────────────────
+// ─── Early changelog check ───────────────────────────────────────────────────────────────────────────────────────────────────────────────
 const changelog = readChangelog();
 if (changelog.in_progress.entries.length === 0) {
-    log.error(
-        `No changelog entries found for ${changelog.in_progress.base_version}.`,
-    );
-    log.message(
-        "Add entries to src/releases/changelog.yaml under in_progress.entries, then re-run pnpm rc.",
-    );
+    log.error(`No changelog entries found for ${changelog.in_progress.base_version}.`);
+    log.message("Add entries to src/releases/changelog.yaml under in_progress.entries, then re-run pnpm rc.");
     process.exit(1);
 }
-log.success(
-    `changelog.yaml has ${changelog.in_progress.entries.length} entry/entries for ${changelog.in_progress.base_version}`,
-);
+log.success(`changelog.yaml has ${changelog.in_progress.entries.length} entry/entries for ${changelog.in_progress.base_version}`);
 
-// ─── Sync GitHub releases ─────────────────────────────────────────────────────
+// ─── Sync GitHub releases ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 log.step("Syncing GitHub releases with npm...");
 await syncGithubReleases(name);
 
-// ─── Fetch all published versions ────────────────────────────────────────────
+// ─── Fetch all published versions ────────────────────────────────────────────────────────────────────────────────────────────────────────
 log.step("Checking npm registry...");
 
 const probe = spawnSync("npm", ["view", name, "versions", "--json"], {
@@ -72,21 +64,21 @@ try {
     // package not yet published
 }
 
-// ─── Compute next version ────────────────────────────────────────────────────
+// ─── Compute next version ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// Increments the patch segment of a semver string (e.g. "0.1.4" → "0.1.5")
 function bumpPatch(v: string): string {
     const parts = v.split(".");
     parts[2] = String(Number(parts[2]) + 1);
     return parts.join(".");
 }
 
+// Start with the current base; bumped below if the base version is already published on npm
 let targetBase = baseVersion;
 
 if (allVersions.includes(baseVersion)) {
     // Base version already released — must bump patch
     targetBase = bumpPatch(baseVersion);
-    log.warn(
-        `${name}@${baseVersion} is already released → bumping base to ${targetBase}`,
-    );
+    log.warn(`${name}@${baseVersion} is already released → bumping base to ${targetBase}`);
 }
 
 const rcVersions = allVersions
@@ -103,11 +95,9 @@ if (maxN > 0) {
 }
 log.success(`Next rc version: ${nextVersion}`);
 
-// ─── Align package.json if needed ────────────────────────────────────────────
+// ─── Align package.json if needed ────────────────────────────────────────────────────────────────────────────────────────────────────────
 if (pkg.version !== nextVersion) {
-    log.warn(
-        `package.json is at ${pkg.version} — will update to ${nextVersion}`,
-    );
+    log.warn(`package.json is at ${pkg.version} — will update to ${nextVersion}`);
 
     const alignOk = await confirm({
         message: `Update package.json from ${pkg.version} → ${nextVersion}?`,
@@ -125,7 +115,7 @@ if (pkg.version !== nextVersion) {
     log.info(`package.json already at ${nextVersion} — no change needed`);
 }
 
-// ─── Confirm publish ─────────────────────────────────────────────────────────
+// ─── Confirm publish ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 const tag = `v${nextVersion}`;
 
 const publishOk = await confirm({
@@ -137,7 +127,7 @@ if (!publishOk || publishOk === Symbol.for("cancel")) {
     process.exit(0);
 }
 
-// ─── Commit + push code ───────────────────────────────────────────────────────
+// ─── Commit + push code ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 log.step("git commit");
 execSync(`git add ${pkgPath} src/releases/changelog.yaml`, {
     stdio: "inherit",
@@ -147,26 +137,26 @@ execSync(`git commit -m "chore: rc ${tag}"`, { stdio: "inherit" });
 log.step("git push");
 execSync("git push", { stdio: "inherit" });
 
-// ─── Publish to npm ───────────────────────────────────────────────────────────
+// ─── Publish to npm ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 log.step("pnpm publish --access public --tag rc");
 execSync("pnpm publish --access public --tag rc", { stdio: "inherit" });
 
-// ─── Tag + push to GitHub (only after npm publish succeeded) ──────────────────
+// ─── Tag + push to GitHub (only after npm publish succeeded) ─────────────────────────────────────────────────────────────────────────────
 log.step(`git tag ${tag}`);
 execSync(`git tag ${tag}`, { stdio: "inherit" });
 
 log.step("git push --tags");
 execSync("git push --tags", { stdio: "inherit" });
 
-// ─── Wait for npm registry to propagate ──────────────────────────────────────
+// ─── Wait for npm registry to propagate ──────────────────────────────────────────────────────────────────────────────────────────────────
 log.step(`Waiting for ${name}@${nextVersion} to appear in npm registry...`);
 await waitForNpmVersion(name, nextVersion);
 log.success("npm registry updated");
 
-// ─── Sync GitHub releases (register the new rc) ───────────────────────────────
+// ─── Sync GitHub releases (register the new rc) ──────────────────────────────────────────────────────────────────────────────────────────
 await syncGithubReleases(name);
 
-// ─── Done ────────────────────────────────────────────────────────────────────
+// ─── Done ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 outro(`${name}@${nextVersion} published as rc`);
 console.log(`  Test:              npx totopo@rc`);
 console.log(`  Promote to latest: pnpm rc:promote`);

@@ -27,14 +27,8 @@ const bold = (s) => `\x1b[1m${s}\x1b[0m`;
 
 let errors = 0;
 
-const ok = (label, detail) =>
-    console.log(
-        `${green("✓")} ${label.padEnd(24)}${detail ? dim(detail) : ""}`,
-    );
-const warn = (label, detail) =>
-    console.log(
-        `${yellow("▲")} ${label.padEnd(24)}${detail ? dim(detail) : ""}`,
-    );
+const ok = (label, detail) => console.log(`${green("✓")} ${label.padEnd(24)}${detail ? dim(detail) : ""}`);
+const warn = (label, detail) => console.log(`${yellow("▲")} ${label.padEnd(24)}${detail ? dim(detail) : ""}`);
 const fail = (label, detail) => {
     console.log(`${red("✗")} ${label.padEnd(24)}${detail || ""}`);
     errors++;
@@ -110,8 +104,6 @@ checkKey("KILO_API_KEY");
 if (errors === 0) {
     console.log(`\n${green("●")} ${bold("Ready.")}\n`);
 } else {
-    console.log(
-        `\n${red("●")} ${bold(`${errors} error(s) — see above. Rebuild the container to fix.`)}\n`,
-    );
+    console.log(`\n${red("●")} ${bold(`${errors} error(s) — see above. Rebuild the container to fix.`)}\n`);
     process.exit(1);
 }

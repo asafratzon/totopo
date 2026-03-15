@@ -1,6 +1,6 @@
-// =============================================================================
+// =========================================================================================================================================
 // changelog-utils.ts — read/write/query src/releases/changelog.yaml
-// =============================================================================
+// =========================================================================================================================================
 
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -12,7 +12,7 @@ const __dirname = path.dirname(__filename);
 
 const CHANGELOG_PATH = path.join(__dirname, "changelog.yaml");
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ─── Types ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 export interface ReleaseEntry {
     version: string;
@@ -42,7 +42,7 @@ export interface Changelog {
     in_progress: InProgress;
 }
 
-// ─── Read / Write ─────────────────────────────────────────────────────────────
+// ─── Read / Write ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 export function readChangelog(): Changelog {
     const raw = readFileSync(CHANGELOG_PATH, "utf8");
@@ -59,7 +59,7 @@ export function writeChangelog(data: Changelog): void {
     writeFileSync(CHANGELOG_PATH, out, "utf8");
 }
 
-// ─── Append rc notes ──────────────────────────────────────────────────────────
+// ─── Append rc notes ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 export interface RcNotes {
     added?: string[];
@@ -68,35 +68,24 @@ export interface RcNotes {
     security?: string[];
 }
 
-export function appendRcNotes(
-    rcVersion: string,
-    date: string,
-    notes: RcNotes,
-): void {
+export function appendRcNotes(rcVersion: string, date: string, notes: RcNotes): void {
     const data = readChangelog();
     const entry: RcEntry = { rc_version: rcVersion, date, ...notes };
     data.in_progress.entries.push(entry);
     writeChangelog(data);
 }
 
-// ─── Squash rc entries and promote ───────────────────────────────────────────
+// ─── Squash rc entries and promote ───────────────────────────────────────────────────────────────────────────────────────────────────────
 
-export function squashAndPromote(
-    baseVersion: string,
-    date: string,
-): ReleaseEntry {
+export function squashAndPromote(baseVersion: string, date: string): ReleaseEntry {
     const data = readChangelog();
 
     if (data.in_progress.base_version !== baseVersion) {
-        throw new Error(
-            `changelog.yaml in_progress.base_version is ${data.in_progress.base_version}, expected ${baseVersion}`,
-        );
+        throw new Error(`changelog.yaml in_progress.base_version is ${data.in_progress.base_version}, expected ${baseVersion}`);
     }
 
     if (data.in_progress.entries.length === 0) {
-        throw new Error(
-            "changelog.yaml has no entries for this release. Run pnpm rc and add notes first.",
-        );
+        throw new Error("changelog.yaml has no entries for this release. Run pnpm rc and add notes first.");
     }
 
     // Combine all rc entries by category (preserve order, skip duplicates)
@@ -126,8 +115,9 @@ export function squashAndPromote(
     return promoted;
 }
 
-// ─── Get release notes for a specific version ────────────────────────────────
+// ─── Get release notes for a specific version ────────────────────────────────────────────────────────────────────────────────────────────
 
+// Returns Markdown-formatted release notes for the given version, or a bare fallback string if not found
 export function getReleaseNotes(version: string): string {
     const data = readChangelog();
     const entry = data.releases.find((r) => r.version === version);
@@ -157,7 +147,7 @@ export function getReleaseNotes(version: string): string {
     return lines.join("\n").trim();
 }
 
-// ─── npm registry polling ─────────────────────────────────────────────────────
+// ─── npm registry polling ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 import { spawnSync } from "node:child_process";
 
@@ -172,32 +162,25 @@ export async function waitForNpmVersion(
 ): Promise<void> {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
-        const r = spawnSync(
-            "npm",
-            ["view", packageName, "versions", "--json"],
-            {
-                encoding: "utf8",
-                stdio: "pipe",
-            },
-        );
+        const r = spawnSync("npm", ["view", packageName, "versions", "--json"], {
+            encoding: "utf8",
+            stdio: "pipe",
+        });
         try {
             const parsed = JSON.parse(r.stdout.trim());
-            const versions: string[] = Array.isArray(parsed)
-                ? parsed
-                : [parsed];
+            const versions: string[] = Array.isArray(parsed) ? parsed : [parsed];
             if (versions.includes(version)) return;
         } catch {
             // registry temporarily unreachable — keep polling
         }
         await new Promise((res) => setTimeout(res, intervalMs));
     }
-    throw new Error(
-        `Timed out waiting for ${packageName}@${version} to appear in npm registry`,
-    );
+    throw new Error(`Timed out waiting for ${packageName}@${version} to appear in npm registry`);
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Helpers ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
+// Increments the patch segment of a semver string (e.g. "0.1.4" → "0.1.5")
 function bumpPatch(v: string): string {
     const parts = v.split(".");
     parts[2] = String(Number(parts[2]) + 1);

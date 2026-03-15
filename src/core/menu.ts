@@ -1,21 +1,18 @@
 #!/usr/bin/env node
-// =============================================================================
+// =========================================================================================================================================
 // scripts/menu.ts — totopo interactive menu (powered by @clack/prompts)
 // Called by ai.sh — outputs selected action to stderr.
-// =============================================================================
+// =========================================================================================================================================
 
 import { box, cancel, isCancel, select } from "@clack/prompts";
 
-const [projectName = "unknown", activeCountStr, hasKeyStr] =
-    process.argv.slice(2);
+// Parse CLI args passed by ai.sh: project name, active container count, and API key presence flag
+const [projectName = "unknown", activeCountStr, hasKeyStr] = process.argv.slice(2);
 const activeCount = Number.parseInt(activeCountStr ?? "0", 10);
 const hasKey = hasKeyStr === "true";
 
-// ─── Status box ──────────────────────────────────────────────────────────────
-const sessionLabel =
-    activeCount === 1
-        ? "1 container running"
-        : `${activeCount} containers running`;
+// ─── Status box ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+const sessionLabel = activeCount === 1 ? "1 container running" : `${activeCount} containers running`;
 const lines = [];
 lines.push(`status: ${sessionLabel}`);
 lines.push(`api keys: ${hasKey ? "configured" : "none"} (.totopo/.env)`);
@@ -26,7 +23,7 @@ box(lines.join("\n"), ` totopo · ${projectName} `, {
     rounded: true,
 });
 
-// ─── Menu ───────────────────────────────────────────────────────────────────
+// ─── Menu ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 const action = await select({
     message: "Menu:",
     options: [
