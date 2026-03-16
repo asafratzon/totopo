@@ -1,46 +1,95 @@
 # =============================================================================
-# Secure AI Dev Container — Next.js / Node.js
+# Secure AI Dev Container — General-purpose multi-stack
 # =============================================================================
 # Non-root user, no git remote access, AI tools: claude, kilo, opencode
+# Runtimes: Node.js, Python, Go, Rust, Java (Temurin 21), Bun
 # =============================================================================
 
-FROM node:22-bookworm-slim
+FROM debian:bookworm-slim
 LABEL totopo.managed=true
 
 # ---------------------------------------------------------------------------
-# System packages
+# Layer 1 — System packages
 # ---------------------------------------------------------------------------
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git \
-    curl \
-    wget \
-    bash \
-    jq \
-    unzip \
-    ca-certificates \
-    procps \
+    # Core utilities
+    git curl wget bash zsh make \
+    # Build essentials (needed for Rust compilation, C extensions, etc.)
+    build-essential pkg-config libssl-dev \
+    # Utilities
+    jq unzip zip tree htop procps lsb-release gnupg ca-certificates \
+    # Modern search/navigation tools
+    ripgrep fzf \
+    # Database clients
+    sqlite3 postgresql-client default-mysql-client redis-tools \
+    # Python (system runtime)
+    python3 python3-pip python3-venv pipx \
+    # Java build tools
+    maven \
     && rm -rf /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------
-# Create non-root user
+# Layer 2 — fd (not available as fd-find in bookworm; install from GitHub)
 # ---------------------------------------------------------------------------
-RUN groupadd --gid 1001 devuser \
-    && useradd --uid 1001 --gid devuser --shell /bin/bash --create-home devuser
+RUN ARCH=$(dpkg --print-architecture) && \
+    FD_VERSION=$(curl -fsSL https://api.github.com/repos/sharkdp/fd/releases/latest \
+        | python3 -c "import sys,json; print(json.load(sys.stdin)['tag_name'][1:])") && \
+    curl -fsSL "https://github.com/sharkdp/fd/releases/download/v${FD_VERSION}/fd_${FD_VERSION}_${ARCH}.deb" \
+        -o /tmp/fd.deb && dpkg -i /tmp/fd.deb && rm /tmp/fd.deb
 
 # ---------------------------------------------------------------------------
-# Git remote block — enforced via git's own system-level config.
-# protocol.allow never  -> blocks https, ssh, git:// and ALL other transports
-# protocol.file.allow   -> keeps local operations (commit, branch, log) working
-#
-# This is set in /etc/gitconfig (system scope) so it applies to every user
-# and every process — including direct calls to /usr/bin/git. It cannot be
-# bypassed without overwriting /etc/gitconfig, which requires root.
+# Layer 3 — yq (not in apt)
+# ---------------------------------------------------------------------------
+RUN ARCH=$(dpkg --print-architecture) && \
+    curl -fsSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${ARCH}" \
+        -o /usr/local/bin/yq && chmod +x /usr/local/bin/yq
+
+# ---------------------------------------------------------------------------
+# Layer 4 — GitHub CLI
+# ---------------------------------------------------------------------------
+RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+        | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] \
+        https://cli.github.com/packages stable main" \
+        > /etc/apt/sources.list.d/github-cli.list && \
+    apt-get update && apt-get install -y gh && rm -rf /var/lib/apt/lists/*
+
+# ---------------------------------------------------------------------------
+# Layer 5 — Node.js LTS (via NodeSource)
+# ---------------------------------------------------------------------------
+RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - && \
+    apt-get install -y nodejs && rm -rf /var/lib/apt/lists/*
+
+# ---------------------------------------------------------------------------
+# Layer 6 — Eclipse Temurin 21 JDK (Adoptium apt repo)
+# ---------------------------------------------------------------------------
+RUN curl -fsSL https://packages.adoptium.net/artifactory/api/gpg/key/public \
+        | gpg --dearmor -o /usr/share/keyrings/adoptium.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/adoptium.gpg] \
+        https://packages.adoptium.net/artifactory/deb $(lsb_release -cs) main" \
+        > /etc/apt/sources.list.d/adoptium.list && \
+    apt-get update && apt-get install -y temurin-21-jdk && rm -rf /var/lib/apt/lists/*
+RUN echo 'export JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java))))' \
+        > /etc/profile.d/java.sh
+
+# ---------------------------------------------------------------------------
+# Layer 7 — Go (official tarball, latest stable, multi-arch)
+# ---------------------------------------------------------------------------
+RUN ARCH=$(dpkg --print-architecture) && \
+    GO_VERSION=$(curl -fsSL 'https://go.dev/dl/?mode=json' \
+        | python3 -c "import sys,json; d=json.load(sys.stdin); print(d[0]['version'].lstrip('go'))") && \
+    curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${ARCH}.tar.gz" \
+        | tar -xz -C /usr/local && \
+    echo 'export PATH=/usr/local/go/bin:$PATH' > /etc/profile.d/go.sh
+
+# ---------------------------------------------------------------------------
+# Layer 8 — Git remote block
 # ---------------------------------------------------------------------------
 RUN git config --system protocol.allow never && \
     git config --system protocol.file.allow always
 
 # ---------------------------------------------------------------------------
-# Global npm tools — installed as root so they land in /usr/local/bin
+# Layer 9 — Global npm tools
 # ---------------------------------------------------------------------------
 RUN npm install -g \
     pnpm \
@@ -50,16 +99,37 @@ RUN npm install -g \
     && npm cache clean --force
 
 # ---------------------------------------------------------------------------
-# Switch to non-root user for remainder
+# Layer 10 — Non-root user
 # ---------------------------------------------------------------------------
+RUN groupadd --gid 1001 devuser && \
+    useradd --uid 1001 --gid devuser --shell /bin/bash --create-home devuser
+
 USER devuser
 WORKDIR /workspace
 
 # ---------------------------------------------------------------------------
-# Shell experience
+# Layer 11 — Rust (installed as devuser via rustup)
 # ---------------------------------------------------------------------------
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --no-modify-path --default-toolchain stable && \
+    /home/devuser/.cargo/bin/rustup component add rustfmt clippy
+
+# ---------------------------------------------------------------------------
+# Layer 12 — Bun (installed as devuser via official installer)
+# ---------------------------------------------------------------------------
+RUN curl -fsSL https://bun.sh/install | bash
+
+# ---------------------------------------------------------------------------
+# Layer 13 — Python user tools (uv + poetry via pipx)
+# ---------------------------------------------------------------------------
+RUN pipx install uv && pipx install poetry
+
+# ---------------------------------------------------------------------------
+# Layer 14 — PATH + shell experience
+# ---------------------------------------------------------------------------
+ENV PATH="/home/devuser/.cargo/bin:/home/devuser/.bun/bin:/home/devuser/.local/bin:/usr/local/go/bin:${PATH}"
 RUN echo 'export PS1="\[\033[01;32m\][devcontainer]\[\033[00m\] \[\033[01;34m\]\w\[\033[00m\] \$ "' \
-    >> /home/devuser/.bashrc && \
+        >> /home/devuser/.bashrc && \
     echo 'echo ""' >> /home/devuser/.bashrc && \
     echo "echo \"  Type 'status' to re-run the readiness check.\"" >> /home/devuser/.bashrc && \
     echo 'alias status="node /workspace/.totopo/post-start.mjs"' >> /home/devuser/.bashrc
