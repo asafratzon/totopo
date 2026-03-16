@@ -18,7 +18,7 @@
 
 import { execSync, spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
-import { cancel, confirm, intro, log, outro } from "@clack/prompts";
+import { cancel, confirm, intro, isCancel, log, outro } from "@clack/prompts";
 import { bumpPatch, gitTagExistsLocally, gitTagExistsOnRemote, readChangelog, waitForNpmVersion } from "./changelog-utils.js";
 import { syncGithubReleases } from "./sync-github-releases.js";
 
@@ -96,7 +96,7 @@ if (pkg.version !== nextVersion) {
         message: `Update package.json from ${pkg.version} → ${nextVersion}?`,
     });
 
-    if (!alignOk || alignOk === Symbol.for("cancel")) {
+    if (isCancel(alignOk) || !alignOk) {
         cancel("Aborted.");
         process.exit(0);
     }
@@ -115,7 +115,7 @@ const publishOk = await confirm({
     message: `Commit, publish to npm, then push ${tag} to GitHub?`,
 });
 
-if (!publishOk || publishOk === Symbol.for("cancel")) {
+if (isCancel(publishOk) || !publishOk) {
     cancel("Aborted.");
     process.exit(0);
 }

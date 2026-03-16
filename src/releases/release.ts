@@ -11,7 +11,7 @@
 
 import { execSync, spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
-import { cancel, confirm, intro, log, outro, select } from "@clack/prompts";
+import { cancel, confirm, intro, isCancel, log, outro, select } from "@clack/prompts";
 import { gitTagExistsLocally, gitTagExistsOnRemote, readChangelog, squashAndPromote, waitForNpmVersion } from "./changelog-utils.js";
 import { syncGithubReleases } from "./sync-github-releases.js";
 
@@ -58,7 +58,7 @@ if (porcelainLines.length > 0) {
                 { value: "cancel", label: "Cancel — I'll resolve them manually" },
             ],
         });
-        if (!choice || choice === Symbol.for("cancel") || choice === "cancel") {
+        if (isCancel(choice) || choice === "cancel") {
             cancel("Aborted.");
             process.exit(0);
         }
@@ -145,7 +145,7 @@ const ok = await confirm({
     message: `Publish ${name}@${baseVersion} as latest?`,
 });
 
-if (!ok || ok === Symbol.for("cancel")) {
+if (isCancel(ok) || !ok) {
     cancel("Aborted.");
     process.exit(0);
 }
