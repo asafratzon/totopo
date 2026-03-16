@@ -14,7 +14,7 @@ const listResult = spawnSync("devpod", ["list", "--output", "json"], {
 
 const workspaces: string[] = [];
 if (listResult.stdout) {
-    const matches = listResult.stdout.matchAll(/"id":"(totopo-[^"]+)"/g);
+    const matches = listResult.stdout.matchAll(/"id":"(totopo-managed-[^"]+)"/g);
     for (const match of matches) {
         if (match[1]) workspaces.push(match[1]);
     }
