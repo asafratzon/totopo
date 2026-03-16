@@ -12,14 +12,7 @@
 import { execSync, spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { cancel, confirm, intro, log, outro, select } from "@clack/prompts";
-import {
-    gitCommitExists,
-    gitTagExistsLocally,
-    gitTagExistsOnRemote,
-    readChangelog,
-    squashAndPromote,
-    waitForNpmVersion,
-} from "./changelog-utils.js";
+import { gitTagExistsLocally, gitTagExistsOnRemote, readChangelog, squashAndPromote, waitForNpmVersion } from "./changelog-utils.js";
 import { syncGithubReleases } from "./sync-github-releases.js";
 
 const pkgPath = "package.json";
@@ -189,8 +182,12 @@ if (pkgNow.version === baseVersion) {
 // ─── Phase 10: Commit ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 const tag = `v${baseVersion}`;
 const releaseCommitMsg = `chore: release ${tag}`;
-if (gitCommitExists(releaseCommitMsg)) {
-    log.info(`Skipping git commit — ${releaseCommitMsg} already exists`);
+const releaseDirtyCheck = spawnSync("git", ["status", "--porcelain", pkgPath, "CHANGELOG.md", "src/releases/changelog.yaml"], {
+    encoding: "utf8",
+    stdio: "pipe",
+});
+if (releaseDirtyCheck.stdout.trim().length === 0) {
+    log.info("Skipping git commit — nothing to commit");
 } else {
     log.step("git commit");
     execSync(`git add ${pkgPath} CHANGELOG.md src/releases/changelog.yaml`, { stdio: "inherit" });

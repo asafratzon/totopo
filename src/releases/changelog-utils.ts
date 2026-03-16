@@ -187,11 +187,6 @@ export function bumpPatch(v: string): string {
     return parts.join(".");
 }
 
-export function gitCommitExists(message: string): boolean {
-    const r = spawnSync("git", ["log", "--format=%s"], { encoding: "utf8", stdio: "pipe" });
-    return r.stdout.split("\n").some((line) => line.trim() === message);
-}
-
 export function gitTagExistsLocally(tag: string): boolean {
     const r = spawnSync("git", ["tag", "-l", tag], { encoding: "utf8", stdio: "pipe" });
     return r.stdout.trim() === tag;
