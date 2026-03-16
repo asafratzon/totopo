@@ -41,15 +41,17 @@ USER'S PROJECT (any git repo where totopo is used)
 
 ---
 
-## Working Now / Next
-
-- **Verify `npx totopo` end-to-end** — test in a clean project directory that the full flow works: install via npx, onboarding, dev session start/stop
+## Working Now
 
 ---
 
 ## Upcoming
 
 Brief descriptions for planning; each is input for plan mode before we decide to work on it.
+
+- **`pnpm rc` idempotent/resumable** — rc.ts should be stateless so re-running it after any phase failure picks up where it left off rather than re-committing or re-tagging. Phases to handle: changelog check, package.json alignment, git commit (skip if already committed), npm publish (skip if version already in registry), git tag (skip if tag exists), git push tags, GitHub release sync
+
+- **`pnpm rc:promote` — handle uncommitted local changes** — detect uncommitted changes early and always stop to inform the user. Two cases: (a) changes touch packaged files (`ai.sh`, `src/core/`, `templates/`, `tsconfig.json`, `LICENSE`, `package.json`) — stop and explain that these changes would end up in the published package and break the git push mid-flow; suggest: commit + cut another rc first, or stash manually then re-run; (b) changes do NOT touch packaged files — stop and offer three automated options: 1) stash now → run the full flow → unstash at the end, 2) commit them with a neutral message and continue, 3) cancel so the user can resolve it themselves.
 
 - **Dockerfile: full runtime support** — add Python, Go, Rust, Java and audit common tools; update post-start.mjs checks and templates
 
