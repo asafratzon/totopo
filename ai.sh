@@ -79,9 +79,9 @@ fi
 
 # ─── Gather state for menu ──────────────────────────────────────────────────
 PROJECT_NAME="$(basename "$REPO_ROOT")"
-WORKSPACE_NAME="totopo-$PROJECT_NAME"
+WORKSPACE_NAME="totopo-managed-$PROJECT_NAME"
 
-ACTIVE_COUNT=$(docker ps --filter "name=totopo-" --format "{{.Names}}" 2>/dev/null | wc -l | tr -d '[:space:]')
+ACTIVE_COUNT=$(docker ps --filter "name=totopo-managed-" --format "{{.Names}}" 2>/dev/null | wc -l | tr -d '[:space:]')
 
 HAS_KEY=false
 if [ -f "$REPO_ROOT/.totopo/.env" ]; then

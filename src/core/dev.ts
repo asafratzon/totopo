@@ -14,8 +14,8 @@ if (!workspaceDir) {
     process.exit(1);
 }
 
-// Derive a stable workspace ID — "totopo-" prefix lets reset/stop scripts identify managed workspaces
-const workspaceName = `totopo-${basename(workspaceDir)}`;
+// Derive a stable workspace ID — "totopo-managed-" prefix lets reset/stop scripts identify managed workspaces
+const workspaceName = `totopo-managed-${basename(workspaceDir)}`;
 
 // Always run devpod up — it's idempotent (starts if stopped, no-op if running)
 log.step("Starting dev container...");

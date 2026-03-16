@@ -61,7 +61,7 @@ Brief descriptions for planning; each is input for plan mode before we decide to
 
 - **Workspace scoping** — support three modes when starting a session: repo root (current default), current directory, or current directory selectively (user picks which files/folders to mount). Complement with built-in agent context injection so the agent knows it lives in a dev container, may need host help for some operations, and in selective-mount mode is aware it should confirm before creating files or folders that are not mounted
 
-- **Troubleshoot menu option** — add a troubleshoot entry to the main menu (scope TBD)
+- **Troubleshoot/help menu option** — add a troubleshoot entry to the main menu (scope TBD)
 
 - **Tech choices review** — audit tech decisions across the package, dev container, and repo; output a DECISIONS.md explaining rationale for each major choice
 
@@ -69,6 +69,6 @@ Brief descriptions for planning; each is input for plan mode before we decide to
 
 - **Stop: select which workspace** — when multiple workspaces are running, let the user choose which to stop (related to workspace scoping but implemented separately)
 
-- **DevPod workspace naming** — current `totopo-<project>` could conflict with user's other Docker containers; consider a more unique prefix, possibly `totopo-managed-<project>`? (discuss when picked up)
+- **Terminal output review** — review and refine all terminal printings across every flow for consistency, clarity, and polish, including more detailed container status.
 
-- **Terminal output review** — review and refine all terminal printings across every flow for consistency, clarity, and polish
+- **Autostart agent** - improved experience upon connecting to the dev container so user could during onboarding decide if he want to auto start specific agent (claude/opencode/kilo etc.).

@@ -8,14 +8,14 @@
 import { spawnSync } from "node:child_process";
 import { log, outro } from "@clack/prompts";
 
-// ─── Step 1: Find all totopo-* DevPod workspaces ─────────────────────────────────────────────────────────────────────────────────────────
+// ─── Step 1: Find all totopo-managed-* DevPod workspaces ─────────────────────────────────────────────────────────────────────────────────
 const listResult = spawnSync("devpod", ["list", "--output", "json"], {
     encoding: "utf8",
 });
 
 const workspaces: string[] = [];
 if (listResult.stdout) {
-    const matches = listResult.stdout.matchAll(/"id":"(totopo-[^"]+)"/g);
+    const matches = listResult.stdout.matchAll(/"id":"(totopo-managed-[^"]+)"/g);
     for (const match of matches) {
         if (match[1]) workspaces.push(match[1]);
     }
@@ -34,26 +34,16 @@ if (workspaces.length === 0) {
 }
 
 // ─── Step 3: Remove cached Docker images ─────────────────────────────────────────────────────────────────────────────────────────────────
-// DevPod images are named vsc-<project>-<hash> (based on the folder name, not
-// the workspace --id). For each totopo-<project> workspace, strip the "totopo-"
-// prefix to get the image reference filter.
+// Images are identified via the LABEL totopo.managed=true baked into the
+// Dockerfile template — works regardless of whether workspaces still exist.
 log.step("Removing cached Docker images...");
 
-const allImageIds = new Set<string>();
-for (const ws of workspaces) {
-    const projectName = ws.replace(/^totopo-/, "");
-    const findImages = spawnSync("docker", ["images", "--filter", `reference=vsc-${projectName}-*`, "--format", "{{.ID}}"], {
-        encoding: "utf8",
-    });
-    const ids = (findImages.stdout ?? "").trim().split("\n").filter(Boolean);
-    for (const id of ids) allImageIds.add(id);
-}
+const findImages = spawnSync("docker", ["images", "--filter", "label=totopo.managed=true", "--format", "{{.ID}}"], { encoding: "utf8" });
+const imageIds = (findImages.stdout ?? "").trim().split("\n").filter(Boolean);
 
-if (allImageIds.size > 0) {
-    log.info(`  Found ${allImageIds.size} image(s) — removing...`);
-    spawnSync("docker", ["rmi", "--force", ...allImageIds], {
-        stdio: "inherit",
-    });
+if (imageIds.length > 0) {
+    log.info(`  Found ${imageIds.length} image(s) — removing...`);
+    spawnSync("docker", ["rmi", "--force", ...imageIds], { stdio: "inherit" });
 } else {
     log.info("  No cached images found.");
 }
