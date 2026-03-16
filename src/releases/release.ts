@@ -12,7 +12,14 @@
 import { execSync, spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { cancel, confirm, intro, isCancel, log, outro, select } from "@clack/prompts";
-import { gitTagExistsLocally, gitTagExistsOnRemote, readChangelog, squashAndPromote, waitForNpmVersion } from "./changelog-utils.js";
+import {
+    bumpPatch,
+    gitTagExistsLocally,
+    gitTagExistsOnRemote,
+    readChangelog,
+    squashAndPromote,
+    waitForNpmVersion,
+} from "./changelog-utils.js";
 import { syncGithubReleases } from "./sync-github-releases.js";
 
 const pkgPath = "package.json";
@@ -111,33 +118,22 @@ if (baseVersion === latestRcVersion) {
 
 log.success(`rc: ${latestRcVersion} → will release as ${baseVersion}`);
 
-// ─── Check base version not already released ─────────────────────────────────────────────────────────────────────────────────────────────
-const allVersionsProbe = spawnSync("npm", ["view", name, "versions", "--json"], { encoding: "utf8", stdio: "pipe" });
-let allVersions: string[] = [];
-try {
-    const parsed = JSON.parse(allVersionsProbe.stdout.trim());
-    allVersions = Array.isArray(parsed) ? parsed : [parsed];
-} catch {
-    // ignore
-}
-
-if (allVersions.includes(baseVersion)) {
-    log.error(`${name}@${baseVersion} is already published on npm.`);
-    process.exit(1);
-}
-
 // ─── Validate changelog entries ──────────────────────────────────────────────────────────────────────────────────────────────────────────
 log.step("Validating changelog.yaml...");
 const changelog = readChangelog();
 
-if (changelog.in_progress.base_version !== baseVersion) {
+// squashAndPromote advances base_version to bumpPatch(baseVersion) after squashing —
+// if we see that on re-run with empty entries, squash already completed successfully.
+const nextBase = bumpPatch(baseVersion);
+const squashAlreadyDone = changelog.in_progress.base_version === nextBase && changelog.in_progress.entries.length === 0;
+
+if (!squashAlreadyDone && changelog.in_progress.base_version !== baseVersion) {
     log.error(
         `changelog.yaml in_progress.base_version is ${changelog.in_progress.base_version}, but promoting ${baseVersion}. Update changelog.yaml manually.`,
     );
     process.exit(1);
 }
 
-const squashAlreadyDone = changelog.in_progress.entries.length === 0;
 if (!squashAlreadyDone) log.success(`Found ${changelog.in_progress.entries.length} rc entry/entries to squash for ${baseVersion}`);
 
 // ─── Confirm ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
