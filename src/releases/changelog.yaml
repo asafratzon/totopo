@@ -92,8 +92,11 @@ releases:
 in_progress:
   base_version: 0.1.7
   entries:
-    - >-
-      Dev container overhauled from node:22-bookworm-slim to debian:bookworm-slim with full multi-stack support —
-      Node.js LTS (NodeSource), Python 3.11 + uv + poetry, Go (latest stable), Rust (rustup stable + rustfmt +
-      clippy), Java Temurin 21 JDK + Maven, Bun; dev tools added: ripgrep, fd, fzf, yq, GitHub CLI; post-start.mjs
-      readiness check extended with Runtimes (all new stacks) and Dev tools sections
+    - rc_version: 0.1.7-rc-1
+      date: "2026-03-16"
+      changed:
+        - >-
+          Dev container overhauled from node:22-bookworm-slim to debian:bookworm-slim with full multi-stack support —
+          Node.js LTS (NodeSource), Python 3.11 + uv + poetry, Go (latest stable), Rust (rustup stable + rustfmt +
+          clippy), Java Temurin 21 JDK + Maven, Bun; dev tools added: ripgrep, fd, fzf, yq, GitHub CLI; post-start.mjs
+          readiness check extended with Runtimes (all new stacks) and Dev tools sections
