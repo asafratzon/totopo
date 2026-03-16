@@ -178,7 +178,7 @@ if (pkgNow.version === baseVersion) {
     log.info(`Skipping package.json — already at ${baseVersion}`);
 } else {
     pkg.version = baseVersion;
-    writeFileSync(pkgPath, `${JSON.stringify(pkg, null, "\t")}\n`);
+    writeFileSync(pkgPath, `${JSON.stringify(pkg, null, 4)}\n`);
     log.success(`package.json → ${baseVersion}`);
 }
 

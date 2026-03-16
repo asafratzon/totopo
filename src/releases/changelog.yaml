@@ -100,6 +100,19 @@ releases:
 in_progress:
   base_version: 0.2.0
   entries:
+    - rc_version: 0.2.0-rc-2
+      date: "2026-03-16"
+      fixed:
+        - >-
+          Tool multiselect pre-selection was broken — @clack/prompts multiselect requires initialValues at the call
+          level, not a selected field on each option; detected host tools now correctly appear checked on open
+        - >-
+          Node.js was not always pre-selected — initialValues now unconditionally includes node regardless of whether
+          host detection succeeded; hint updated to "always included"
+        - >-
+          post-start.mjs showed "✓ not found" for optional runtimes not installed in the container — optional runtimes
+          (bun, uv, go, cargo, java) now display as "– skipped" in grey when absent
+        - Added Space to toggle · Enter to confirm keyboard hint to tool multiselect prompt
     - rc_version: 0.2.0-rc-1
       date: "2026-03-16"
       added:
