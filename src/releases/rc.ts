@@ -19,14 +19,7 @@
 import { execSync, spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { cancel, confirm, intro, log, outro } from "@clack/prompts";
-import {
-    bumpPatch,
-    gitCommitExists,
-    gitTagExistsLocally,
-    gitTagExistsOnRemote,
-    readChangelog,
-    waitForNpmVersion,
-} from "./changelog-utils.js";
+import { bumpPatch, gitTagExistsLocally, gitTagExistsOnRemote, readChangelog, waitForNpmVersion } from "./changelog-utils.js";
 import { syncGithubReleases } from "./sync-github-releases.js";
 
 const pkgPath = "package.json";
@@ -129,8 +122,12 @@ if (!publishOk || publishOk === Symbol.for("cancel")) {
 
 // ─── Phase 7: Commit ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 const commitMsg = `chore: rc ${tag}`;
-if (gitCommitExists(commitMsg)) {
-    log.info(`Skipping git commit — ${commitMsg} already exists`);
+const rcDirtyCheck = spawnSync("git", ["status", "--porcelain", pkgPath, "src/releases/changelog.yaml"], {
+    encoding: "utf8",
+    stdio: "pipe",
+});
+if (rcDirtyCheck.stdout.trim().length === 0) {
+    log.info("Skipping git commit — nothing to commit");
 } else {
     log.step("git commit");
     execSync(`git add ${pkgPath} src/releases/changelog.yaml`, { stdio: "inherit" });
