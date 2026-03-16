@@ -49,8 +49,6 @@ USER'S PROJECT (any git repo where totopo is used)
 
 Brief descriptions for planning; each is input for plan mode before we decide to work on it.
 
-- **Dockerfile: full runtime support** — add Python, Go, Rust, Java and audit common tools; update post-start.mjs checks and templates
-
 - **Dockerfile: runtime mode** — let the user decide if he wants the full dev container with all dev tools in their latest stable versions, or have only the the tools that are available on host machine and in the same versions so that both dev container and host behave in a similar fashion. If user selects the host-versions, this should be checked on every session startup since possibly user updated his local versions or added new tools etc. Should be manageable via settings menu and configurable per repo, so the setting should probably be saved/come from .totopo dir.
 
 - **Settings submenu** — view/edit API keys, check for updates, uninstall (remove `.totopo/` and stop container)
