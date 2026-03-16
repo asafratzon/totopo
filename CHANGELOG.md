@@ -7,6 +7,28 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.2.0] — 2026-03-16
+
+### Added
+
+- Dockerfile runtime mode — two modes: host-mirror (default) detects host runtimes and lets the user pick which tools to include via multiselect, with detected tools pre-checked at their host version; full restores the previous behaviour (latest stable everything). Mode is stored in .totopo/settings.json and committed with the project.
+- Host runtime detection — reads node, python3, go, cargo, java, and bun versions installed on the host machine and uses them when generating the container Dockerfile, so both environments run the same versions.
+- Dockerfile auto-sync — on every totopo invocation, host runtimes are re-detected and the Dockerfile regenerated if anything changed; a warning is printed so the user knows the container will rebuild on next start.
+- Settings menu — new Settings entry in the main menu allows switching runtime mode and re-selecting tools at any time without re-running onboarding.
+
+### Fixed
+
+- Node.js removed from tool multiselect checkbox list — shown as a fixed "always included" line above the prompt instead, making it impossible to accidentally deselect it
+- Keyboard instructions (Space to toggle · Enter to confirm) now appear on a dedicated line beneath the multiselect header instead of inline to its right
+- pnpm rc now hard-blocks if in_progress.entries has no entry matching the computed next rc version, preventing releases without changelog notes
+- package.json written with 4-space indentation by rc and rc:promote, fixing pnpm check failures after each run
+- Tool multiselect pre-selection was broken — @clack/prompts multiselect requires initialValues at the call level, not a selected field on each option; detected host tools now correctly appear checked on open
+- Node.js was not always pre-selected — initialValues now unconditionally includes node regardless of whether host detection succeeded; hint updated to "always included"
+- post-start.mjs showed "✓ not found" for optional runtimes not installed in the container — optional runtimes (bun, uv, go, cargo, java) now display as "– skipped" in grey when absent
+- Added Space to toggle · Enter to confirm keyboard hint to tool multiselect prompt
+
+---
+
 ## [0.1.7] — 2026-03-16
 
 ### Changed
