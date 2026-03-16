@@ -19,7 +19,14 @@
 import { execSync, spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { cancel, confirm, intro, isCancel, log, outro } from "@clack/prompts";
-import { bumpPatch, gitTagExistsLocally, gitTagExistsOnRemote, readChangelog, waitForNpmVersion } from "./changelog-utils.js";
+import {
+    bumpPatch,
+    gitTagExistsLocally,
+    gitTagExistsOnRemote,
+    readChangelog,
+    validateChangelog,
+    waitForNpmVersion,
+} from "./changelog-utils.js";
 import { syncGithubReleases } from "./sync-github-releases.js";
 
 const pkgPath = "package.json";
@@ -37,6 +44,12 @@ log.message("Make sure you are logged in to npm before proceeding (npm whoami)."
 
 // ─── Early changelog check ───────────────────────────────────────────────────────────────────────────────────────────────────────────────
 const changelog = readChangelog();
+try {
+    validateChangelog(changelog);
+} catch (e) {
+    log.error(String(e instanceof Error ? e.message : e));
+    process.exit(1);
+}
 if (changelog.in_progress.entries.length === 0) {
     log.error(`No changelog entries found for ${changelog.in_progress.base_version}.`);
     log.message("Add entries to src/releases/changelog.yaml under in_progress.entries, then re-run pnpm rc.");

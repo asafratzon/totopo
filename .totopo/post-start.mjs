@@ -77,12 +77,12 @@ log.step("Runtimes");
 
 // JavaScript
 ok("node", run("node --version") ?? "not found");
-ok("npm",  `v${run("npm --version") ?? "not found"}`);
+ok("npm", `v${run("npm --version") ?? "not found"}`);
 ok("pnpm", run("pnpm --version") ? `v${run("pnpm --version")}` : "not found");
-ok("bun",  run("bun --version") ? `v${run("bun --version")}` : "not found");
+ok("bun", run("bun --version") ? `v${run("bun --version")}` : "not found");
 // Python
 ok("python3", run("python3 --version") ?? "not found");
-ok("uv",      run("uv --version") ?? "not found");
+ok("uv", run("uv --version") ?? "not found");
 // Go
 ok("go", run("go version") ?? "not found");
 // Rust
@@ -93,12 +93,12 @@ ok("java", run("java --version")?.split("\n")[0] ?? "not found");
 // ─── Dev tools ───────────────────────────────────────────────────────────────
 log.step("Dev tools");
 
-ok("gh",  run("gh --version")?.split("\n")[0] ?? "not found");
-ok("rg",  run("rg --version")?.split("\n")[0] ?? "not found");
-ok("fd",  run("fd --version") ?? "not found");
+ok("gh", run("gh --version")?.split("\n")[0] ?? "not found");
+ok("rg", run("rg --version")?.split("\n")[0] ?? "not found");
+ok("fd", run("fd --version") ?? "not found");
 ok("fzf", run("fzf --version") ?? "not found");
-ok("jq",  run("jq --version") ?? "not found");
-ok("yq",  run("yq --version") ?? "not found");
+ok("jq", run("jq --version") ?? "not found");
+ok("yq", run("yq --version") ?? "not found");
 
 // ─── API keys ────────────────────────────────────────────────────────────────
 log.step("API keys");

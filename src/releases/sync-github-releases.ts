@@ -73,12 +73,14 @@ export async function syncGithubReleases(packageName: string): Promise<void> {
     const needsNotes: string[] = [];
     for (const version of npmVersions) {
         if (!ghTags.has(`v${version}`)) continue; // missing — handled above
-        if (/-rc-\d+$/.test(version)) continue;   // rc notes are intentionally generic
+        if (/-rc-\d+$/.test(version)) continue; // rc notes are intentionally generic
         const bodyResult = run("gh", ["release", "view", `v${version}`, "--json", "body"]);
         let body = "";
         try {
             body = (JSON.parse(bodyResult.stdout) as { body: string }).body ?? "";
-        } catch { /* leave body empty — will trigger update */ }
+        } catch {
+            /* leave body empty — will trigger update */
+        }
         if (body.trim() === "" || body.trim() === placeholderNotes(`v${version}`)) {
             needsNotes.push(version);
         }
