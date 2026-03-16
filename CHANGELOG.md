@@ -7,6 +7,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.1.6] — 2026-03-16
+
+### Changed
+
+- pnpm rc and pnpm rc:promote are now idempotent — re-running after any mid-flow failure (network drop, npm timeout, git push error) skips already-completed phases (commit, push, publish, tag) and resumes from where it left off
+- pnpm rc:promote now guards against uncommitted changes before the release flow starts — changes overlapping packaged files (ai.sh, src/core/, templates/, tsconfig.json, LICENSE, package.json) cause a hard stop with instructions; non-packaged changes offer stash, auto-commit, or cancel
+
+---
+
 ## [0.1.5] — 2026-03-16
 
 ### Changed

@@ -1,13 +1,24 @@
 releases:
+  - version: 0.1.6
+    date: "2026-03-16"
+    changed:
+      - >-
+        pnpm rc and pnpm rc:promote are now idempotent — re-running after any mid-flow failure (network drop, npm
+        timeout, git push error) skips already-completed phases (commit, push, publish, tag) and resumes from where it
+        left off
+      - >-
+        pnpm rc:promote now guards against uncommitted changes before the release flow starts — changes overlapping
+        packaged files (ai.sh, src/core/, templates/, tsconfig.json, LICENSE, package.json) cause a hard stop with
+        instructions; non-packaged changes offer stash, auto-commit, or cancel
   - version: 0.1.5
     date: "2026-03-16"
     changed:
       - >-
-        Workspace prefix renamed from totopo- to totopo-managed- to avoid collisions with user's own Docker
-        containers or images
+        Workspace prefix renamed from totopo- to totopo-managed- to avoid collisions with user's own Docker containers
+        or images
       - >-
-        Dockerfile template now carries LABEL totopo.managed=true so images have a stable identity independent
-        of workspace state
+        Dockerfile template now carries LABEL totopo.managed=true so images have a stable identity independent of
+        workspace state
     fixed:
       - >-
         Reset failed to find and remove Docker images when workspace no longer existed — image cleanup now uses
@@ -79,16 +90,5 @@ releases:
       - Port cleanup on stop/reset
       - Status box with project name and API key indicator in menu UI
 in_progress:
-  base_version: 0.1.6
-  entries:
-    - rc_version: 0.1.6-rc-1
-      date: "2026-03-16"
-      changed:
-        - >-
-          pnpm rc and pnpm rc:promote are now idempotent — re-running after any mid-flow failure (network drop,
-          npm timeout, git push error) skips already-completed phases (commit, push, publish, tag) and resumes
-          from where it left off
-        - >-
-          pnpm rc:promote now guards against uncommitted changes before the release flow starts — changes
-          overlapping packaged files (ai.sh, src/core/, templates/, tsconfig.json, LICENSE, package.json) cause
-          a hard stop with instructions; non-packaged changes offer stash, auto-commit, or cancel
+  base_version: 0.1.7
+  entries: []
