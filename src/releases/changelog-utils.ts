@@ -237,6 +237,21 @@ export function bumpPatch(v: string): string {
     return parts.join(".");
 }
 
+export function bumpMinor(v: string): string {
+    const parts = v.split(".");
+    parts[1] = String(Number(parts[1]) + 1);
+    parts[2] = "0";
+    return parts.join(".");
+}
+
+export function bumpMajor(v: string): string {
+    const parts = v.split(".");
+    parts[0] = String(Number(parts[0]) + 1);
+    parts[1] = "0";
+    parts[2] = "0";
+    return parts.join(".");
+}
+
 export function gitTagExistsLocally(tag: string): boolean {
     const r = spawnSync("git", ["tag", "-l", tag], { encoding: "utf8", stdio: "pipe" });
     return r.stdout.trim() === tag;

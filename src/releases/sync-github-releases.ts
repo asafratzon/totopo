@@ -1,7 +1,7 @@
 // =========================================================================================================================================
 // sync-github-releases.ts — keep GitHub releases in sync with npm and changelog.yaml
 // Usage: pnpm sync-releases
-//        or import { syncGithubReleases } from "./sync-github-releases.js"
+//        or import { syncGithubReleases } from "./sync-github-releases.ts"
 //
 // For every version published on npm:
 //   - Missing GitHub release          → created via `gh release create`
@@ -18,7 +18,7 @@
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { log } from "@clack/prompts";
-import { getReleaseNotes } from "./changelog-utils.js";
+import { getReleaseNotes } from "./changelog-utils.ts";
 
 // Fallback notes used when changelog.yaml has no entry for a version — also used to detect stale placeholders
 function placeholderNotes(tag: string): string {

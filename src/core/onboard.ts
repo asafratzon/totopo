@@ -6,7 +6,11 @@
 
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
-import { box, cancel, confirm, intro, isCancel, log, outro } from "@clack/prompts";
+import { box, cancel, confirm, intro, isCancel, log, outro, select } from "@clack/prompts";
+import { detectHostRuntimes } from "./detect-host.ts";
+import { generateDockerfile } from "./generate-dockerfile.ts";
+import { selectTools } from "./select-tools.ts";
+import { type RuntimeMode, writeSettings } from "./settings.ts";
 
 const packageDir = process.env.TOTOPO_PACKAGE_DIR;
 const repoRoot = process.env.TOTOPO_REPO_ROOT;
@@ -48,6 +52,32 @@ const dcTemplate = readFileSync(join(templatesDir, "devcontainer.json"), "utf8")
 writeFileSync(join(totopoDir, "devcontainer.json"), dcTemplate.replace(/TOTOPO_PROJECT_NAME/g, projectName));
 
 log.success("Copied config templates to .totopo/");
+
+// ─── Runtime mode ────────────────────────────────────────────────────────────
+const modeChoice = await select({
+    message: "Runtime mode:",
+    options: [
+        { value: "host-mirror", label: "Host-mirror  (recommended — match your installed runtimes)" },
+        { value: "full", label: "Full  (latest stable versions of every tool)" },
+    ],
+});
+
+if (isCancel(modeChoice)) {
+    cancel("Setup cancelled.");
+    process.exit(0);
+}
+
+const mode = modeChoice as RuntimeMode;
+let selectedTools: string[] = [];
+
+if (mode === "host-mirror") {
+    const hostRuntimes = detectHostRuntimes();
+    selectedTools = await selectTools(hostRuntimes);
+    const dockerfile = generateDockerfile("host-mirror", templatesDir, selectedTools, hostRuntimes);
+    writeFileSync(join(totopoDir, "Dockerfile"), dockerfile);
+}
+
+writeSettings(totopoDir, { runtimeMode: mode, selectedTools });
 
 // ─── Create .env ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 const envPath = join(totopoDir, ".env");

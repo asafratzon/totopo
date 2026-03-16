@@ -18,16 +18,19 @@
 
 import { execSync, spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
-import { cancel, confirm, intro, isCancel, log, outro } from "@clack/prompts";
+import { cancel, confirm, intro, isCancel, log, outro, select } from "@clack/prompts";
 import {
+    bumpMajor,
+    bumpMinor,
     bumpPatch,
     gitTagExistsLocally,
     gitTagExistsOnRemote,
     readChangelog,
     validateChangelog,
     waitForNpmVersion,
-} from "./changelog-utils.js";
-import { syncGithubReleases } from "./sync-github-releases.js";
+    writeChangelog,
+} from "./changelog-utils.ts";
+import { syncGithubReleases } from "./sync-github-releases.ts";
 
 const pkgPath = "package.json";
 const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as {
@@ -82,9 +85,29 @@ try {
 let targetBase = baseVersion;
 
 if (allVersions.includes(baseVersion)) {
-    // Base version already released — must bump patch
-    targetBase = bumpPatch(baseVersion);
-    log.warn(`${name}@${baseVersion} is already released → bumping base to ${targetBase}`);
+    const bump = await select({
+        message: `${name}@${baseVersion} is already released. Choose bump type:`,
+        options: [
+            { value: "patch", label: `patch  →  ${bumpPatch(baseVersion)}` },
+            { value: "minor", label: `minor  →  ${bumpMinor(baseVersion)}` },
+            { value: "major", label: `major  →  ${bumpMajor(baseVersion)}` },
+        ],
+    });
+    if (isCancel(bump)) {
+        cancel("Aborted.");
+        process.exit(0);
+    }
+
+    if (bump === "minor") targetBase = bumpMinor(baseVersion);
+    else if (bump === "major") targetBase = bumpMajor(baseVersion);
+    else targetBase = bumpPatch(baseVersion);
+}
+
+if (changelog.in_progress.base_version !== targetBase) {
+    const data = readChangelog();
+    data.in_progress.base_version = targetBase;
+    writeChangelog(data);
+    log.info(`Updated changelog.yaml in_progress.base_version → ${targetBase}`);
 }
 
 const rcVersions = allVersions

@@ -20,8 +20,8 @@ import {
     squashAndPromote,
     validateChangelog,
     waitForNpmVersion,
-} from "./changelog-utils.js";
-import { syncGithubReleases } from "./sync-github-releases.js";
+} from "./changelog-utils.ts";
+import { syncGithubReleases } from "./sync-github-releases.ts";
 
 const pkgPath = "package.json";
 const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as {
