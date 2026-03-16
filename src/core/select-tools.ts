@@ -2,7 +2,7 @@
 // src/core/select-tools.ts — multiselect UI for choosing container runtimes
 // =============================================================================
 
-import { cancel, isCancel, multiselect } from "@clack/prompts";
+import { cancel, isCancel, log, multiselect } from "@clack/prompts";
 import type { HostRuntimes } from "./detect-host.ts";
 
 const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
@@ -12,8 +12,8 @@ interface ToolEntry {
     label: string;
 }
 
-const TOOL_CATALOGUE: ToolEntry[] = [
-    { key: "node", label: "Node.js" },
+// Node is always included — not shown as a checkbox
+const OPTIONAL_TOOLS: ToolEntry[] = [
     { key: "python", label: "Python" },
     { key: "go", label: "Go" },
     { key: "rust", label: "Rust / Cargo" },
@@ -22,22 +22,22 @@ const TOOL_CATALOGUE: ToolEntry[] = [
 ];
 
 export async function selectTools(hostRuntimes: HostRuntimes): Promise<string[]> {
-    const options = TOOL_CATALOGUE.map(({ key, label }) => {
+    // Node is always included — show as a fixed line, not a deselectable checkbox
+    const nodeVersion = hostRuntimes.node ? `v${hostRuntimes.node} · host` : "latest";
+    log.success(`Node.js  ${dim(`${nodeVersion} · always included`)}`);
+
+    const options = OPTIONAL_TOOLS.map(({ key, label }) => {
         const detected = hostRuntimes[key];
-        const base = {
+        return {
             value: key as string,
             label: detected ? `${label}  ${dim(`v${detected} · host`)}` : `${label}  ${dim("latest")}`,
         };
-        return key === "node" ? { ...base, hint: "always included" } : base;
     });
 
-    // node is always pre-selected (required); other tools pre-selected when detected on host
-    const initialValues = TOOL_CATALOGUE.filter(({ key }) => key === "node" || hostRuntimes[key] !== undefined).map(
-        ({ key }) => key as string,
-    );
+    const initialValues = OPTIONAL_TOOLS.filter(({ key }) => hostRuntimes[key] !== undefined).map(({ key }) => key as string);
 
     const selected = await multiselect({
-        message: `Select tools to include in container:  ${dim("Space to toggle · Enter to confirm")}`,
+        message: `Select additional tools:\n   ${dim("Space to toggle · Enter to confirm")}`,
         options,
         initialValues,
         required: false,
@@ -48,12 +48,5 @@ export async function selectTools(hostRuntimes: HostRuntimes): Promise<string[]>
         process.exit(0);
     }
 
-    const result = [...(selected as string[])];
-
-    // Node is always forced-selected — AI tools (claude, kilo, opencode) require it
-    if (!result.includes("node")) {
-        result.unshift("node");
-    }
-
-    return result;
+    return ["node", ...(selected as string[])];
 }
