@@ -1,6 +1,6 @@
 {
     "name": "totopo",
-    "version": "0.2.0",
+    "version": "0.3.0-rc-1",
     "description": "Secure AI Box — isolated dev environments for AI coding assistants",
     "type": "module",
     "bin": {
