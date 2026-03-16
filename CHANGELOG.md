@@ -9,6 +9,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [0.1.5] — 2026-03-16
 
+### Changed
+
+- Workspace prefix renamed from totopo- to totopo-managed- to avoid collisions with user's own Docker containers or images
+- Dockerfile template now carries LABEL totopo.managed=true so images have a stable identity independent of workspace state
+
+### Fixed
+
+- Reset failed to find and remove Docker images when workspace no longer existed — image cleanup now uses label-based lookup (totopo.managed=true) instead of name-derived reference filter
+
 ---
 
 ## [0.1.4] — 2026-03-15
