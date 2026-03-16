@@ -7,6 +7,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.1.7] — 2026-03-16
+
+### Changed
+
+- Dev container overhauled from node:22-bookworm-slim to debian:bookworm-slim with full multi-stack support — Node.js LTS (NodeSource), Python 3.11 + uv + poetry, Go (latest stable), Rust (rustup stable + rustfmt + clippy), Java Temurin 21 JDK + Maven, Bun; dev tools added: ripgrep, fd, fzf, yq, GitHub CLI; post-start.mjs readiness check extended with Runtimes (all new stacks) and Dev tools sections
+
+---
+
 ## [0.1.6] — 2026-03-16
 
 ### Changed
