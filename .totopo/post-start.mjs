@@ -19,10 +19,12 @@ const run = (cmd) => {
 };
 
 const dim = (s) => `\x1b[2m${s}\x1b[0m`;
+const grey = (s) => `\x1b[90m${s}\x1b[0m`;
 
 let errors = 0;
 
 const ok = (label, detail) => log.success(`${label.padEnd(24)}${detail ? dim(detail) : ""}`);
+const skip = (label, detail) => log.info(`${grey(label.padEnd(24))}${detail ? grey(detail) : ""}`);
 const warn = (label, detail) => log.warn(`${label.padEnd(24)}${detail ? dim(detail) : ""}`);
 const fail = (label, detail) => {
     log.error(`${label.padEnd(24)}${detail || ""}`);
@@ -75,20 +77,25 @@ checkTool("opencode");
 // ─── Runtimes ────────────────────────────────────────────────────────────────
 log.step("Runtimes");
 
+const checkRuntime = (label, version) => {
+    if (version !== null) ok(label, version);
+    else skip(label, "skipped");
+};
+
 // JavaScript
 ok("node", run("node --version") ?? "not found");
 ok("npm", `v${run("npm --version") ?? "not found"}`);
 ok("pnpm", run("pnpm --version") ? `v${run("pnpm --version")}` : "not found");
-ok("bun", run("bun --version") ? `v${run("bun --version")}` : "not found");
+checkRuntime("bun", run("bun --version") ? `v${run("bun --version")}` : null);
 // Python
 ok("python3", run("python3 --version") ?? "not found");
-ok("uv", run("uv --version") ?? "not found");
+checkRuntime("uv", run("uv --version"));
 // Go
-ok("go", run("go version") ?? "not found");
+checkRuntime("go", run("go version"));
 // Rust
-ok("cargo", run("cargo --version") ?? "not found");
+checkRuntime("cargo", run("cargo --version"));
 // Java
-ok("java", run("java --version")?.split("\n")[0] ?? "not found");
+checkRuntime("java", run("java --version")?.split("\n")[0] ?? null);
 
 // ─── Dev tools ───────────────────────────────────────────────────────────────
 log.step("Dev tools");
