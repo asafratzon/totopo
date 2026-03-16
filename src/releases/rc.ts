@@ -124,6 +124,21 @@ if (maxN > 0) {
 }
 log.success(`Next rc version: ${nextVersion}`);
 
+// ─── Require a changelog entry for this specific rc ──────────────────────────────────────────────────────────────────────────────────────
+const hasEntryForRc = changelog.in_progress.entries.some((e) => e.rc_version === nextVersion);
+if (!hasEntryForRc) {
+    log.error(`No changelog entry found for ${nextVersion}.`);
+    log.message(
+        `Add an entry to src/releases/changelog.yaml under in_progress.entries:\n\n` +
+            `  - rc_version: "${nextVersion}"\n` +
+            `    date: "${new Date().toISOString().slice(0, 10)}"\n` +
+            `    fixed:\n` +
+            `      - "Description of change"\n\n` +
+            `Then re-run pnpm rc.`,
+    );
+    process.exit(1);
+}
+
 // ─── Align package.json if needed ────────────────────────────────────────────────────────────────────────────────────────────────────────
 if (pkg.version !== nextVersion) {
     log.warn(`package.json is at ${pkg.version} — will update to ${nextVersion}`);
@@ -138,7 +153,7 @@ if (pkg.version !== nextVersion) {
     }
 
     pkg.version = nextVersion;
-    writeFileSync(pkgPath, `${JSON.stringify(pkg, null, "\t")}\n`);
+    writeFileSync(pkgPath, `${JSON.stringify(pkg, null, 4)}\n`);
     log.success(`package.json updated to ${nextVersion}`);
 } else {
     log.info(`package.json already at ${nextVersion} — no change needed`);
