@@ -6,7 +6,7 @@
 // =========================================================================================================================================
 
 import { writeFileSync } from "node:fs";
-import { readChangelog } from "./changelog-utils.js";
+import { readChangelog } from "./changelog-utils.ts";
 
 const CHANGELOG_OUT = "CHANGELOG.md";
 

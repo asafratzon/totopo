@@ -10,11 +10,17 @@ totopo PACKAGE (this repo — distributed via npx in future)
 ├── src/
 │   ├── core/          ← user-facing CLI (included in npm package)
 │   │   ├── dev.ts
+│   │   ├── detect-host.ts     ← detect host runtime versions
 │   │   ├── doctor.ts
+│   │   ├── generate-dockerfile.ts  ← generate Dockerfile (full or host-mirror)
 │   │   ├── menu.ts
 │   │   ├── onboard.ts
 │   │   ├── reset.ts
-│   │   └── stop.ts
+│   │   ├── select-tools.ts    ← multiselect UI for runtime tool selection
+│   │   ├── settings-menu.ts   ← settings menu (mode switch + tool selection)
+│   │   ├── settings.ts        ← read/write .totopo/settings.json
+│   │   ├── stop.ts
+│   │   └── sync-dockerfile.ts ← silent pre-flight: regenerate Dockerfile if stale
 │   └── releases/      ← developer release tooling (NOT in npm package)
 │       ├── rc.ts
 │       ├── release.ts
@@ -31,9 +37,10 @@ totopo PACKAGE (this repo — distributed via npx in future)
 USER'S PROJECT (any git repo where totopo is used)
 └── .totopo/            ← created by onboarding; config only, no scripts
     ├── .env           (gitignored — API keys)
-    ├── Dockerfile
+    ├── Dockerfile     (regenerated on session start in host-mirror mode)
     ├── devcontainer.json
-    └── post-start.mjs
+    ├── post-start.mjs
+    └── settings.json  (runtimeMode + selectedTools; committed with project)
 ```
 
 `ai.sh` sets `TOTOPO_PACKAGE_DIR` (where ai.sh lives) and `TOTOPO_REPO_ROOT`
@@ -43,13 +50,18 @@ USER'S PROJECT (any git repo where totopo is used)
 
 ## Working Now
 
+- **Dockerfile: runtime mode** — DONE. Two modes:
+  - `host-mirror` (default): detects host runtimes, user picks tools via multiselect (pre-checked with host version), Dockerfile regenerated on every session start to catch version updates
+  - `full`: today's behaviour — latest stable everything
+  - Mode stored in `.totopo/settings.json`; exposed via **Settings** menu entry
+  - New files: `settings.ts`, `detect-host.ts`, `select-tools.ts`, `generate-dockerfile.ts`, `sync-dockerfile.ts`, `settings-menu.ts`
+  - Modified: `onboard.ts`, `menu.ts`, `ai.sh`
+
 ---
 
 ## Upcoming
 
 Brief descriptions for planning; each is input for plan mode before we decide to work on it.
-
-- **Dockerfile: runtime mode** — let the user decide if he wants the full dev container with all dev tools in their latest stable versions, or have only the the tools that are available on host machine and in the same versions so that both dev container and host behave in a similar fashion. If user selects the host-versions, this should be checked on every session startup since possibly user updated his local versions or added new tools etc. Should be manageable via settings menu and configurable per repo, so the setting should probably be saved/come from .totopo dir.
 
 - **Settings submenu** — view/edit API keys, check for updates, uninstall (remove `.totopo/` and stop container)
 

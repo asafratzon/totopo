@@ -98,5 +98,22 @@ releases:
       - Port cleanup on stop/reset
       - Status box with project name and API key indicator in menu UI
 in_progress:
-  base_version: 0.1.8
-  entries: []
+  base_version: 0.2.0
+  entries:
+    - rc_version: 0.2.0-rc-1
+      date: "2026-03-16"
+      added:
+        - >-
+          Dockerfile runtime mode — two modes: host-mirror (default) detects host runtimes and lets the user pick which
+          tools to include via multiselect, with detected tools pre-checked at their host version; full restores the
+          previous behaviour (latest stable everything). Mode is stored in .totopo/settings.json and committed with the
+          project.
+        - >-
+          Host runtime detection — reads node, python3, go, cargo, java, and bun versions installed on the host machine
+          and uses them when generating the container Dockerfile, so both environments run the same versions.
+        - >-
+          Dockerfile auto-sync — on every totopo invocation, host runtimes are re-detected and the Dockerfile regenerated
+          if anything changed; a warning is printed so the user knows the container will rebuild on next start.
+        - >-
+          Settings menu — new Settings entry in the main menu allows switching runtime mode and re-selecting tools at any
+          time without re-running onboarding.

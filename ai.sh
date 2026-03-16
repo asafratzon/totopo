@@ -70,6 +70,9 @@ if [ ! -f "$REPO_ROOT/.totopo/devcontainer.json" ]; then
   fi
 fi
 
+# ─── Sync Dockerfile with host runtimes ─────────────────────────────────────
+"$TSX" "$PACKAGE_DIR/src/core/sync-dockerfile.ts"
+
 # ─── Doctor (silent pre-check) ───────────────────────────────────────────────
 if ! "$TSX" "$PACKAGE_DIR/src/core/doctor.ts"; then
   echo "  Fix the issues above and re-run totopo."
@@ -105,6 +108,7 @@ case "$action" in
   dev)     "$TSX" "$PACKAGE_DIR/src/core/dev.ts" ;;
   stop)    "$TSX" "$PACKAGE_DIR/src/core/stop.ts" ;;
   reset)   "$TSX" "$PACKAGE_DIR/src/core/reset.ts" ;;
-  doctor)  "$TSX" "$PACKAGE_DIR/src/core/doctor.ts" --verbose ;;
-  quit|*)  exit 0 ;;
+  doctor)   "$TSX" "$PACKAGE_DIR/src/core/doctor.ts" --verbose ;;
+  settings) "$TSX" "$PACKAGE_DIR/src/core/settings-menu.ts" ;;
+  quit|*)   exit 0 ;;
 esac

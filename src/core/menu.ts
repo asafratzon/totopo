@@ -31,6 +31,7 @@ const action = await select({
         { value: "stop", label: "Stop all" },
         { value: "reset", label: "Reset (wipe workspaces + images)" },
         { value: "doctor", label: "Doctor" },
+        { value: "settings", label: "Settings" },
         { value: "quit", label: "Quit" },
     ],
 });

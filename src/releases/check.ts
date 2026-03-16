@@ -6,7 +6,7 @@
 // project grows.
 // =============================================================================
 
-import { readChangelog, validateChangelog } from "./changelog-utils.js";
+import { readChangelog, validateChangelog } from "./changelog-utils.ts";
 
 let errors = 0;
 
