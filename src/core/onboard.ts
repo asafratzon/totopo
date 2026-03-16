@@ -79,6 +79,22 @@ if (mode === "host-mirror") {
 
 writeSettings(totopoDir, { runtimeMode: mode, selectedTools });
 
+// ─── Commit scope ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+const scopeChoice = await select({
+    message: "Commit .totopo/ config to git?",
+    options: [
+        { value: "shared", label: "Shared — commit config files, only .env stays private" },
+        { value: "local", label: "Local only — add entire .totopo/ to .gitignore" },
+    ],
+});
+
+if (isCancel(scopeChoice)) {
+    cancel("Setup cancelled.");
+    process.exit(0);
+}
+
+const commitScope = scopeChoice as "shared" | "local";
+
 // ─── Create .env ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 const envPath = join(totopoDir, ".env");
 if (existsSync(envPath)) {
@@ -88,17 +104,30 @@ if (existsSync(envPath)) {
     log.success("Created .totopo/.env");
 }
 
-// ─── Ensure .totopo/.env is gitignored ───────────────────────────────────────────────────────────────────────────────────────────────────
+// ─── Gitignore ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 const gitignorePath = join(repoRoot, ".gitignore");
-const gitignoreEntry = ".totopo/.env";
+const gitignoreContent = existsSync(gitignorePath) ? readFileSync(gitignorePath, "utf8") : null;
 
-if (existsSync(gitignorePath) && readFileSync(gitignorePath, "utf8").includes(gitignoreEntry)) {
-    log.info(".totopo/.env already in .gitignore");
+if (commitScope === "local") {
+    const entry = ".totopo/";
+    const addition = "\n# totopo — config is local-only for this project\n.totopo/\n";
+    if (gitignoreContent !== null && gitignoreContent.includes(entry)) {
+        log.info(".totopo/ already in .gitignore");
+    } else {
+        const newContent = gitignoreContent !== null ? gitignoreContent + addition : addition;
+        writeFileSync(gitignorePath, newContent);
+        log.success("Added .totopo/ to .gitignore");
+    }
 } else {
+    const entry = ".totopo/.env";
     const addition = "\n# totopo — API keys must never be committed\n.totopo/.env\n";
-    const existing = existsSync(gitignorePath) ? readFileSync(gitignorePath, "utf8") : "";
-    writeFileSync(gitignorePath, existing + addition);
-    log.success("Added .totopo/.env to .gitignore");
+    if (gitignoreContent !== null && gitignoreContent.includes(entry)) {
+        log.info(".totopo/.env already in .gitignore");
+    } else {
+        const newContent = gitignoreContent !== null ? gitignoreContent + addition : addition;
+        writeFileSync(gitignorePath, newContent);
+        log.success("Added .totopo/.env to .gitignore");
+    }
 }
 
 log.warn("Add your API keys to .totopo/.env before starting the container.");

@@ -136,5 +136,10 @@ releases:
       - Port cleanup on stop/reset
       - Status box with project name and API key indicator in menu UI
 in_progress:
-  base_version: 0.2.1
-  entries: []
+  base_version: 0.3.0
+  entries:
+    - version: 0.3.0-rc-1
+      added:
+        - >-
+          Onboarding commit scope prompt — after mode and tool selection, users now choose whether .totopo/ config is
+          shared (only .env gitignored, as before) or local-only (entire .totopo/ directory added to .gitignore)

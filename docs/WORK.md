@@ -52,8 +52,6 @@ USER'S PROJECT (any git repo where totopo is used)
 
 Nothing in progress.
 
----
-
 ## Upcoming
 
 Brief descriptions for planning; each is input for plan mode before we decide to work on it.
@@ -75,7 +73,5 @@ Brief descriptions for planning; each is input for plan mode before we decide to
 - **Terminal output review** — review and refine all terminal printings across every flow for consistency, clarity, and polish, including more detailed container status.
 
 - **Autostart agent** - improved experience upon connecting to the dev container so user could during onboarding decide if he want to auto start specific agent (claude/opencode/kilo etc.).
-
-- **Onboarding: settings commit scope** — during onboarding, ask whether `.totopo/` config should be shared (committed) or local-only. If local-only, add entire `.totopo/` to `.gitignore`; otherwise only `.totopo/.env` as currently done.
 
 - **README illustrations** — add visuals to README.md using Google's Banana Pro AI.

@@ -1,8 +1,8 @@
 # =============================================================================
-# Secure AI Dev Container — General-purpose multi-stack
+# Secure AI Dev Container — host-mirror mode
 # =============================================================================
 # Non-root user, no git remote access, AI tools: claude, kilo, opencode
-# Runtimes: Node.js, Python, Go, Rust, Java (Temurin 21), Bun
+# Runtimes: selected by totopo host-mirror (regenerated on each session start)
 # =============================================================================
 
 FROM debian:bookworm-slim
@@ -22,10 +22,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ripgrep fzf \
     # Database clients
     sqlite3 postgresql-client default-mysql-client redis-tools \
-    # Python (system runtime)
+    # Python (system runtime — required by build scripts)
     python3 python3-pip python3-venv pipx \
-    # Java build tools
-    maven \
     && rm -rf /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------
@@ -55,32 +53,10 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     apt-get update && apt-get install -y gh && rm -rf /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------
-# Layer 5 — Node.js LTS (via NodeSource)
+# Layer 5 — Node.js (via NodeSource — always included for AI tools)
 # ---------------------------------------------------------------------------
-RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - && \
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
     apt-get install -y nodejs && rm -rf /var/lib/apt/lists/*
-
-# ---------------------------------------------------------------------------
-# Layer 6 — Eclipse Temurin 21 JDK (Adoptium apt repo)
-# ---------------------------------------------------------------------------
-RUN curl -fsSL https://packages.adoptium.net/artifactory/api/gpg/key/public \
-        | gpg --dearmor -o /usr/share/keyrings/adoptium.gpg && \
-    echo "deb [signed-by=/usr/share/keyrings/adoptium.gpg] \
-        https://packages.adoptium.net/artifactory/deb $(lsb_release -cs) main" \
-        > /etc/apt/sources.list.d/adoptium.list && \
-    apt-get update && apt-get install -y temurin-21-jdk && rm -rf /var/lib/apt/lists/*
-RUN echo 'export JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java))))' \
-        > /etc/profile.d/java.sh
-
-# ---------------------------------------------------------------------------
-# Layer 7 — Go (official tarball, latest stable, multi-arch)
-# ---------------------------------------------------------------------------
-RUN ARCH=$(dpkg --print-architecture) && \
-    GO_VERSION=$(curl -fsSL 'https://go.dev/dl/?mode=json' \
-        | python3 -c "import sys,json; d=json.load(sys.stdin); print(d[0]['version'].lstrip('go'))") && \
-    curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${ARCH}.tar.gz" \
-        | tar -xz -C /usr/local && \
-    echo 'export PATH=/usr/local/go/bin:$PATH' > /etc/profile.d/go.sh
 
 # ---------------------------------------------------------------------------
 # Layer 8 — Git remote block
@@ -107,27 +83,7 @@ RUN groupadd --gid 1001 devuser && \
 USER devuser
 WORKDIR /workspace
 
-# ---------------------------------------------------------------------------
-# Layer 11 — Rust (installed as devuser via rustup)
-# ---------------------------------------------------------------------------
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-        | sh -s -- -y --no-modify-path --default-toolchain stable && \
-    /home/devuser/.cargo/bin/rustup component add rustfmt clippy
-
-# ---------------------------------------------------------------------------
-# Layer 12 — Bun (installed as devuser via official installer)
-# ---------------------------------------------------------------------------
-RUN curl -fsSL https://bun.sh/install | bash
-
-# ---------------------------------------------------------------------------
-# Layer 13 — Python user tools (uv + poetry via pipx)
-# ---------------------------------------------------------------------------
-RUN pipx install uv && pipx install poetry
-
-# ---------------------------------------------------------------------------
-# Layer 14 — PATH + shell experience
-# ---------------------------------------------------------------------------
-ENV PATH="/home/devuser/.cargo/bin:/home/devuser/.bun/bin:/home/devuser/.local/bin:/usr/local/go/bin:${PATH}"
+ENV PATH="/home/devuser/.local/bin:${PATH}"
 RUN echo 'export PS1="\[\033[01;32m\][devcontainer]\[\033[00m\] \[\033[01;34m\]\w\[\033[00m\] \$ "' \
         >> /home/devuser/.bashrc && \
     echo 'echo ""' >> /home/devuser/.bashrc && \
