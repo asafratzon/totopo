@@ -100,6 +100,19 @@ releases:
 in_progress:
   base_version: 0.2.0
   entries:
+    - rc_version: 0.2.0-rc-3
+      date: "2026-03-16"
+      fixed:
+        - >-
+          Node.js removed from tool multiselect checkbox list — shown as a fixed "always included" line above the
+          prompt instead, making it impossible to accidentally deselect it
+        - >-
+          Keyboard instructions (Space to toggle · Enter to confirm) now appear on a dedicated line beneath the
+          multiselect header instead of inline to its right
+        - >-
+          pnpm rc now hard-blocks if in_progress.entries has no entry matching the computed next rc version, preventing
+          releases without changelog notes
+        - package.json written with 4-space indentation by rc and rc:promote, fixing pnpm check failures after each run
     - rc_version: 0.2.0-rc-2
       date: "2026-03-16"
       fixed:
