@@ -7,6 +7,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.3.0] — 2026-03-16
+
+### Added
+
+- Onboarding commit scope prompt — after mode and tool selection, users now choose whether .totopo/ config is shared (only .env gitignored, as before) or local-only (entire .totopo/ directory added to .gitignore)
+
+---
+
 ## [0.2.0] — 2026-03-16
 
 ### Added
