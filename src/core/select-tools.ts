@@ -28,10 +28,13 @@ export async function selectTools(hostRuntimes: HostRuntimes): Promise<string[]>
             value: key as string,
             label: detected ? `${label}  ${dim(`v${detected} · host`)}` : `${label}  ${dim("latest")}`,
         };
-        return key === "node" ? { ...base, hint: "required" } : base;
+        return key === "node" ? { ...base, hint: "always included" } : base;
     });
 
-    const initialValues = TOOL_CATALOGUE.filter(({ key }) => hostRuntimes[key] !== undefined).map(({ key }) => key as string);
+    // node is always pre-selected (required); other tools pre-selected when detected on host
+    const initialValues = TOOL_CATALOGUE.filter(({ key }) => key === "node" || hostRuntimes[key] !== undefined).map(
+        ({ key }) => key as string,
+    );
 
     const selected = await multiselect({
         message: `Select tools to include in container:  ${dim("Space to toggle · Enter to confirm")}`,
