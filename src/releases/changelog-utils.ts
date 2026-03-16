@@ -94,7 +94,7 @@ export function squashAndPromote(baseVersion: string, date: string): ReleaseEntr
         const seen = new Set<string>();
         const items: string[] = [];
         for (const entry of data.in_progress.entries) {
-            for (const item of entry[category] ?? []) {
+            for (const item of (Array.isArray(entry[category]) ? entry[category] : [])) {
                 if (!seen.has(item)) {
                     seen.add(item);
                     items.push(item);
