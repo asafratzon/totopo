@@ -1,6 +1,17 @@
 releases:
   - version: 0.1.5
     date: "2026-03-16"
+    changed:
+      - >-
+        Workspace prefix renamed from totopo- to totopo-managed- to avoid collisions with user's own Docker
+        containers or images
+      - >-
+        Dockerfile template now carries LABEL totopo.managed=true so images have a stable identity independent
+        of workspace state
+    fixed:
+      - >-
+        Reset failed to find and remove Docker images when workspace no longer existed — image cleanup now uses
+        label-based lookup (totopo.managed=true) instead of name-derived reference filter
   - version: 0.1.4
     date: "2026-03-15"
     changed:

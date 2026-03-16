@@ -1,17 +1,29 @@
 // =========================================================================================================================================
-// sync-github-releases.ts — align GitHub releases with npm registry
+// sync-github-releases.ts — keep GitHub releases in sync with npm and changelog.yaml
 // Usage: pnpm sync-releases
 //        or import { syncGithubReleases } from "./sync-github-releases.js"
 //
-// Fetches all published npm versions and all existing GitHub releases,
-// then creates any GitHub releases that are missing. Safe to run repeatedly.
-// Skips gracefully if gh CLI is not available.
+// For every version published on npm:
+//   - Missing GitHub release          → created via `gh release create`
+//   - Existing release with no notes  → updated via `gh release edit`
+//     (detects blank body or our own placeholder string — never overwrites hand-written notes)
+//   - rc versions                     → created as pre-release with a generic note; never updated
+//
+// Release notes come from changelog.yaml via getReleaseNotes(). Falls back to
+// placeholderNotes() when no entry exists, which doubles as the stale-detection string.
+//
+// Safe to run repeatedly. Skips gracefully if gh CLI is not available.
 // =========================================================================================================================================
 
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { log } from "@clack/prompts";
 import { getReleaseNotes } from "./changelog-utils.js";
+
+// Fallback notes used when changelog.yaml has no entry for a version — also used to detect stale placeholders
+function placeholderNotes(tag: string): string {
+    return `Release ${tag}`;
+}
 
 // Thin wrapper around spawnSync that captures stdout/stderr and returns a typed result object
 function run(cmd: string, args: string[]): { stdout: string; stderr: string; ok: boolean } {
@@ -54,32 +66,55 @@ export async function syncGithubReleases(packageName: string): Promise<void> {
         return;
     }
 
-    // ── Find missing releases ────────────────────────────────────────────────────────────────────────────────────────────────────────────
+    // ── Create missing releases / update releases with empty or placeholder notes ─────────────────────────────────────────────────────────
     const missing = npmVersions.filter((v) => !ghTags.has(`v${v}`));
 
-    if (missing.length === 0) {
+    // For existing stable releases, fetch body individually to check if notes need updating
+    const needsNotes: string[] = [];
+    for (const version of npmVersions) {
+        if (!ghTags.has(`v${version}`)) continue; // missing — handled above
+        if (/-rc-\d+$/.test(version)) continue;   // rc notes are intentionally generic
+        const bodyResult = run("gh", ["release", "view", `v${version}`, "--json", "body"]);
+        let body = "";
+        try {
+            body = (JSON.parse(bodyResult.stdout) as { body: string }).body ?? "";
+        } catch { /* leave body empty — will trigger update */ }
+        if (body.trim() === "" || body.trim() === placeholderNotes(`v${version}`)) {
+            needsNotes.push(version);
+        }
+    }
+
+    if (missing.length === 0 && needsNotes.length === 0) {
         log.success("GitHub releases are in sync with npm");
         return;
     }
 
-    log.step(`Creating ${missing.length} missing GitHub release(s): ${missing.join(", ")}`);
+    if (missing.length > 0) log.step(`Creating ${missing.length} missing GitHub release(s): ${missing.join(", ")}`);
+    if (needsNotes.length > 0) log.step(`Updating ${needsNotes.length} release(s) with missing notes: ${needsNotes.join(", ")}`);
 
     for (const version of missing) {
         const tag = `v${version}`;
         const isRc = /-rc-\d+$/.test(version);
         const baseVersion = version.replace(/-rc-\d+$/, "");
-        const notes = isRc ? `Release candidate for ${baseVersion}` : getReleaseNotes(version) || `Release ${tag}`;
+        const notes = isRc ? `Release candidate for ${baseVersion}` : getReleaseNotes(version) || placeholderNotes(tag);
 
         const args = ["release", "create", tag, "--title", tag, "--notes", notes, ...(isRc ? ["--prerelease"] : [])];
-
-        const result = spawnSync("gh", args, {
-            encoding: "utf8",
-            stdio: "pipe",
-        });
+        const result = spawnSync("gh", args, { encoding: "utf8", stdio: "pipe" });
         if (result.status === 0) {
             log.success(`Created GitHub release ${tag}`);
         } else {
             log.warn(`Failed to create GitHub release ${tag}: ${result.stderr?.trim()}`);
+        }
+    }
+
+    for (const version of needsNotes) {
+        const tag = `v${version}`;
+        const notes = getReleaseNotes(version) || placeholderNotes(tag);
+        const result = spawnSync("gh", ["release", "edit", tag, "--notes", notes], { encoding: "utf8", stdio: "pipe" });
+        if (result.status === 0) {
+            log.success(`Updated notes for GitHub release ${tag}`);
+        } else {
+            log.warn(`Failed to update notes for ${tag}: ${result.stderr?.trim()}`);
         }
     }
 }
