@@ -2,7 +2,7 @@
 // =========================================================================================================================================
 // scripts/reset.ts — Full reset: delete all totopo workspaces and Docker images
 // Called by ai.sh — do not run directly.
-// Run 'ai.sh' → Start session after this to get a fresh build.
+// Run 'npx totopo' → Start session after this to get a fresh build.
 // =========================================================================================================================================
 
 import { spawnSync } from "node:child_process";
@@ -51,4 +51,4 @@ if (imageIds.length > 0) {
 spawnSync("docker", ["image", "prune", "--force"], { stdio: "inherit" });
 
 // ─── Done ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-outro("Reset complete. Run 'ai.sh' and select 'Start session' to start fresh.");
+outro("Reset complete. Run 'npx totopo' and select 'Start session' to start fresh.");
