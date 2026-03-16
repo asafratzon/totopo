@@ -59,6 +59,56 @@ export function writeChangelog(data: Changelog): void {
     writeFileSync(CHANGELOG_PATH, out, "utf8");
 }
 
+// ─── Validate changelog structure ────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+const CATEGORIES = ["added", "changed", "fixed", "security"] as const;
+
+/** Throws a descriptive error if changelog.yaml has structural problems. */
+export function validateChangelog(data: Changelog): void {
+    const errors: string[] = [];
+
+    // Validate in_progress entries
+    for (let i = 0; i < data.in_progress.entries.length; i++) {
+        const entry = data.in_progress.entries[i];
+        const prefix = `in_progress.entries[${i}]`;
+
+        if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+            errors.push(`${prefix}: must be an object (RcEntry), got ${Array.isArray(entry) ? "array" : typeof entry}`);
+            continue;
+        }
+
+        if (typeof (entry as RcEntry).rc_version !== "string") {
+            errors.push(`${prefix}: missing or non-string 'rc_version'`);
+        }
+        if (typeof (entry as RcEntry).date !== "string") {
+            errors.push(`${prefix}: missing or non-string 'date'`);
+        }
+
+        const hasCategory = CATEGORIES.some((cat) => (entry as RcEntry)[cat] !== undefined);
+        if (!hasCategory) {
+            errors.push(`${prefix}: must have at least one of: ${CATEGORIES.join(", ")}`);
+        }
+
+        for (const cat of CATEGORIES) {
+            const val = (entry as RcEntry)[cat];
+            if (val === undefined) continue;
+            if (!Array.isArray(val)) {
+                errors.push(`${prefix}.${cat}: must be an array of strings, got ${typeof val}`);
+            } else {
+                val.forEach((item, j) => {
+                    if (typeof item !== "string") {
+                        errors.push(`${prefix}.${cat}[${j}]: must be a string, got ${typeof item}`);
+                    }
+                });
+            }
+        }
+    }
+
+    if (errors.length > 0) {
+        throw new Error(`changelog.yaml validation failed:\n${errors.map((e) => `  - ${e}`).join("\n")}`);
+    }
+}
+
 // ─── Append rc notes ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 export interface RcNotes {
@@ -94,7 +144,7 @@ export function squashAndPromote(baseVersion: string, date: string): ReleaseEntr
         const seen = new Set<string>();
         const items: string[] = [];
         for (const entry of data.in_progress.entries) {
-            for (const item of (Array.isArray(entry[category]) ? entry[category] : [])) {
+            for (const item of entry[category] ?? []) {
                 if (!seen.has(item)) {
                     seen.add(item);
                     items.push(item);

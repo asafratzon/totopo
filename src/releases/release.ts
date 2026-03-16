@@ -18,6 +18,7 @@ import {
     gitTagExistsOnRemote,
     readChangelog,
     squashAndPromote,
+    validateChangelog,
     waitForNpmVersion,
 } from "./changelog-utils.js";
 import { syncGithubReleases } from "./sync-github-releases.js";
@@ -121,6 +122,12 @@ log.success(`rc: ${latestRcVersion} → will release as ${baseVersion}`);
 // ─── Validate changelog entries ──────────────────────────────────────────────────────────────────────────────────────────────────────────
 log.step("Validating changelog.yaml...");
 const changelog = readChangelog();
+try {
+    validateChangelog(changelog);
+} catch (e) {
+    log.error(String(e instanceof Error ? e.message : e));
+    process.exit(1);
+}
 
 // squashAndPromote advances base_version to bumpPatch(baseVersion) after squashing —
 // if we see that on re-run with empty entries, squash already completed successfully.
