@@ -11,8 +11,15 @@
 
 import { execSync, spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
-import { cancel, confirm, intro, log, outro } from "@clack/prompts";
-import { readChangelog, squashAndPromote, waitForNpmVersion } from "./changelog-utils.js";
+import { cancel, confirm, intro, log, outro, select } from "@clack/prompts";
+import {
+    gitCommitExists,
+    gitTagExistsLocally,
+    gitTagExistsOnRemote,
+    readChangelog,
+    squashAndPromote,
+    waitForNpmVersion,
+} from "./changelog-utils.js";
 import { syncGithubReleases } from "./sync-github-releases.js";
 
 const pkgPath = "package.json";
@@ -24,6 +31,55 @@ const { name } = pkg;
 
 intro(`${name} — promote rc to latest`);
 log.message("Make sure you are logged in to npm before proceeding (npm whoami).");
+
+let stashedBeforeRelease = false;
+
+// ─── Phase 0: uncommitted changes guard ──────────────────────────────────────────────────────────────────────────────────────────────────
+const porcelainResult = spawnSync("git", ["status", "--porcelain"], { encoding: "utf8", stdio: "pipe" });
+const porcelainLines = porcelainResult.stdout.trim().split("\n").filter(Boolean);
+
+if (porcelainLines.length > 0) {
+    const PACKAGED = ["ai.sh", "src/core/", "templates/", "tsconfig.json", "LICENSE", "package.json"];
+    const changedPaths = porcelainLines.map((l) => l.slice(3).trim());
+    const packagedDirty = changedPaths.filter((p) => PACKAGED.some((prefix) => p === prefix || p.startsWith(prefix)));
+
+    if (packagedDirty.length > 0) {
+        // Case A — stop, explain, exit
+        log.warn("Uncommitted changes overlap with packaged files:");
+        for (const p of packagedDirty) log.message(`  ${p}`);
+        log.error("These files are included in the published npm package. Publishing with them uncommitted would corrupt the release.");
+        log.message("Options:");
+        log.message("  1. Commit them and cut another rc (pnpm rc), then re-run pnpm rc:promote");
+        log.message("  2. Manually stash (git stash), re-run pnpm rc:promote, then git stash pop");
+        cancel("Resolve uncommitted changes and re-run.");
+        process.exit(1);
+    } else {
+        // Case B — offer automated options
+        log.warn("Uncommitted changes detected (none overlap with packaged files):");
+        for (const p of changedPaths) log.message(`  ${p}`);
+        const choice = await select({
+            message: "How do you want to handle these?",
+            options: [
+                { value: "stash", label: "Stash now → run release flow → unstash at the end" },
+                { value: "commit", label: "Commit them with a neutral message and continue" },
+                { value: "cancel", label: "Cancel — I'll resolve them manually" },
+            ],
+        });
+        if (!choice || choice === Symbol.for("cancel") || choice === "cancel") {
+            cancel("Aborted.");
+            process.exit(0);
+        }
+        if (choice === "stash") {
+            log.step("git stash");
+            execSync("git stash", { stdio: "inherit" });
+            stashedBeforeRelease = true;
+        } else {
+            log.step("Committing non-packaged changes...");
+            execSync(`git add ${changedPaths.map((p) => JSON.stringify(p)).join(" ")}`, { stdio: "inherit" });
+            execSync(`git commit -m "chore: commit non-packaged changes before release"`, { stdio: "inherit" });
+        }
+    }
+}
 
 // ─── Sync GitHub releases ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 log.step("Syncing GitHub releases with npm...");
@@ -88,12 +144,8 @@ if (changelog.in_progress.base_version !== baseVersion) {
     process.exit(1);
 }
 
-if (changelog.in_progress.entries.length === 0) {
-    log.error("changelog.yaml has no entries for this release. Run pnpm rc and add notes first.");
-    process.exit(1);
-}
-
-log.success(`Found ${changelog.in_progress.entries.length} rc entry/entries to squash for ${baseVersion}`);
+const squashAlreadyDone = changelog.in_progress.entries.length === 0;
+if (!squashAlreadyDone) log.success(`Found ${changelog.in_progress.entries.length} rc entry/entries to squash for ${baseVersion}`);
 
 // ─── Confirm ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 const ok = await confirm({
@@ -105,49 +157,104 @@ if (!ok || ok === Symbol.for("cancel")) {
     process.exit(0);
 }
 
-// ─── Squash rc entries + update changelog.yaml ───────────────────────────────────────────────────────────────────────────────────────────
-log.step("Squashing rc entries and updating changelog.yaml...");
+// ─── Phase 7: Squash rc entries + update changelog.yaml ──────────────────────────────────────────────────────────────────────────────────
 const today = new Date().toISOString().slice(0, 10);
-squashAndPromote(baseVersion, today);
-log.success("changelog.yaml updated");
+if (squashAlreadyDone) {
+    log.info("Skipping changelog squash — already done");
+} else {
+    log.step("Squashing rc entries and updating changelog.yaml...");
+    squashAndPromote(baseVersion, today);
+    log.success("changelog.yaml updated");
+}
 
-// ─── Regenerate CHANGELOG.md ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
-log.step("Regenerating CHANGELOG.md...");
-execSync("pnpm generate-changelog", { stdio: "inherit" });
-log.success("CHANGELOG.md regenerated");
+// ─── Phase 8: Regenerate CHANGELOG.md ────────────────────────────────────────────────────────────────────────────────────────────────────
+if (squashAlreadyDone) {
+    log.info("Skipping CHANGELOG.md regen — squash already done");
+} else {
+    log.step("Regenerating CHANGELOG.md...");
+    execSync("pnpm generate-changelog", { stdio: "inherit" });
+    log.success("CHANGELOG.md regenerated");
+}
 
-// ─── Update package.json ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-pkg.version = baseVersion;
-writeFileSync(pkgPath, `${JSON.stringify(pkg, null, "\t")}\n`);
-log.success(`package.json → ${baseVersion}`);
+// ─── Phase 9: Update package.json ────────────────────────────────────────────────────────────────────────────────────────────────────────
+const pkgNow = JSON.parse(readFileSync(pkgPath, "utf8")) as { version: string };
+if (pkgNow.version === baseVersion) {
+    log.info(`Skipping package.json — already at ${baseVersion}`);
+} else {
+    pkg.version = baseVersion;
+    writeFileSync(pkgPath, `${JSON.stringify(pkg, null, "\t")}\n`);
+    log.success(`package.json → ${baseVersion}`);
+}
 
-// ─── Commit + push code ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// ─── Phase 10: Commit ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 const tag = `v${baseVersion}`;
+const releaseCommitMsg = `chore: release ${tag}`;
+if (gitCommitExists(releaseCommitMsg)) {
+    log.info(`Skipping git commit — ${releaseCommitMsg} already exists`);
+} else {
+    log.step("git commit");
+    execSync(`git add ${pkgPath} CHANGELOG.md src/releases/changelog.yaml`, { stdio: "inherit" });
+    execSync(`git commit -m "${releaseCommitMsg}"`, { stdio: "inherit" });
+}
 
-log.step("git commit");
-execSync(`git add ${pkgPath} CHANGELOG.md src/releases/changelog.yaml`, {
-    stdio: "inherit",
-});
-execSync(`git commit -m "chore: release ${tag}"`, { stdio: "inherit" });
+// ─── Phase 11: Push ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+const releasePushStatus = spawnSync("git", ["status", "-sb"], { encoding: "utf8", stdio: "pipe" });
+const releasePushLine = releasePushStatus.stdout.split("\n")[0] ?? "";
+const releaseHasUpstream = releasePushLine.includes("...");
+const releaseAlreadyPushed = releaseHasUpstream && !releasePushLine.includes("[ahead");
+if (releaseAlreadyPushed) {
+    log.info("Skipping git push — remote already has this commit");
+} else {
+    log.step("git push");
+    execSync("git push", { stdio: "inherit" });
+}
 
-log.step("git push");
-execSync("git push", { stdio: "inherit" });
+// ─── Phase 12: Publish to npm ────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// Re-fetch dist-tags (may have changed since Phase 2)
+const freshDistTagsProbe = spawnSync("npm", ["view", name, "dist-tags", "--json"], { encoding: "utf8", stdio: "pipe" });
+let freshDistTags: Record<string, string> = {};
+try {
+    freshDistTags = JSON.parse(freshDistTagsProbe.stdout.trim());
+} catch {}
+if (freshDistTags.latest === baseVersion) {
+    log.info("Skipping npm publish — already latest");
+} else {
+    log.step("pnpm publish --access public");
+    execSync("pnpm publish --access public", { stdio: "inherit" });
+}
 
-// ─── Publish to npm ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-log.step("pnpm publish --access public");
-execSync("pnpm publish --access public", { stdio: "inherit" });
+// ─── Phase 13: Remove rc dist-tag ────────────────────────────────────────────────────────────────────────────────────────────────────────
+// Re-fetch dist-tags after publish
+const freshRcTagProbe = spawnSync("npm", ["view", name, "dist-tags", "--json"], { encoding: "utf8", stdio: "pipe" });
+let freshRcDistTags: Record<string, string> = {};
+try {
+    freshRcDistTags = JSON.parse(freshRcTagProbe.stdout.trim());
+} catch {}
+const freshRcTag = freshRcDistTags.rc;
+const rcStillPointsHere = freshRcTag && freshRcTag.replace(/-rc-\d+$/, "") === baseVersion;
+if (!rcStillPointsHere) {
+    log.info("Skipping dist-tag rm — rc tag already removed or points elsewhere");
+} else {
+    log.step("Removing rc tag from npm registry...");
+    execSync(`npm dist-tag rm ${name} rc`, { stdio: "inherit" });
+    log.success("rc tag removed — npx totopo@rc will no longer resolve");
+}
 
-// ─── Remove rc dist-tag ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-log.step("Removing rc tag from npm registry...");
-execSync(`npm dist-tag rm ${name} rc`, { stdio: "inherit" });
-log.success("rc tag removed — npx totopo@rc will no longer resolve");
-
-// ─── Tag + push to GitHub (only after npm publish succeeded) ─────────────────────────────────────────────────────────────────────────────
-log.step(`git tag ${tag}`);
-execSync(`git tag ${tag}`, { stdio: "inherit" });
-
-log.step("git push --tags");
-execSync("git push --tags", { stdio: "inherit" });
+// ─── Phase 14: Tag + push to GitHub (only after npm publish succeeded) ───────────────────────────────────────────────────────────────────
+const releaseTagLocal = gitTagExistsLocally(tag);
+const releaseTagRemote = gitTagExistsOnRemote(tag);
+if (releaseTagLocal) {
+    log.info(`Skipping git tag — ${tag} already exists`);
+} else {
+    log.step(`git tag ${tag}`);
+    execSync(`git tag ${tag}`, { stdio: "inherit" });
+}
+if (releaseTagRemote) {
+    log.info(`Skipping git push --tags — ${tag} already on remote`);
+} else {
+    log.step("git push --tags");
+    execSync("git push --tags", { stdio: "inherit" });
+}
 
 // ─── Wait for npm registry to propagate ──────────────────────────────────────────────────────────────────────────────────────────────────
 log.step(`Waiting for ${name}@${baseVersion} to appear in npm registry...`);
@@ -156,6 +263,17 @@ log.success("npm registry updated");
 
 // ─── Sync GitHub releases (register the new release) ─────────────────────────────────────────────────────────────────────────────────────
 await syncGithubReleases(name);
+
+// ─── Unstash if we stashed before release ────────────────────────────────────────────────────────────────────────────────────────────────
+if (stashedBeforeRelease) {
+    log.step("git stash pop");
+    const popResult = spawnSync("git", ["stash", "pop"], { encoding: "utf8", stdio: "pipe" });
+    if (popResult.status === 0) {
+        log.success("Stashed changes restored");
+    } else {
+        log.warn("git stash pop failed — run: git stash pop");
+    }
+}
 
 // ─── Done ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 outro(`${name}@${baseVersion} published as latest`);

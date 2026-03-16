@@ -19,7 +19,14 @@
 import { execSync, spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { cancel, confirm, intro, log, outro } from "@clack/prompts";
-import { readChangelog, waitForNpmVersion } from "./changelog-utils.js";
+import {
+    bumpPatch,
+    gitCommitExists,
+    gitTagExistsLocally,
+    gitTagExistsOnRemote,
+    readChangelog,
+    waitForNpmVersion,
+} from "./changelog-utils.js";
 import { syncGithubReleases } from "./sync-github-releases.js";
 
 const pkgPath = "package.json";
@@ -65,13 +72,6 @@ try {
 }
 
 // ─── Compute next version ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-// Increments the patch segment of a semver string (e.g. "0.1.4" → "0.1.5")
-function bumpPatch(v: string): string {
-    const parts = v.split(".");
-    parts[2] = String(Number(parts[2]) + 1);
-    return parts.join(".");
-}
-
 // Start with the current base; bumped below if the base version is already published on npm
 let targetBase = baseVersion;
 
@@ -127,26 +127,57 @@ if (!publishOk || publishOk === Symbol.for("cancel")) {
     process.exit(0);
 }
 
-// ─── Commit + push code ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-log.step("git commit");
-execSync(`git add ${pkgPath} src/releases/changelog.yaml`, {
-    stdio: "inherit",
-});
-execSync(`git commit -m "chore: rc ${tag}"`, { stdio: "inherit" });
+// ─── Phase 7: Commit ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+const commitMsg = `chore: rc ${tag}`;
+if (gitCommitExists(commitMsg)) {
+    log.info(`Skipping git commit — ${commitMsg} already exists`);
+} else {
+    log.step("git commit");
+    execSync(`git add ${pkgPath} src/releases/changelog.yaml`, { stdio: "inherit" });
+    execSync(`git commit -m "${commitMsg}"`, { stdio: "inherit" });
+}
 
-log.step("git push");
-execSync("git push", { stdio: "inherit" });
+// ─── Phase 8: Push ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+const pushStatus = spawnSync("git", ["status", "-sb"], { encoding: "utf8", stdio: "pipe" });
+const pushLine = pushStatus.stdout.split("\n")[0] ?? "";
+const hasUpstream = pushLine.includes("...");
+const alreadyPushed = hasUpstream && !pushLine.includes("[ahead");
+if (alreadyPushed) {
+    log.info("Skipping git push — remote already has this commit");
+} else {
+    log.step("git push");
+    execSync("git push", { stdio: "inherit" });
+}
 
-// ─── Publish to npm ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-log.step("pnpm publish --access public --tag rc");
-execSync("pnpm publish --access public --tag rc", { stdio: "inherit" });
+// ─── Phase 9: Publish to npm ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
+const publishedProbe = spawnSync("npm", ["view", name, "versions", "--json"], { encoding: "utf8", stdio: "pipe" });
+let publishedVersions: string[] = [];
+try {
+    const p = JSON.parse(publishedProbe.stdout.trim());
+    publishedVersions = Array.isArray(p) ? p : [p];
+} catch {}
+if (publishedVersions.includes(nextVersion)) {
+    log.info(`Skipping npm publish — ${name}@${nextVersion} already in registry`);
+} else {
+    log.step("pnpm publish --access public --tag rc");
+    execSync("pnpm publish --access public --tag rc", { stdio: "inherit" });
+}
 
-// ─── Tag + push to GitHub (only after npm publish succeeded) ─────────────────────────────────────────────────────────────────────────────
-log.step(`git tag ${tag}`);
-execSync(`git tag ${tag}`, { stdio: "inherit" });
-
-log.step("git push --tags");
-execSync("git push --tags", { stdio: "inherit" });
+// ─── Phase 10: Tag + push to GitHub (only after npm publish succeeded) ───────────────────────────────────────────────────────────────────
+const tagLocal = gitTagExistsLocally(tag);
+const tagRemote = gitTagExistsOnRemote(tag);
+if (tagLocal) {
+    log.info(`Skipping git tag — ${tag} already exists`);
+} else {
+    log.step(`git tag ${tag}`);
+    execSync(`git tag ${tag}`, { stdio: "inherit" });
+}
+if (tagRemote) {
+    log.info(`Skipping git push --tags — ${tag} already on remote`);
+} else {
+    log.step("git push --tags");
+    execSync("git push --tags", { stdio: "inherit" });
+}
 
 // ─── Wait for npm registry to propagate ──────────────────────────────────────────────────────────────────────────────────────────────────
 log.step(`Waiting for ${name}@${nextVersion} to appear in npm registry...`);

@@ -43,10 +43,6 @@ USER'S PROJECT (any git repo where totopo is used)
 
 ## Working Now
 
-- **Release tooling hardening (`pnpm rc` + `pnpm rc:promote`)** — two improvements:
-  1. `pnpm rc` idempotent/resumable — rc.ts should be stateless so re-running after any phase failure picks up where it left off rather than re-committing or re-tagging. Phases to handle: changelog check, package.json alignment, git commit (skip if already committed), npm publish (skip if version already in registry), git tag (skip if tag exists), git push tags, GitHub release sync.
-  2. `pnpm rc:promote` idempotent/resumable + uncommitted changes guard — make the script stateless so re-running after any phase failure picks up where it left off (e.g. skip changelog squash if already done, skip git commit if already committed, skip npm publish if version already latest). Also detect uncommitted changes early and always stop to inform the user. Two cases: (a) changes touch packaged files (`ai.sh`, `src/core/`, `templates/`, `tsconfig.json`, `LICENSE`, `package.json`) — stop and explain they'd end up published, suggest commit + new rc or manual stash + re-run; (b) changes don't touch packaged files — stop and offer three automated options: stash → flow → unstash, auto-commit and continue, or cancel.
-
 ---
 
 ## Upcoming
@@ -74,3 +70,7 @@ Brief descriptions for planning; each is input for plan mode before we decide to
 - **Terminal output review** — review and refine all terminal printings across every flow for consistency, clarity, and polish, including more detailed container status.
 
 - **Autostart agent** - improved experience upon connecting to the dev container so user could during onboarding decide if he want to auto start specific agent (claude/opencode/kilo etc.).
+
+- **Onboarding: settings commit scope** — during onboarding, ask whether `.totopo/` config should be shared (committed) or local-only. If local-only, add entire `.totopo/` to `.gitignore`; otherwise only `.totopo/.env` as currently done.
+
+- **README illustrations** — add visuals to README.md using Google's Banana Pro AI.

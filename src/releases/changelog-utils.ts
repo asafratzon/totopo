@@ -181,10 +181,25 @@ export async function waitForNpmVersion(
 // ─── Helpers ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 // Increments the patch segment of a semver string (e.g. "0.1.4" → "0.1.5")
-function bumpPatch(v: string): string {
+export function bumpPatch(v: string): string {
     const parts = v.split(".");
     parts[2] = String(Number(parts[2]) + 1);
     return parts.join(".");
+}
+
+export function gitCommitExists(message: string): boolean {
+    const r = spawnSync("git", ["log", "--format=%s"], { encoding: "utf8", stdio: "pipe" });
+    return r.stdout.split("\n").some((line) => line.trim() === message);
+}
+
+export function gitTagExistsLocally(tag: string): boolean {
+    const r = spawnSync("git", ["tag", "-l", tag], { encoding: "utf8", stdio: "pipe" });
+    return r.stdout.trim() === tag;
+}
+
+export function gitTagExistsOnRemote(tag: string): boolean {
+    const r = spawnSync("git", ["ls-remote", "--tags", "origin", tag], { encoding: "utf8", stdio: "pipe" });
+    return r.stdout.trim().length > 0;
 }
 
 export { CHANGELOG_PATH };
