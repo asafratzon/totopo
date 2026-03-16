@@ -27,14 +27,16 @@ export async function selectTools(hostRuntimes: HostRuntimes): Promise<string[]>
         const base = {
             value: key as string,
             label: detected ? `${label}  ${dim(`v${detected} · host`)}` : `${label}  ${dim("latest")}`,
-            selected: detected !== undefined,
         };
         return key === "node" ? { ...base, hint: "required" } : base;
     });
 
+    const initialValues = TOOL_CATALOGUE.filter(({ key }) => hostRuntimes[key] !== undefined).map(({ key }) => key as string);
+
     const selected = await multiselect({
-        message: "Select tools to include in container:",
+        message: `Select tools to include in container:  ${dim("Space to toggle · Enter to confirm")}`,
         options,
+        initialValues,
         required: false,
     });
 
