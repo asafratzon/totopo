@@ -50,12 +50,7 @@ USER'S PROJECT (any git repo where totopo is used)
 
 ## Working Now
 
-- **Dockerfile: runtime mode** — DONE. Two modes:
-  - `host-mirror` (default): detects host runtimes, user picks tools via multiselect (pre-checked with host version), Dockerfile regenerated on every session start to catch version updates
-  - `full`: today's behaviour — latest stable everything
-  - Mode stored in `.totopo/settings.json`; exposed via **Settings** menu entry
-  - New files: `settings.ts`, `detect-host.ts`, `select-tools.ts`, `generate-dockerfile.ts`, `sync-dockerfile.ts`, `settings-menu.ts`
-  - Modified: `onboard.ts`, `menu.ts`, `ai.sh`
+Nothing in progress.
 
 ---
 
