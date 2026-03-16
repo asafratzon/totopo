@@ -1,4 +1,6 @@
 releases:
+  - version: 0.1.5
+    date: "2026-03-16"
   - version: 0.1.4
     date: "2026-03-15"
     changed:
@@ -66,14 +68,5 @@ releases:
       - Port cleanup on stop/reset
       - Status box with project name and API key indicator in menu UI
 in_progress:
-  base_version: 0.1.5
-  entries:
-    - type: changed
-      text: >-
-        DevPod workspaces renamed from totopo-<project> to totopo-managed-<project> to avoid
-        collisions with user's own Docker containers
-    - type: changed
-      text: >-
-        Image cleanup in reset now uses LABEL totopo.managed=true (baked into Dockerfile) instead
-        of name-derived vsc-* filters — works correctly even when workspaces were already removed
-        before reset ran
+  base_version: 0.1.6
+  entries: []
