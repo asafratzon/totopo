@@ -8,11 +8,7 @@ import { spawnSync } from "node:child_process";
 import { log, outro } from "@clack/prompts";
 
 // ─── Find all totopo-managed-* containers ────────────────────────────────────
-const listResult = spawnSync(
-    "docker",
-    ["ps", "-a", "--filter", "name=totopo-managed-", "--format", "{{.Names}}"],
-    { encoding: "utf8" },
-);
+const listResult = spawnSync("docker", ["ps", "-a", "--filter", "name=totopo-managed-", "--format", "{{.Names}}"], { encoding: "utf8" });
 
 const containers = (listResult.stdout ?? "").trim().split("\n").filter(Boolean);
 
