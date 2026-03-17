@@ -200,4 +200,14 @@ releases:
       - Status box with project name and API key indicator in menu UI
 in_progress:
   base_version: 0.5.1
-  entries: []
+  entries:
+    - rc_version: 0.5.1-rc-1
+      date: "2026-03-17"
+      added:
+        - >-
+          Selective scope now shows hidden files and directories (dotfiles/dotdirs such as .env, .github, .vscode) in
+          the multiselect — previously all entries beginning with "." were filtered out and could not be mounted.
+        - >-
+          Selective scope gains an optional path input step after the multiselect — users can enter comma-separated
+          relative paths (e.g. src/auth, src/db/migrations) to include deeply nested items not reachable from the
+          top-level picker; invalid paths produce an error and exit cleanly.
