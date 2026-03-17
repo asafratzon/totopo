@@ -144,6 +144,12 @@ releases:
 in_progress:
   base_version: 0.4.0
   entries:
+    - rc_version: "0.4.0-rc-2"
+      date: "2026-03-17"
+      fixed:
+        - >-
+          Container exited immediately after docker run -d — bash has no TTY in detached mode; docker run now passes
+          sleep infinity as the command to keep the container alive for docker exec to connect
     - rc_version: "0.4.0-rc-1"
       date: "2026-03-17"
       changed:
