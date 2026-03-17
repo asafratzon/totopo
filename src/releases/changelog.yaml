@@ -270,6 +270,10 @@ in_progress:
           Selective scope groupMultiselect group headers were permanently stuck selected — dir names were placed in
           initialValues which clack never removes when toggling; initialValues now uses the actual child values so
           headers derive their checked state from children and toggle correctly with Space.
+        - >-
+          Selective scope deeper-path step replaced clack's path prompt (which showed only files and broke on absolute
+          paths) with a custom select-based directory browser that shows both files and directories, supports navigating
+          up, and lets the user select a directory or file before returning the relative path.
       changed:
         - >-
           Selective scope "except" mode now collapses fully-selected groups back to the parent directory name for
