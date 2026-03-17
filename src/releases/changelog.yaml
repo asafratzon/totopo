@@ -12,7 +12,7 @@
 #       security:                   # security fixes
 #         - "Description"
 #
-# Versioning: 0.x.0 = minor (new features); 0.x.y = patch (bug fixes only). When in doubt: new features = minor.
+# Versioning: 0.x.0 = minor (new features); 0.x.y = patch (bug fixes only). When in doubt, ask the user.
 
 releases:
   - version: 0.5.0
@@ -214,6 +214,7 @@ releases:
       - "Workspace naming convention: totopo-<project>"
       - Port cleanup on stop/reset
       - Status box with project name and API key indicator in menu UI
+
 # in_progress format:
 #
 #   in_progress:
