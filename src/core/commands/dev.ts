@@ -66,6 +66,22 @@ async function promptScope(): Promise<ScopeConfig> {
 }
 
 // ─── Prompt: selective path selection ─────────────────────────────────────────
+// Recursively expands a selected path into its children when a nested exclusion target is found,
+// until the excluded path itself can be dropped from the list.
+function expandExclusion(paths: string[], excl: string): string[] {
+    if (paths.includes(excl)) {
+        return paths.filter((p) => p !== excl);
+    }
+    const ancestor = paths.find((p) => excl.startsWith(`${p}/`));
+    if (!ancestor) {
+        log.warn(`Cannot exclude "${excl}" — it is not within any selected path. Skipping.`);
+        return paths;
+    }
+    const children = readdirSync(join(cwd, ancestor)).map((child) => `${ancestor}/${child}`);
+    const withoutAncestor = paths.filter((p) => p !== ancestor);
+    return expandExclusion([...withoutAncestor, ...children], excl);
+}
+
 async function promptSelectivePaths(): Promise<string[]> {
     const allItems = readdirSync(cwd);
 
@@ -93,7 +109,7 @@ async function promptSelectivePaths(): Promise<string[]> {
     if (style === "only") {
         log.info("Tip: to include a nested path (e.g. src/auth), leave its parent unselected — you can add it by path in the next step.");
     } else {
-        log.info("Tip: to exclude a nested path (e.g. src/auth), leave its parent selected — you can target it by path in the next step.");
+        log.info("Tip: to exclude a nested path (e.g. src/utils), leave its parent selected — you can target it by path in the next step.");
     }
 
     const selected = await multiselect({
@@ -109,8 +125,11 @@ async function promptSelectivePaths(): Promise<string[]> {
     }
 
     const pathInput = await text({
-        message: "Add specific paths (optional, comma-separated, e.g. src/auth, src/db/migrations):",
-        placeholder: "Leave blank to skip",
+        message:
+            style === "only"
+                ? "Add nested paths to include (optional, comma-separated, relative to current directory):"
+                : "Exclude nested paths (optional, comma-separated, relative to current directory):",
+        placeholder: "e.g. src/auth, src/db/migrations  —  leave blank to skip",
     });
 
     if (isCancel(pathInput)) {
@@ -129,8 +148,16 @@ async function promptSelectivePaths(): Promise<string[]> {
         process.exit(1);
     }
 
-    const merged = [...new Set([...(selected as string[]), ...extraPaths])];
-    return merged;
+    if (style === "only") {
+        return [...new Set([...(selected as string[]), ...extraPaths])];
+    }
+
+    // "except" mode: subtract extra paths from selection, expanding parent dirs as needed
+    let result = selected as string[];
+    for (const excl of extraPaths) {
+        result = expandExclusion(result, excl);
+    }
+    return result;
 }
 
 // ─── Totopo mount path inside container ──────────────────────────────────────
