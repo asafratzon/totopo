@@ -1,3 +1,19 @@
+# releases format:
+#
+#   releases:                       # array — newest first; managed by pnpm rc:promote (do not edit by hand)
+#     - version: "x.y.z"
+#       date: "YYYY-MM-DD"
+#       added:                      # new features   (optional — only include categories with entries)
+#         - "Description"
+#       changed:                    # behaviour changes
+#         - "Description"
+#       fixed:                      # bug fixes
+#         - "Description"
+#       security:                   # security fixes
+#         - "Description"
+#
+# Versioning: 0.x.0 = minor (new features); 0.x.y = patch (bug fixes only). When in doubt: new features = minor.
+
 releases:
   - version: 0.5.0
     date: "2026-03-17"
@@ -198,6 +214,25 @@ releases:
       - "Workspace naming convention: totopo-<project>"
       - Port cleanup on stop/reset
       - Status box with project name and API key indicator in menu UI
+# in_progress format:
+#
+#   in_progress:
+#     base_version: "x.y.z"        # next release version (updated by pnpm rc if needed)
+#     entries:                      # array — one element per rc iteration; accumulates until pnpm rc:promote
+#       - rc_version: "x.y.z-rc-1" # must match the published rc tag
+#         date: "YYYY-MM-DD"
+#         added:                    # new features   (optional — only include categories with entries)
+#           - "Description"
+#         changed:                  # behaviour changes
+#           - "Description"
+#         fixed:                    # bug fixes
+#           - "Description"
+#         security:                 # security fixes
+#           - "Description"
+#
+# pnpm rc hard-blocks if entries is empty or not an array.
+# pnpm rc:promote squashes all rc entries by category into a single releases entry.
+
 in_progress:
   base_version: 0.6.0
   entries:
