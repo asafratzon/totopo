@@ -7,6 +7,21 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.6.1] — 2026-03-17
+
+### Changed
+
+- Selective scope deeper-path step now uses @clack/prompts path() for autocomplete-based path selection instead of free-style text input — as the user types, matching files and directories under the current working directory are shown; blank Enter exits the loop. Fixes the previous attempt by converting the absolute path returned by path() to a relative path via relative(cwd, result).
+- Deeper-path loop redesigned — selecting a path now adds it directly as a single entry without a nested multiselect step; loop is controlled by an explicit Yes/No confirm question ("Add a nested path by path?") that repeats after each addition until the user answers No.
+
+### Fixed
+
+- path() prompt now correctly passes directory: false to show both files and directories in suggestions.
+- Selective scope path() prompt now shows directories — the directory option was set to false which, contrary to the docs, filters directories out; set to true to show both files and directories.
+- Selecting "done" in the deeper-path loop now uses Escape instead of blank Enter — the library hardcodes a "Please select a path" error for empty input that cannot be overridden via validate; Escape (isCancel) is treated as loop exit instead of a full cancellation.
+
+---
+
 ## [0.6.0] — 2026-03-17
 
 ### Added
