@@ -257,3 +257,12 @@ in_progress:
           excludes it by recursively expanding its parent directory into individual children and dropping the target,
           rather than incorrectly adding it as an extra mount. Also clarified text prompt messages and placeholder to
           indicate paths are relative to the current directory.
+    - rc_version: 0.6.0-rc-3
+      date: "2026-03-17"
+      changed:
+        - >-
+          Selective scope UX overhauled — the flat multiselect + freeform text input is replaced by a depth-2 tree
+          picker using groupMultiselect (directory headers are expandable and selectable as a group) followed by a
+          repeating path autocomplete prompt for targets deeper than two levels. "Except" mode pre-selects all
+          depth-1 items; checking/unchecking a folder header includes or excludes its entire contents. Falls back to
+          a flat multiselect when the current directory contains no subdirectories.
