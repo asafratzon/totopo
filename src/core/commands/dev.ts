@@ -129,21 +129,12 @@ async function promptDeeperPaths(style: "only" | "except"): Promise<string[]> {
 
     while (true) {
         const selectedAbs = await path({
-            message: `Add a nested path to ${verb} — browse or type, blank Enter to finish:`,
+            message: `Add a nested path to ${verb} — type to search, Escape to finish:`,
             root: cwd,
-            validate: (v) => {
-                // Allow empty to signal "done"
-                if (!v) return undefined;
-                if (!existsSync(v)) return `Path not found: ${v}`;
-                return undefined;
-            },
-            directory: false, // Set to true to only show directories
+            directory: true, // contrary to docs: true = files + dirs, false = files only
         });
 
-        if (isCancel(selectedAbs)) {
-            cancel("Cancelled.");
-            process.exit(0);
-        }
+        if (isCancel(selectedAbs)) break; // Escape = done
 
         const absPath = (selectedAbs as string).trim();
         if (!absPath) break;
