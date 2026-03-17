@@ -277,3 +277,10 @@ in_progress:
         - >-
           Space/Enter keyboard instructions shown before the path picker in both "only" and "except" modes; removed
           the prior tip messages that referenced UI elements not yet visible.
+    - rc_version: 0.6.0-rc-4
+      date: "2026-03-17"
+      fixed:
+        - >-
+          Selective scope deeper-path step replaced clack's path prompt (which showed only files and broke on absolute
+          paths) with a custom select-based directory browser that shows both files and directories, supports navigating
+          up, and lets the user select a directory or file before returning the relative path.
