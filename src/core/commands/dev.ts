@@ -8,7 +8,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, relative } from "node:path";
-import { cancel, groupMultiselect, isCancel, log, multiselect, note, outro, path as pathPrompt, select } from "@clack/prompts";
+import { cancel, groupMultiselect, isCancel, log, multiselect, note, outro, path, select } from "@clack/prompts";
 
 // biome-ignore lint/style/noNonNullAssertion: guarded immediately below; non-null assertion needed for closure type inference
 const workspaceDir = process.env.TOTOPO_REPO_ROOT!;
@@ -128,7 +128,7 @@ async function promptDeeperPaths(style: "only" | "except"): Promise<string[]> {
     const accumulated: string[] = [];
 
     while (true) {
-        const selectedAbs = await pathPrompt({
+        const selectedAbs = await path({
             message: `Add a nested path to ${verb} — browse or type, blank Enter to finish:`,
             root: cwd,
             validate: (v) => {
@@ -137,6 +137,7 @@ async function promptDeeperPaths(style: "only" | "except"): Promise<string[]> {
                 if (!existsSync(v)) return `Path not found: ${v}`;
                 return undefined;
             },
+            directory: false, // Set to true to only show directories
         });
 
         if (isCancel(selectedAbs)) {

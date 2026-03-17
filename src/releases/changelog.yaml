@@ -261,3 +261,8 @@ in_progress:
           instead of free-style text input — as the user types, matching files and directories under the current
           working directory are shown; blank Enter exits the loop. Fixes the previous attempt by converting the
           absolute path returned by path() to a relative path via relative(cwd, result).
+    - rc_version: 0.6.1-rc-2
+      date: "2026-03-17"
+      fixed:
+        - >-
+          path() prompt now correctly passes directory: false to show both files and directories in suggestions.
