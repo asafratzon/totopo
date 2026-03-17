@@ -304,3 +304,11 @@ in_progress:
           Selective scope deeper-path prompt now shows a concrete example derived from the actual current directory
           (e.g. the real first subdirectory and one of its children) instead of the generic "src/ or src/api"
           placeholder, and the hint explicitly states that a path relative to the current directory is expected.
+    - rc_version: 0.6.0-rc-8
+      date: "2026-03-17"
+      changed:
+        - >-
+          Selective scope readability improvements — groupMultiselect hint lines now mention the deeper-path step and
+          how to skip directly to it; the deeper-path prompt clarifies paths are added one at a time with blank Enter
+          to finish; the final mounted-paths summary is rendered as a titled note box with one path per line instead
+          of a single joined line.
