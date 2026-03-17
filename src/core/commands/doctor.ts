@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =========================================================================================================================================
-// scripts/doctor.ts — Host readiness check for totopo
+// src/core/commands/doctor.ts — Host readiness check for totopo
 // Runs silently on success; exits non-zero on failure.
 // Pass --verbose for a full report.
 // =========================================================================================================================================
@@ -12,7 +12,7 @@ import { log, outro } from "@clack/prompts";
 const verbose = process.argv.includes("--verbose");
 const repoRoot = process.env.TOTOPO_REPO_ROOT;
 if (!repoRoot) {
-    log.error("TOTOPO_REPO_ROOT not set — run via ai.sh");
+    log.error("TOTOPO_REPO_ROOT not set — run via npx totopo");
     process.exit(1);
 }
 

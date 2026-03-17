@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // =============================================================================
-// src/core/sync-dockerfile.ts — silent pre-flight: re-detect host runtimes and
+// src/core/commands/sync-dockerfile.ts — silent pre-flight: re-detect host runtimes and
 // regenerate .totopo/Dockerfile if stale (host-mirror mode only).
-// Called by ai.sh on every invocation, after onboarding.
+// Invoked by bin/totopo.js on every invocation, after onboarding.
 // =============================================================================
 
 import { createHash } from "node:crypto";

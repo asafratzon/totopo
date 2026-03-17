@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // =========================================================================================================================================
-// scripts/onboard.ts — First-time setup for a project using totopo
-// Called by ai.sh when no .totopo/ config is found in the project.
+// src/core/commands/onboard.ts — First-time setup for a project using totopo
+// Invoked by bin/totopo.js when no .totopo/ config is found in the project.
 // =========================================================================================================================================
 
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -16,7 +16,7 @@ const packageDir = process.env.TOTOPO_PACKAGE_DIR;
 const repoRoot = process.env.TOTOPO_REPO_ROOT;
 
 if (!packageDir || !repoRoot) {
-    log.error("TOTOPO_PACKAGE_DIR / TOTOPO_REPO_ROOT not set — run via ai.sh");
+    log.error("TOTOPO_PACKAGE_DIR / TOTOPO_REPO_ROOT not set — run via npx totopo");
     process.exit(1);
 }
 

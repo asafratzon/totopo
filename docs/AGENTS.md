@@ -47,8 +47,9 @@ Never declare a checkpoint if the codebase is broken or half-migrated.
 
 | Layer              | Tool                          |
 | ------------------ | ----------------------------- |
-| Entry point        | `ai.sh` (bash — keep minimal) |
-| Core scripts       | `src/core/*.ts` via tsx       |
+| Entry point        | `bin/totopo.js` (Node.js ESM) |
+| Commands           | `src/core/commands/*.ts` via tsx |
+| Shared lib         | `src/core/lib/*.ts` via tsx   |
 | Release tooling    | `src/releases/*.ts` via tsx   |
 | Terminal UI        | `@clack/prompts`              |
 | Container          | Docker                        |
@@ -58,7 +59,7 @@ Never declare a checkpoint if the codebase is broken or half-migrated.
 ## Rules
 
 - **Security is non-negotiable** — never weaken container isolation; explain security implications of any change touching isolation, git config, or permissions
-- `ai.sh` is the only bash file — all logic lives in `src/core/*.ts` (CLI) or `src/releases/*.ts` (dev tooling)
+- `bin/totopo.js` is the entry point — CLI logic lives in `src/core/commands/*.ts` and `src/core/lib/*.ts`; release tooling in `src/releases/*.ts`
 - All totopo config in `.totopo/`
 - Propose before implementing anything non-trivial
 - **Never commit without explicit user instruction** — during work, ask "ready to commit?" if it feels like a natural point; only commit when the user says so

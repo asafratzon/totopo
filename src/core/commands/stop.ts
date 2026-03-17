@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // =========================================================================================================================================
-// scripts/stop.ts — Stop and remove all totopo dev containers
-// Called by ai.sh — do not run directly.
+// src/core/commands/stop.ts — Stop and remove all totopo dev containers
+// Invoked by bin/totopo.js — do not run directly.
 // =========================================================================================================================================
 
 import { spawnSync } from "node:child_process";

@@ -40,7 +40,7 @@ const porcelainResult = spawnSync("git", ["status", "--porcelain"], { encoding: 
 const porcelainLines = porcelainResult.stdout.trim().split("\n").filter(Boolean);
 
 if (porcelainLines.length > 0) {
-    const PACKAGED = ["ai.sh", "src/core/", "templates/", "tsconfig.json", "LICENSE", "package.json"];
+    const PACKAGED = ["bin/", "src/core/", "templates/", "tsconfig.json", "LICENSE", "package.json"];
     const changedPaths = porcelainLines.map((l) => l.slice(3).trim());
     const packagedDirty = changedPaths.filter((p) => PACKAGED.some((prefix) => p === prefix || p.startsWith(prefix)));
 
