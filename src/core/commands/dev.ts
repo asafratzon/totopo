@@ -103,16 +103,23 @@ function scanCwdDepth2(): { dirs: Record<string, string[]>; files: string[] } {
     return { dirs, files };
 }
 
-function normalizeSelection(selected: string[], dirNames: string[]): string[] {
-    const withoutGroupKey = selected.filter((s) => s !== "Files");
-    const dirSet = new Set(dirNames);
+function normalizeSelection(selected: string[], dirs: Record<string, string[]>): string[] {
+    const selectedSet = new Set(selected);
+    const result: string[] = [];
 
-    return withoutGroupKey.filter((s) => {
-        const slashIdx = s.indexOf("/");
-        if (slashIdx === -1) return true; // depth-1 item, always keep
-        const parent = s.slice(0, slashIdx);
-        return !(dirSet.has(parent) && withoutGroupKey.includes(parent));
-    });
+    for (const [dir, children] of Object.entries(dirs)) {
+        const selectedChildren = children.filter((c) => selectedSet.has(c));
+        if (selectedChildren.length === children.length) {
+            result.push(dir); // all children selected → mount whole dir efficiently
+        } else {
+            result.push(...selectedChildren);
+        }
+    }
+
+    // Root files (no slash)
+    result.push(...selected.filter((s) => !s.includes("/")));
+
+    return result;
 }
 
 async function promptSelectivePaths(): Promise<string[]> {
@@ -139,16 +146,6 @@ async function promptSelectivePaths(): Promise<string[]> {
     const style = styleChoice as "only" | "except";
     const { dirs, files } = scanCwdDepth2();
     const dirNames = Object.keys(dirs);
-
-    if (style === "only") {
-        log.info(
-            "Tip: check a folder header to include everything inside it, or expand it to pick specific files. Use the next step for paths deeper than what's shown.",
-        );
-    } else {
-        log.info(
-            "Tip: everything is selected at the folder level — uncheck a folder header to exclude it entirely, or expand it to exclude specific files. Use the next step for deeper paths.",
-        );
-    }
 
     // ── flat fallback when there are no dirs ──────────────────────────────────
     if (dirNames.length === 0) {
@@ -179,8 +176,8 @@ async function promptSelectivePaths(): Promise<string[]> {
         groupOptions.Files = files.map((f) => ({ value: f, label: f }));
     }
 
-    // "except" → pre-select dir headers + root files (depth-1 only)
-    const initialValues = style === "except" ? [...dirNames, ...files] : [];
+    // "except" → pre-select all depth-2 children + root files
+    const initialValues = style === "except" ? [...Object.values(dirs).flat(), ...files] : [];
 
     const rawSelected = await groupMultiselect({
         message: "Choose paths:",
@@ -195,7 +192,7 @@ async function promptSelectivePaths(): Promise<string[]> {
         process.exit(0);
     }
 
-    const selected = normalizeSelection(rawSelected as string[], dirNames);
+    const selected = normalizeSelection(rawSelected as string[], dirs);
 
     // ── path prompt loop for depth-3+ targets ────────────────────────────────
     // Repeats until the user presses Enter on an empty input.
