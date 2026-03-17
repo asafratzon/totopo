@@ -272,7 +272,8 @@ in_progress:
         - >-
           Selective scope path() prompt now shows directories — the directory option was set to false which, contrary
           to the docs, filters directories out; set to true to show both files and directories.
+      changed:
         - >-
-          Selecting "done" in the deeper-path loop now uses Escape instead of blank Enter — the library hardcodes
-          a "Please select a path" error for empty input that cannot be overridden via validate; Escape (isCancel)
-          is treated as loop exit instead of a full cancellation.
+          Deeper-path loop redesigned — selecting a path now adds it directly as a single entry without a nested
+          multiselect step; loop is controlled by an explicit Yes/No confirm question ("Add a nested path by path?")
+          that repeats after each addition until the user answers No.
