@@ -280,7 +280,20 @@ in_progress:
     - rc_version: 0.6.0-rc-4
       date: "2026-03-17"
       fixed:
+        - Minor fixes.
+    - rc_version: 0.6.0-rc-5
+      date: "2026-03-17"
+      fixed:
         - >-
           Selective scope deeper-path step replaced clack's path prompt (which showed only files and broke on absolute
           paths) with a custom select-based directory browser that shows both files and directories, supports navigating
           up, and lets the user select a directory or file before returning the relative path.
+    - rc_version: 0.6.0-rc-6
+      date: "2026-03-17"
+      changed:
+        - >-
+          Selective scope deeper-path step replaced the single-item select-based directory browser with a
+          type-prefix + multiselect flow — user types a path prefix (e.g. src/ or src/api), sees a one-level-deep
+          multiselect of that directory's contents, picks items with Space, confirms with Enter; loop repeats until
+          blank Enter. groupMultiselect can now be skipped with blank Enter to go straight to this step. .totopo/
+          is filtered from the top-level picker. A summary of all selected paths is shown before the container starts.
