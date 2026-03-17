@@ -263,3 +263,17 @@ in_progress:
           Selective scope "except" mode nested exclusion — entering a nested path in the text step now correctly
           excludes it by recursively expanding its parent directory into individual children and dropping the target,
           rather than incorrectly adding it as an extra mount.
+    - rc_version: 0.6.0-rc-3
+      date: "2026-03-17"
+      fixed:
+        - >-
+          Selective scope groupMultiselect group headers were permanently stuck selected — dir names were placed in
+          initialValues which clack never removes when toggling; initialValues now uses the actual child values so
+          headers derive their checked state from children and toggle correctly with Space.
+      changed:
+        - >-
+          Selective scope "except" mode now collapses fully-selected groups back to the parent directory name for
+          efficient mounting, instead of listing individual depth-2 children.
+        - >-
+          Space/Enter keyboard instructions shown before the path picker in both "only" and "except" modes; removed
+          the prior tip messages that referenced UI elements not yet visible.
