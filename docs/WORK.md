@@ -52,15 +52,14 @@ recompute paths.
 
 ## Working Now
 
-- **Selective scope improvements** — two enhancements to `promptSelectivePaths()` in `dev.ts`:
-  - *Show hidden files/dirs* — currently all dotfiles/dotdirs are filtered out - they should all be visible always in mutliselect.
-  - *Select by path* — for selective options, add an optional text input ("add specific paths, comma-separated, e.g. src/auth, src/db/migrations") for targeting deeply nested files or dirs not reachable from the top-level picker; validate each path exists before proceeding; combines with (does not replace) the visual multiselect
+- **Selective scope UX overhaul** — replace `promptSelectivePaths()` in `dev.ts` with a richer two-step flow using components already available in `@clack/prompts` v1.1.0:
+  - *Step 1 — `groupMultiselect` (depth-2 scan)*: scan `cwd` to depth 2; top-level dirs become group headers with their direct children as selectable items (`selectableGroups: true` so entire dirs can be toggled at once); top-level files shown in a dedicated "Files" group. This replaces the current flat multiselect and removes the need for a separate text input for most cases.
+  - *Step 2 — `path` prompt (optional, for deeper targets)*: replaces the current freeform text input with an autocomplete-based `path` prompt rooted at `cwd`; shown only when the user needs to target something deeper than depth-2. "only" mode adds the path; "except" mode subtracts it (using the recursive parent-expansion logic already in place).
+  - Depth is capped at 2 for the group scan to avoid explosion on large repos.
 
 ## Upcoming
 
 Brief descriptions for planning; each is input for plan mode before we decide to work on it.
-
-- **Tree multiselect for selective scope** — replace the current two-step flow (multiselect + freeform text input) in `promptSelectivePaths()` with a single recursive/expandable tree picker, so the user can drill into nested directories inline without having to type paths from memory. `@clack/prompts` doesn't support this natively — will require either a custom readline/ANSI component or a suitable third-party library. A lighter interim option would be autocomplete/fuzzy search across all paths (e.g. type `src/` to get completions).
 
 - **Agent context injection for AGENTS.md** — extend `buildAgentContextDoc()` in `dev.ts` to also read and inject `AGENTS.md` from the repo root (alongside CLAUDE.md). The function already accepts scope context; this is a straightforward extension to include a second source file. Also expand the injected context to explicitly tell the agent: (1) whether git is available (only in repo scope — cwd/selective scopes do not mount `.git` because doing so would allow the agent to read the full commit history of files outside its mount via `git show`, defeating the security boundary); (2) instruct the agent to surface its scope and limitations to the user at the start of every session, so the user is always aware of what the agent can and cannot access.
 
