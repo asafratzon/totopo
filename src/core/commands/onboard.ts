@@ -7,10 +7,10 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { box, cancel, confirm, intro, isCancel, log, outro, select } from "@clack/prompts";
-import { detectHostRuntimes } from "./detect-host.ts";
-import { generateDockerfile } from "./generate-dockerfile.ts";
-import { selectTools } from "./select-tools.ts";
-import { type RuntimeMode, writeSettings } from "./settings.ts";
+import { type RuntimeMode, writeSettings } from "../lib/config.ts";
+import { detectHostRuntimes } from "../lib/detect-host.ts";
+import { generateDockerfile } from "../lib/generate-dockerfile.ts";
+import { selectTools } from "../lib/select-tools.ts";
 
 const packageDir = process.env.TOTOPO_PACKAGE_DIR;
 const repoRoot = process.env.TOTOPO_REPO_ROOT;

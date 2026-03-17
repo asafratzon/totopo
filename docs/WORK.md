@@ -6,21 +6,24 @@ Two distinct concerns — keep them separate:
 
 ```
 totopo PACKAGE (this repo — distributed via npx in future)
-├── ai.sh              ← entry point (run from user's project directory)
+├── bin/
+│   └── totopo.js      ← entry point (run from user's project directory)
 ├── src/
 │   ├── core/          ← user-facing CLI (included in npm package)
-│   │   ├── dev.ts
-│   │   ├── detect-host.ts     ← detect host runtime versions
-│   │   ├── doctor.ts
-│   │   ├── generate-dockerfile.ts  ← generate Dockerfile (full or host-mirror)
-│   │   ├── menu.ts
-│   │   ├── onboard.ts
-│   │   ├── reset.ts
-│   │   ├── select-tools.ts    ← multiselect UI for runtime tool selection
-│   │   ├── settings-menu.ts   ← settings menu (mode switch + tool selection)
-│   │   ├── settings.ts        ← read/write .totopo/settings.json
-│   │   ├── stop.ts
-│   │   └── sync-dockerfile.ts ← silent pre-flight: regenerate Dockerfile if stale
+│   │   ├── commands/  ← entry points invoked by bin/totopo.js
+│   │   │   ├── dev.ts
+│   │   │   ├── doctor.ts
+│   │   │   ├── menu.ts
+│   │   │   ├── onboard.ts
+│   │   │   ├── reset.ts
+│   │   │   ├── settings.ts    ← settings menu (mode switch + tool selection)
+│   │   │   ├── stop.ts
+│   │   │   └── sync-dockerfile.ts ← silent pre-flight: regenerate Dockerfile if stale
+│   │   └── lib/       ← shared utilities imported by commands
+│   │       ├── config.ts          ← read/write .totopo/settings.json
+│   │       ├── detect-host.ts     ← detect host runtime versions
+│   │       ├── generate-dockerfile.ts  ← generate Dockerfile (full or host-mirror)
+│   │       └── select-tools.ts    ← multiselect UI for runtime tool selection
 │   └── releases/      ← developer release tooling (NOT in npm package)
 │       ├── rc.ts
 │       ├── release.ts
@@ -41,8 +44,9 @@ USER'S PROJECT (any git repo where totopo is used)
     └── settings.json  (runtimeMode + selectedTools; committed with project)
 ```
 
-`ai.sh` sets `TOTOPO_PACKAGE_DIR` (where ai.sh lives) and `TOTOPO_REPO_ROOT`
-(git root of `$PWD`) and exports them so scripts don't recompute paths.
+`bin/totopo.js` sets `TOTOPO_PACKAGE_DIR` (where the package is installed) and
+`TOTOPO_REPO_ROOT` (git root of `$PWD`) and exports them so commands don't
+recompute paths.
 
 ---
 
@@ -73,3 +77,5 @@ Brief descriptions for planning; each is input for plan mode before we decide to
 - **Autostart agent** - improved experience upon connecting to the dev container so user could during onboarding decide if he want to auto start specific agent (claude/opencode/kilo etc.).
 
 - **README illustrations** — add visuals to README.md using Google's Banana Pro AI.
+
+- **Compiled JS entry point (Option C)** — replace `bin/totopo.js` (which shells out to `tsx` at runtime) with a compiled TypeScript pipeline: add a `build` script (`tsc` compiles `src/core/` → `dist/`), point `bin` at `dist/bin/totopo.js`, move `tsx` to devDependencies, and update the release workflow to build before publish. Each command becomes an exported `async function` rather than a standalone script. Gains: ~200–400 ms faster startup, no runtime `tsx` dependency, fully cross-platform. Cost: refactor all commands from top-level-await scripts into importable modules; add build step to CI/release flow.
