@@ -66,7 +66,7 @@ Brief descriptions for planning; each is input for plan mode before we decide to
 
 - **Docs** — polish README for npm page (install, quickstart, security model); contribution guide
 
-- **Troubleshoot/help menu option** — add a troubleshoot entry to the main menu (scope TBD)
+- **Troubleshoot/help menu option** — refer to pacakge docs in repo root, and invite to open issues if encountered.
 
 - **Tech choices review** — audit tech decisions across the package, dev container, and repo; output a DECISIONS.md explaining rationale for each major choice
 
