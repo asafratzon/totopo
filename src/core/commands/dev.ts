@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // =========================================================================================================================================
-// scripts/dev.ts — Start the dev container and connect via docker exec
-// Called by ai.sh — do not run directly.
+// src/core/commands/dev.ts — Start the dev container and connect via docker exec
+// Invoked by bin/totopo.js — do not run directly.
 // =========================================================================================================================================
 
 import { spawnSync } from "node:child_process";
@@ -13,7 +13,7 @@ import { cancel, isCancel, log, multiselect, outro, select } from "@clack/prompt
 // biome-ignore lint/style/noNonNullAssertion: guarded immediately below; non-null assertion needed for closure type inference
 const workspaceDir = process.env.TOTOPO_REPO_ROOT!;
 if (!workspaceDir) {
-    log.error("TOTOPO_REPO_ROOT not set — run via ai.sh");
+    log.error("TOTOPO_REPO_ROOT not set — run via npx totopo");
     process.exit(1);
 }
 

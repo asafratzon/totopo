@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // =========================================================================================================================================
-// scripts/menu.ts — totopo interactive menu (powered by @clack/prompts)
-// Called by ai.sh — outputs selected action to stderr.
+// src/core/commands/menu.ts — totopo interactive menu (powered by @clack/prompts)
+// Invoked by bin/totopo.js — outputs selected action to stderr.
 // =========================================================================================================================================
 
 import { box, cancel, isCancel, select } from "@clack/prompts";

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // =========================================================================================================================================
-// scripts/reset.ts — Full reset: delete all totopo containers and Docker images
-// Called by ai.sh — do not run directly.
+// src/core/commands/reset.ts — Full reset: delete all totopo containers and Docker images
+// Invoked by bin/totopo.js — do not run directly.
 // Run 'npx totopo' → Start session after this to get a fresh build.
 // =========================================================================================================================================
 

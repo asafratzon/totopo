@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // =============================================================================
-// src/core/settings-menu.ts — Settings menu: switch runtime mode + tool selection
-// Called by ai.sh when action === "settings".
+// src/core/commands/settings.ts — Settings menu: switch runtime mode + tool selection
+// Invoked by bin/totopo.js when action === "settings".
 // =============================================================================
 
 import { cpSync, writeFileSync } from "node:fs";
@@ -16,7 +16,7 @@ const packageDir = process.env.TOTOPO_PACKAGE_DIR;
 const repoRoot = process.env.TOTOPO_REPO_ROOT;
 
 if (!packageDir || !repoRoot) {
-    log.error("TOTOPO_PACKAGE_DIR / TOTOPO_REPO_ROOT not set — run via ai.sh");
+    log.error("TOTOPO_PACKAGE_DIR / TOTOPO_REPO_ROOT not set — run via npx totopo");
     process.exit(1);
 }
 
