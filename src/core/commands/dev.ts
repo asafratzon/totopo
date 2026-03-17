@@ -147,6 +147,12 @@ async function promptSelectivePaths(): Promise<string[]> {
     const { dirs, files } = scanCwdDepth2();
     const dirNames = Object.keys(dirs);
 
+    if (style === "only") {
+        log.info("Use Space to select items to include, Enter to confirm.");
+    } else {
+        log.info("All items are pre-selected. Use Space to deselect items you want to exclude, Enter to confirm.");
+    }
+
     // ── flat fallback when there are no dirs ──────────────────────────────────
     if (dirNames.length === 0) {
         const flatSelected = await multiselect({
