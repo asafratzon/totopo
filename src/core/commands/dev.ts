@@ -8,7 +8,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import { cancel, isCancel, log, multiselect, outro, select } from "@clack/prompts";
+import { cancel, isCancel, log, multiselect, outro, select, text } from "@clack/prompts";
 
 // biome-ignore lint/style/noNonNullAssertion: guarded immediately below; non-null assertion needed for closure type inference
 const workspaceDir = process.env.TOTOPO_REPO_ROOT!;
@@ -67,10 +67,10 @@ async function promptScope(): Promise<ScopeConfig> {
 
 // ─── Prompt: selective path selection ─────────────────────────────────────────
 async function promptSelectivePaths(): Promise<string[]> {
-    const allItems = readdirSync(cwd).filter((f) => !f.startsWith("."));
+    const allItems = readdirSync(cwd);
 
     if (allItems.length === 0) {
-        log.warn("No visible files/folders in current directory — falling back to cwd mode.");
+        log.warn("No files/folders in current directory — falling back to cwd mode.");
         return [];
     }
 
@@ -90,6 +90,12 @@ async function promptSelectivePaths(): Promise<string[]> {
     const style = styleChoice as "only" | "except";
     const initialValues = style === "except" ? allItems : [];
 
+    if (style === "only") {
+        log.info("Tip: to include a nested path (e.g. src/auth), leave its parent unselected — you can add it by path in the next step.");
+    } else {
+        log.info("Tip: to exclude a nested path (e.g. src/auth), leave its parent selected — you can target it by path in the next step.");
+    }
+
     const selected = await multiselect({
         message: "Choose paths:",
         options: allItems.map((item) => ({ value: item, label: item })),
@@ -102,7 +108,29 @@ async function promptSelectivePaths(): Promise<string[]> {
         process.exit(0);
     }
 
-    return selected as string[];
+    const pathInput = await text({
+        message: "Add specific paths (optional, comma-separated, e.g. src/auth, src/db/migrations):",
+        placeholder: "Leave blank to skip",
+    });
+
+    if (isCancel(pathInput)) {
+        cancel("Cancelled.");
+        process.exit(0);
+    }
+
+    const extraPaths = (pathInput as string)
+        .split(",")
+        .map((p) => p.trim())
+        .filter(Boolean);
+
+    const invalid = extraPaths.filter((p) => !existsSync(join(cwd, p)));
+    if (invalid.length > 0) {
+        log.error(`Path(s) not found: ${invalid.join(", ")}`);
+        process.exit(1);
+    }
+
+    const merged = [...new Set([...(selected as string[]), ...extraPaths])];
+    return merged;
 }
 
 // ─── Totopo mount path inside container ──────────────────────────────────────
