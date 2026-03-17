@@ -252,4 +252,12 @@ releases:
       - Status box with project name and API key indicator in menu UI
 in_progress:
   base_version: 0.6.1
-  entries: []
+  entries:
+    - rc_version: 0.6.1-rc-1
+      date: "2026-03-17"
+      changed:
+        - >-
+          Selective scope deeper-path step now uses @clack/prompts path() for autocomplete-based path selection
+          instead of free-style text input — as the user types, matching files and directories under the current
+          working directory are shown; blank Enter exits the loop. Fixes the previous attempt by converting the
+          absolute path returned by path() to a relative path via relative(cwd, result).
