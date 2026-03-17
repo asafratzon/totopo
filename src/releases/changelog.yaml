@@ -199,9 +199,9 @@ releases:
       - Port cleanup on stop/reset
       - Status box with project name and API key indicator in menu UI
 in_progress:
-  base_version: 0.5.1
+  base_version: 0.6.0
   entries:
-    - rc_version: 0.5.1-rc-1
+    - rc_version: 0.6.0-rc-1
       date: "2026-03-17"
       added:
         - >-
