@@ -1,3 +1,17 @@
+# releases format:
+#
+#   releases:                       # array — newest first; managed by pnpm rc:promote (do not edit by hand)
+#     - version: "x.y.z"
+#       date: "YYYY-MM-DD"
+#       added:                      # new features   (optional — only include categories with entries)
+#         - "Description"
+#       changed:                    # behaviour changes
+#         - "Description"
+#       fixed:                      # bug fixes
+#         - "Description"
+#       security:                   # security fixes
+#         - "Description"
+
 releases:
   - version: 0.4.0
     date: "2026-03-17"
