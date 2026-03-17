@@ -7,6 +7,29 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.5.0] — 2026-03-17
+
+### Added
+
+- Workspace scoping — on every session start the user chooses how much of the project to expose: full repo root (previous default), current directory only, or a selective set of files/folders from the current directory. Selective mode offers an "only the following" or "all except for" style picker followed by a multiselect of non-dotfiles in the current directory.
+- Agent context injection — on every new container start, a ~/.claude/CLAUDE.md is written inside the container describing the active scope (which paths are mounted, what operations require the host) plus the full content of the project's CLAUDE.md. The agent always knows it is running inside a totopo dev container.
+- Scope mismatch detection — when reconnecting to a stopped or running container whose workspace was scoped to a different directory, totopo warns and offers to recreate the container with a fresh scope or continue with the existing one.
+- Scope labels and env vars — the active scope is stored as Docker labels (totopo.scope, totopo.scope.cwd, totopo.scope.paths) for mismatch detection and exposed inside the container as TOTOPO_SCOPE, TOTOPO_HOST_CWD, and TOTOPO_SELECTIVE_PATHS.
+
+### Changed
+
+- Scope selection now always appears on Start session — previously skipped when a compatible container already existed; selecting the same scope connects or resumes directly, selecting a different scope recreates silently without a confirmation prompt
+- src/core/ restructured into commands/ (entry points invoked by the CLI) and lib/ (shared utilities); settings-menu.ts renamed to commands/settings.ts, settings.ts renamed to lib/config.ts
+- ai.sh replaced by bin/totopo.js — the entry point is now a plain Node.js ESM script; tsx is no longer needed to bootstrap the CLI, only to run the TypeScript command files
+- package.json bin updated to ./bin/totopo.js; pnpm start added as a local dev alias
+
+### Fixed
+
+- CWD scope created an empty .totopo/ directory inside the selected directory — Docker was creating the nested mount point on the host because /workspace itself is a bind mount of cwd; .totopo is now mounted at /home/devuser/.totopo inside the container for cwd and selective scopes, keeping the host directory clean
+- Starting a session from a nested directory did not prompt for scope when an existing repo-scoped container was present — repo mode no longer suppresses the scope prompt on reconnect
+
+---
+
 ## [0.4.0] — 2026-03-17
 
 ### Changed
