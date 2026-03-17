@@ -52,23 +52,18 @@ recompute paths.
 
 ## Working Now
 
-- **Selective scope UX overhaul** — replace `promptSelectivePaths()` in `dev.ts` with a richer two-step flow using components already available in `@clack/prompts` v1.1.0:
-  - *Step 1 — `groupMultiselect` (depth-2 scan)*: scan `cwd` to depth 2; top-level dirs become group headers with their direct children as selectable items (`selectableGroups: true` so entire dirs can be toggled at once); top-level files shown in a dedicated "Files" group. This replaces the current flat multiselect and removes the need for a separate text input for most cases.
-  - *Step 2 — `path` prompt (optional, for deeper targets)*: replaces the current freeform text input with an autocomplete-based `path` prompt rooted at `cwd`; shown only when the user needs to target something deeper than depth-2. "only" mode adds the path; "except" mode subtracts it (using the recursive parent-expansion logic already in place).
-  - Depth is capped at 2 for the group scan to avoid explosion on large repos.
-
-## Upcoming
-
-Brief descriptions for planning; each is input for plan mode before we decide to work on it.
-
-- **Agent context injection for AGENTS.md** — extend `buildAgentContextDoc()` in `dev.ts` to also read and inject `AGENTS.md` from the repo root (alongside CLAUDE.md). The function already accepts scope context; this is a straightforward extension to include a second source file. Also expand the injected context to explicitly tell the agent: (1) whether git is available (only in repo scope — cwd/selective scopes do not mount `.git` because doing so would allow the agent to read the full commit history of files outside its mount via `git show`, defeating the security boundary); (2) instruct the agent to surface its scope and limitations to the user at the start of every session, so the user is always aware of what the agent can and cannot access.
-
 - **Stop / Remove overhaul** — rework the stop and removal experience as two distinct menu entries:
   - **Stop** — only shown in the main menu when at least one `totopo-managed-*` container is running; if multiple are running, show a multiselect so the user can pick which to stop (single running container skips the picker and shows confirmation prompt so user know which is being stopped).
   - **Remove** — always visible in the main menu; leads to a submenu with two options:
     - *Remove container images* — multiselect of all `totopo-managed-*` images on the host, each labelled with its workspace name in parentheses; stops any running containers for selected images before removing.
     - *Uninstall totopo from this project* — confirms with the user, then: stops all containers belonging to this project, removes their images (label-based, project-scoped only), and deletes `.totopo/` from the repo root. Does not touch other projects.
   - The existing Reset option (wipe all workspaces + images) should be removed.
+
+## Upcoming
+
+Brief descriptions for planning; each is input for plan mode before we decide to work on it.
+
+- **Agent context injection for AGENTS.md** — extend `buildAgentContextDoc()` in `dev.ts` to also read and inject `AGENTS.md` from the repo root (alongside CLAUDE.md). The function already accepts scope context; this is a straightforward extension to include a second source file. Also expand the injected context to explicitly tell the agent: (1) whether git is available (only in repo scope — cwd/selective scopes do not mount `.git` because doing so would allow the agent to read the full commit history of files outside its mount via `git show`, defeating the security boundary); (2) instruct the agent to surface its scope and limitations to the user at the start of every session, so the user is always aware of what the agent can and cannot access.
 
 - **Settings submenu** — view/edit API keys, check for updates
 
