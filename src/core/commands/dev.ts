@@ -105,14 +105,26 @@ async function promptSelectivePaths(): Promise<string[]> {
     return selected as string[];
 }
 
+// ─── Totopo mount path inside container ──────────────────────────────────────
+// For repo scope (or cwd at repo root), .totopo is naturally inside /workspace.
+// For cwd/selective with a nested dir, we mount it outside /workspace to avoid
+// Docker creating an empty .totopo directory on the host as a mount point.
+function getTotopoMountPath(scope: ScopeConfig): string {
+    if (scope.mode === "repo") return "/workspace/.totopo";
+    if (scope.mode === "cwd" && scope.hostCwd === workspaceDir) return "/workspace/.totopo";
+    return "/home/devuser/.totopo";
+}
+
 // ─── Build mount args ─────────────────────────────────────────────────────────
 function buildMountArgs(scope: ScopeConfig): string[] {
+    const totopoMount = getTotopoMountPath(scope);
+
     if (scope.mode === "repo") {
         return ["-v", `${workspaceDir}:/workspace`];
     }
 
     if (scope.mode === "cwd") {
-        return ["-v", `${cwd}:/workspace`, ...(cwd !== workspaceDir ? ["-v", `${totopoDir}:/workspace/.totopo:ro`] : [])];
+        return ["-v", `${cwd}:/workspace`, ...(cwd !== workspaceDir ? ["-v", `${totopoDir}:${totopoMount}:ro`] : [])];
     }
 
     // selective: validate all paths exist first
@@ -124,7 +136,7 @@ function buildMountArgs(scope: ScopeConfig): string[] {
         }
     }
 
-    return [...scope.selectedPaths.flatMap((p) => ["-v", `${join(cwd, p)}:/workspace/${p}`]), "-v", `${totopoDir}:/workspace/.totopo:ro`];
+    return [...scope.selectedPaths.flatMap((p) => ["-v", `${join(cwd, p)}:/workspace/${p}`]), "-v", `${totopoDir}:${totopoMount}:ro`];
 }
 
 // ─── Build scope env args ─────────────────────────────────────────────────────
@@ -245,9 +257,9 @@ function injectAgentContext(name: string, content: string): void {
 }
 
 // ─── Run post-start ───────────────────────────────────────────────────────────
-function runPostStart(name: string): void {
+function runPostStart(name: string, totopoMountPath: string): void {
     log.step("Running post-start checks...");
-    const postStart = spawnSync("docker", ["exec", name, "node", "/workspace/.totopo/post-start.mjs"], {
+    const postStart = spawnSync("docker", ["exec", name, "node", `${totopoMountPath}/post-start.mjs`], {
         stdio: "inherit",
     });
     if (postStart.status !== 0) {
@@ -312,14 +324,16 @@ if (containerStatus === null) {
         process.exit(build.status ?? 1);
     }
 
+    const totopoMountPath = getTotopoMountPath(scope);
     log.step("Starting dev container...");
     runContainer(scope);
     log.step("Injecting agent context...");
     injectAgentContext(containerName, buildAgentContextDoc(scope));
-    runPostStart(containerName);
+    runPostStart(containerName, totopoMountPath);
 } else if (containerStatus === "exited") {
     // ─── Container stopped — resume or recreate based on scope ────────────────
     const existingScope = readContainerScopeLabel(containerName);
+    const totopoMountPath = getTotopoMountPath(scope);
 
     if (scopesMatch(scope, existingScope)) {
         log.step("Resuming dev container...");
@@ -330,14 +344,14 @@ if (containerStatus === null) {
         }
         log.step("Injecting agent context...");
         injectAgentContext(containerName, buildAgentContextDoc(scope));
-        runPostStart(containerName);
+        runPostStart(containerName, totopoMountPath);
     } else {
         log.step("Recreating dev container with new scope...");
         removeContainer(containerName);
         runContainer(scope);
         log.step("Injecting agent context...");
         injectAgentContext(containerName, buildAgentContextDoc(scope));
-        runPostStart(containerName);
+        runPostStart(containerName, totopoMountPath);
     }
 } else {
     // ─── Container running — connect directly or recreate based on scope ──────
@@ -346,12 +360,13 @@ if (containerStatus === null) {
     if (scopesMatch(scope, existingScope)) {
         // same scope — connect directly
     } else {
+        const totopoMountPath = getTotopoMountPath(scope);
         log.step("Recreating dev container with new scope...");
         removeContainer(containerName);
         runContainer(scope);
         log.step("Injecting agent context...");
         injectAgentContext(containerName, buildAgentContextDoc(scope));
-        runPostStart(containerName);
+        runPostStart(containerName, totopoMountPath);
     }
 }
 

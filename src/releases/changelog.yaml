@@ -194,6 +194,13 @@ releases:
 in_progress:
   base_version: "0.5.0"
   entries:
+    - rc_version: "0.5.0-rc-4"
+      date: "2026-03-17"
+      fixed:
+        - >-
+          CWD scope created an empty .totopo/ directory inside the selected directory — Docker was creating the nested
+          mount point on the host because /workspace itself is a bind mount of cwd; .totopo is now mounted at
+          /home/devuser/.totopo inside the container for cwd and selective scopes, keeping the host directory clean
     - rc_version: "0.5.0-rc-3"
       date: "2026-03-17"
       changed:
