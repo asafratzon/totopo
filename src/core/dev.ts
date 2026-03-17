@@ -52,6 +52,8 @@ if (containerStatus === null) {
             "--security-opt",
             "no-new-privileges:true",
             imageName,
+            "sleep",
+            "infinity",
         ],
         { stdio: "inherit" },
     );
