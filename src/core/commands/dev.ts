@@ -7,8 +7,8 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
-import { cancel, groupMultiselect, isCancel, log, multiselect, note, outro, select, text } from "@clack/prompts";
+import { basename, join, relative } from "node:path";
+import { cancel, groupMultiselect, isCancel, log, multiselect, note, outro, path as pathPrompt, select } from "@clack/prompts";
 
 // biome-ignore lint/style/noNonNullAssertion: guarded immediately below; non-null assertion needed for closure type inference
 const workspaceDir = process.env.TOTOPO_REPO_ROOT!;
@@ -127,40 +127,33 @@ async function promptDeeperPaths(style: "only" | "except"): Promise<string[]> {
     const verb = style === "only" ? "include" : "exclude";
     const accumulated: string[] = [];
 
-    // Build a concrete example from actual cwd contents
-    const exampleDir = readdirSync(cwd).find((e) => {
-        try {
-            return statSync(join(cwd, e)).isDirectory() && join(cwd, e) !== totopoDir;
-        } catch {
-            return false;
-        }
-    });
-    const exampleSub = exampleDir ? readdirSync(join(cwd, exampleDir))[0] : undefined;
-    const example = exampleDir ? (exampleSub ? `${exampleDir}/ or ${exampleDir}/${exampleSub}` : `${exampleDir}/`) : "some-dir/";
-
     while (true) {
-        const prefixRaw = await text({
-            message: `Add a nested path to ${verb} (one at a time, blank Enter to finish) — relative to current dir, e.g. ${example}:`,
-            placeholder: "leave blank to finish",
+        const selectedAbs = await pathPrompt({
+            message: `Add a nested path to ${verb} — browse or type, blank Enter to finish:`,
+            root: cwd,
+            validate: (v) => {
+                // Allow empty to signal "done"
+                if (!v) return undefined;
+                if (!existsSync(v)) return `Path not found: ${v}`;
+                return undefined;
+            },
         });
 
-        if (isCancel(prefixRaw)) {
+        if (isCancel(selectedAbs)) {
             cancel("Cancelled.");
             process.exit(0);
         }
 
-        const prefix = (prefixRaw as string).trim().replace(/\/+$/, "");
-        if (!prefix) break;
+        const absPath = (selectedAbs as string).trim();
+        if (!absPath) break;
 
-        const targetDir = join(cwd, prefix);
+        const prefix = relative(cwd, absPath);
+        if (!prefix) break; // selected cwd root itself — treat as done
 
-        if (!existsSync(targetDir)) {
-            log.warn(`Path not found: ${prefix}`);
-            continue;
-        }
+        const targetDir = absPath;
 
         if (!statSync(targetDir).isDirectory()) {
-            // typed a direct file path
+            // selected a direct file
             accumulated.push(prefix);
             log.success(`Added: ${prefix}`);
             continue;
