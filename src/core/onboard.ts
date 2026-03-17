@@ -107,7 +107,7 @@ const gitignoreContent = existsSync(gitignorePath) ? readFileSync(gitignorePath,
 if (commitScope === "local") {
     const entry = ".totopo/";
     const addition = "\n# totopo — config is local-only for this project\n.totopo/\n";
-    if (gitignoreContent !== null && gitignoreContent.includes(entry)) {
+    if (gitignoreContent?.includes(entry)) {
         log.info(".totopo/ already in .gitignore");
     } else {
         const newContent = gitignoreContent !== null ? gitignoreContent + addition : addition;
@@ -117,7 +117,7 @@ if (commitScope === "local") {
 } else {
     const entry = ".totopo/.env";
     const addition = "\n# totopo — API keys must never be committed\n.totopo/.env\n";
-    if (gitignoreContent !== null && gitignoreContent.includes(entry)) {
+    if (gitignoreContent?.includes(entry)) {
         log.info(".totopo/.env already in .gitignore");
     } else {
         const newContent = gitignoreContent !== null ? gitignoreContent + addition : addition;
