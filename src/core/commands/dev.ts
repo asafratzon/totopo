@@ -8,7 +8,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, relative } from "node:path";
-import { cancel, groupMultiselect, isCancel, log, multiselect, note, outro, path, select } from "@clack/prompts";
+import { cancel, confirm, groupMultiselect, isCancel, log, multiselect, note, outro, path, select } from "@clack/prompts";
 
 // biome-ignore lint/style/noNonNullAssertion: guarded immediately below; non-null assertion needed for closure type inference
 const workspaceDir = process.env.TOTOPO_REPO_ROOT!;
@@ -128,56 +128,31 @@ async function promptDeeperPaths(style: "only" | "except"): Promise<string[]> {
     const accumulated: string[] = [];
 
     while (true) {
-        const selectedAbs = await path({
-            message: `Add a nested path to ${verb} — type to search, Escape to finish:`,
-            root: cwd,
-            directory: true, // contrary to docs: true = files + dirs, false = files only
+        const addAnother = await confirm({
+            message: accumulated.length === 0 ? `Add a nested path to ${verb} by path?` : `Add another nested path to ${verb}?`,
+            initialValue: false,
         });
 
-        if (isCancel(selectedAbs)) break; // Escape = done
-
-        const absPath = (selectedAbs as string).trim();
-        if (!absPath) break;
-
-        const prefix = relative(cwd, absPath);
-        if (!prefix) break; // selected cwd root itself — treat as done
-
-        const targetDir = absPath;
-
-        if (!statSync(targetDir).isDirectory()) {
-            // selected a direct file
-            accumulated.push(prefix);
-            log.success(`Added: ${prefix}`);
-            continue;
-        }
-
-        const entries = readdirSync(targetDir).map((entry) => {
-            const isDir = statSync(join(targetDir, entry)).isDirectory();
-            return { value: `${prefix}/${entry}`, label: isDir ? `${entry}/` : entry };
-        });
-
-        if (entries.length === 0) {
-            accumulated.push(prefix);
-            log.success(`Added: ${prefix}`);
-            continue;
-        }
-
-        const picked = await multiselect({
-            message: `Select from ${prefix}/`,
-            options: entries,
-            required: false,
-        });
-
-        if (isCancel(picked)) {
+        if (isCancel(addAnother)) {
             cancel("Cancelled.");
             process.exit(0);
         }
 
-        const paths = picked as string[];
-        if (paths.length > 0) {
-            accumulated.push(...paths);
-            log.success(`Added: ${paths.join(", ")}`);
-        }
+        if (!addAnother) break;
+
+        const selectedAbs = await path({
+            message: `Select a path to ${verb}:`,
+            root: cwd,
+            directory: true, // contrary to docs: true = files + dirs, false = files only
+        });
+
+        if (isCancel(selectedAbs)) break;
+
+        const prefix = relative(cwd, (selectedAbs as string).trim());
+        if (!prefix) continue; // selected cwd root — skip
+
+        accumulated.push(prefix);
+        log.success(`Added: ${prefix}`);
     }
 
     return accumulated;
