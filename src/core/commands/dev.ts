@@ -8,7 +8,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import { cancel, groupMultiselect, isCancel, log, multiselect, outro, select } from "@clack/prompts";
+import { cancel, groupMultiselect, isCancel, log, multiselect, outro, select, text } from "@clack/prompts";
 
 // biome-ignore lint/style/noNonNullAssertion: guarded immediately below; non-null assertion needed for closure type inference
 const workspaceDir = process.env.TOTOPO_REPO_ROOT!;
@@ -88,6 +88,7 @@ function scanCwdDepth2(): { dirs: Record<string, string[]>; files: string[] } {
 
     for (const item of readdirSync(cwd)) {
         const itemPath = join(cwd, item);
+        if (itemPath === totopoDir) continue;
         if (statSync(itemPath).isDirectory()) {
             const children = readdirSync(itemPath).map((child) => `${item}/${child}`);
             if (children.length === 0) {
@@ -122,46 +123,68 @@ function normalizeSelection(selected: string[], dirs: Record<string, string[]>):
     return result;
 }
 
-// Navigates the filesystem from cwd via select prompts. Returns a relative path, or null if the user is done.
-async function browseForPath(baseMsg: string): Promise<string | null> {
-    let currentDir = cwd;
+async function promptDeeperPaths(style: "only" | "except"): Promise<string[]> {
+    const verb = style === "only" ? "include" : "exclude";
+    const accumulated: string[] = [];
 
     while (true) {
-        const rel = currentDir === cwd ? null : currentDir.slice(cwd.length + 1);
-        const location = rel ?? ".";
+        const prefixRaw = await text({
+            message: `Add a nested path to ${verb} — type a prefix (e.g. src/ or src/api), or leave blank to finish:`,
+            placeholder: "leave blank to finish",
+        });
 
-        const entries = readdirSync(currentDir);
-        const options: { value: string; label: string; hint?: string }[] = [{ value: "__done__", label: "Done — no deeper path" }];
-        if (currentDir !== cwd) {
-            options.push({ value: "__up__", label: "← Go up" });
-            options.push({ value: "__select__", label: `✓ Select this directory  (${rel})` });
-        }
-        for (const entry of entries) {
-            const isDir = statSync(join(currentDir, entry)).isDirectory();
-            options.push({ value: entry, label: isDir ? `${entry}/` : entry });
-        }
-
-        const choice = await select({ message: `${baseMsg}  [${location}]`, options });
-
-        if (isCancel(choice)) {
+        if (isCancel(prefixRaw)) {
             cancel("Cancelled.");
             process.exit(0);
         }
 
-        if (choice === "__done__") return null;
-        if (choice === "__up__") {
-            currentDir = join(currentDir, "..");
+        const prefix = (prefixRaw as string).trim().replace(/\/+$/, "");
+        if (!prefix) break;
+
+        const targetDir = join(cwd, prefix);
+
+        if (!existsSync(targetDir)) {
+            log.warn(`Path not found: ${prefix}`);
             continue;
         }
-        if (choice === "__select__") return rel ?? "";
 
-        const chosen = join(currentDir, choice as string);
-        if (statSync(chosen).isDirectory()) {
-            currentDir = chosen;
-        } else {
-            return chosen.slice(cwd.length + 1);
+        if (!statSync(targetDir).isDirectory()) {
+            // typed a direct file path
+            accumulated.push(prefix);
+            log.success(`Added: ${prefix}`);
+            continue;
+        }
+
+        const entries = readdirSync(targetDir).map((entry) => {
+            const isDir = statSync(join(targetDir, entry)).isDirectory();
+            return { value: `${prefix}/${entry}`, label: isDir ? `${entry}/` : entry };
+        });
+
+        if (entries.length === 0) {
+            accumulated.push(prefix);
+            log.success(`Added: ${prefix}`);
+            continue;
+        }
+
+        const picked = await multiselect({
+            message: `Select from ${prefix}/`,
+            options: entries,
+            required: false,
+        });
+
+        if (isCancel(picked)) {
+            cancel("Cancelled.");
+            process.exit(0);
+        }
+
+        const paths = picked as string[];
+        if (paths.length > 0) {
+            accumulated.push(...paths);
+            log.success(`Added: ${paths.join(", ")}`);
         }
     }
+
+    return accumulated;
 }
 
 async function promptSelectivePaths(): Promise<string[]> {
@@ -190,9 +213,9 @@ async function promptSelectivePaths(): Promise<string[]> {
     const dirNames = Object.keys(dirs);
 
     if (style === "only") {
-        log.info("Use Space to select items to include, Enter to confirm.");
+        log.info("Use Space to select items to include, Enter to confirm. Skip with Enter to use path input only.");
     } else {
-        log.info("All items are pre-selected. Use Space to deselect items you want to exclude, Enter to confirm.");
+        log.info("All items are pre-selected. Use Space to deselect items to exclude, Enter to confirm.");
     }
 
     // ── flat fallback when there are no dirs ──────────────────────────────────
@@ -201,7 +224,7 @@ async function promptSelectivePaths(): Promise<string[]> {
             message: "Choose paths:",
             options: files.map((f) => ({ value: f, label: f })),
             initialValues: style === "except" ? files : [],
-            required: true,
+            required: false,
         });
 
         if (isCancel(flatSelected)) {
@@ -231,7 +254,7 @@ async function promptSelectivePaths(): Promise<string[]> {
         message: "Choose paths:",
         options: groupOptions,
         initialValues,
-        required: true,
+        required: false,
         selectableGroups: true,
     });
 
@@ -242,21 +265,21 @@ async function promptSelectivePaths(): Promise<string[]> {
 
     const selected = normalizeSelection(rawSelected as string[], dirs);
 
-    // ── browse loop for depth-3+ targets ─────────────────────────────────────
+    // ── deeper-path text+multiselect loop ─────────────────────────────────────
+    const deeperPaths = await promptDeeperPaths(style);
+
     let result = selected;
-    const browseMsg = style === "only" ? "Add a deeper path to include" : "Exclude a deeper path";
-
-    while (true) {
-        const deepPath = await browseForPath(browseMsg);
-        if (!deepPath) break;
-
-        if (style === "only") {
-            result = [...new Set([...result, deepPath])];
-        } else {
-            result = expandExclusion(result, deepPath);
+    if (style === "only") {
+        result = [...new Set([...selected, ...deeperPaths])];
+    } else {
+        for (const p of deeperPaths) {
+            result = expandExclusion(result, p);
         }
     }
 
+    if (result.length > 0) {
+        log.info(`Mounting: ${result.join("  •  ")}`);
+    }
     return result;
 }
 
