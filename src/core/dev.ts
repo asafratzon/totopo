@@ -29,11 +29,9 @@ const containerStatus = inspect.status === 0 ? inspect.stdout.trim() : null;
 if (containerStatus === null) {
     // ─── Container not found — build image then run ───────────────────────────
     log.step("Building container image...");
-    const build = spawnSync(
-        "docker",
-        ["build", "-f", `${workspaceDir}/.totopo/Dockerfile`, "-t", imageName, workspaceDir],
-        { stdio: "inherit" },
-    );
+    const build = spawnSync("docker", ["build", "-f", `${workspaceDir}/.totopo/Dockerfile`, "-t", imageName, workspaceDir], {
+        stdio: "inherit",
+    });
     if (build.status !== 0) {
         outro("Failed to build container image.");
         process.exit(build.status ?? 1);
@@ -43,11 +41,16 @@ if (containerStatus === null) {
     const run = spawnSync(
         "docker",
         [
-            "run", "-d",
-            "--name", containerName,
-            "-v", `${workspaceDir}:/workspace`,
-            "--env-file", `${workspaceDir}/.totopo/.env`,
-            "--security-opt", "no-new-privileges:true",
+            "run",
+            "-d",
+            "--name",
+            containerName,
+            "-v",
+            `${workspaceDir}:/workspace`,
+            "--env-file",
+            `${workspaceDir}/.totopo/.env`,
+            "--security-opt",
+            "no-new-privileges:true",
             imageName,
         ],
         { stdio: "inherit" },
