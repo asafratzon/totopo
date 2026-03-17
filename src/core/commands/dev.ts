@@ -127,9 +127,20 @@ async function promptDeeperPaths(style: "only" | "except"): Promise<string[]> {
     const verb = style === "only" ? "include" : "exclude";
     const accumulated: string[] = [];
 
+    // Build a concrete example from actual cwd contents
+    const exampleDir = readdirSync(cwd).find((e) => {
+        try {
+            return statSync(join(cwd, e)).isDirectory() && join(cwd, e) !== totopoDir;
+        } catch {
+            return false;
+        }
+    });
+    const exampleSub = exampleDir ? readdirSync(join(cwd, exampleDir))[0] : undefined;
+    const example = exampleDir ? (exampleSub ? `${exampleDir}/ or ${exampleDir}/${exampleSub}` : `${exampleDir}/`) : "some-dir/";
+
     while (true) {
         const prefixRaw = await text({
-            message: `Add a nested path to ${verb} — type a prefix (e.g. src/ or src/api), or leave blank to finish:`,
+            message: `Add a nested path to ${verb} — path relative to current dir, e.g. ${example} — or leave blank to finish:`,
             placeholder: "leave blank to finish",
         });
 
