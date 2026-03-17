@@ -58,11 +58,16 @@ _Nothing in progress._
 
 Brief descriptions for planning; each is input for plan mode before we decide to work on it.
 
-- **Agent context injection for AGENTS.md** — extend `buildAgentContextDoc()` in `dev.ts` to also read and inject `AGENTS.md` from the repo root (alongside CLAUDE.md). The function already accepts scope context; this is a straightforward extension to include a second source file.
+- **Agent context injection for AGENTS.md** — extend `buildAgentContextDoc()` in `dev.ts` to also read and inject `AGENTS.md` from the repo root (alongside CLAUDE.md). The function already accepts scope context; this is a straightforward extension to include a second source file. Also expand the injected context to explicitly tell the agent: (1) whether git is available (only in repo scope — cwd/selective scopes do not mount `.git` because doing so would allow the agent to read the full commit history of files outside its mount via `git show`, defeating the security boundary); (2) instruct the agent to surface its scope and limitations to the user at the start of every session, so the user is always aware of what the agent can and cannot access.
 
-- **Stop: select which workspace** — when multiple workspaces are running, let the user choose which to stop (related to workspace scoping but implemented separately)
+- **Stop / Remove overhaul** — rework the stop and removal experience as two distinct menu entries:
+  - **Stop** — only shown in the main menu when at least one `totopo-managed-*` container is running; if multiple are running, show a multiselect so the user can pick which to stop (single running container skips the picker and shows confirmation prompt so user know which is being stopped).
+  - **Remove** — always visible in the main menu; leads to a submenu with two options:
+    - *Remove container images* — multiselect of all `totopo-managed-*` images on the host, each labelled with its workspace name in parentheses; stops any running containers for selected images before removing.
+    - *Uninstall totopo from this project* — confirms with the user, then: stops all containers belonging to this project, removes their images (label-based, project-scoped only), and deletes `.totopo/` from the repo root. Does not touch other projects.
+  - The existing Reset option (wipe all workspaces + images) should be removed.
 
-- **Settings submenu** — view/edit API keys, check for updates, uninstall (remove `.totopo/` and stop container)
+- **Settings submenu** — view/edit API keys, check for updates
 
 - **Docs** — polish README for npm page (install, quickstart, security model); contribution guide
 
