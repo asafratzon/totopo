@@ -8,7 +8,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import { cancel, groupMultiselect, isCancel, log, multiselect, outro, path, select } from "@clack/prompts";
+import { cancel, groupMultiselect, isCancel, log, multiselect, outro, select } from "@clack/prompts";
 
 // biome-ignore lint/style/noNonNullAssertion: guarded immediately below; non-null assertion needed for closure type inference
 const workspaceDir = process.env.TOTOPO_REPO_ROOT!;
@@ -122,6 +122,48 @@ function normalizeSelection(selected: string[], dirs: Record<string, string[]>):
     return result;
 }
 
+// Navigates the filesystem from cwd via select prompts. Returns a relative path, or null if the user is done.
+async function browseForPath(baseMsg: string): Promise<string | null> {
+    let currentDir = cwd;
+
+    while (true) {
+        const rel = currentDir === cwd ? null : currentDir.slice(cwd.length + 1);
+        const location = rel ?? ".";
+
+        const entries = readdirSync(currentDir);
+        const options: { value: string; label: string; hint?: string }[] = [{ value: "__done__", label: "Done — no deeper path" }];
+        if (currentDir !== cwd) {
+            options.push({ value: "__up__", label: "← Go up" });
+            options.push({ value: "__select__", label: `✓ Select this directory  (${rel})` });
+        }
+        for (const entry of entries) {
+            const isDir = statSync(join(currentDir, entry)).isDirectory();
+            options.push({ value: entry, label: isDir ? `${entry}/` : entry });
+        }
+
+        const choice = await select({ message: `${baseMsg}  [${location}]`, options });
+
+        if (isCancel(choice)) {
+            cancel("Cancelled.");
+            process.exit(0);
+        }
+
+        if (choice === "__done__") return null;
+        if (choice === "__up__") {
+            currentDir = join(currentDir, "..");
+            continue;
+        }
+        if (choice === "__select__") return rel ?? "";
+
+        const chosen = join(currentDir, choice as string);
+        if (statSync(chosen).isDirectory()) {
+            currentDir = chosen;
+        } else {
+            return chosen.slice(cwd.length + 1);
+        }
+    }
+}
+
 async function promptSelectivePaths(): Promise<string[]> {
     const allItems = readdirSync(cwd);
 
@@ -200,35 +242,12 @@ async function promptSelectivePaths(): Promise<string[]> {
 
     const selected = normalizeSelection(rawSelected as string[], dirs);
 
-    // ── path prompt loop for depth-3+ targets ────────────────────────────────
-    // Repeats until the user presses Enter on an empty input.
+    // ── browse loop for depth-3+ targets ─────────────────────────────────────
     let result = selected;
-    const promptMsg =
-        style === "only" ? "Add a deeper path to include (press Enter to finish):" : "Exclude a deeper path (press Enter to finish):";
+    const browseMsg = style === "only" ? "Add a deeper path to include" : "Exclude a deeper path";
 
     while (true) {
-        const deepPathRaw = await path({
-            message: promptMsg,
-            root: cwd,
-            validate: (value) => {
-                if (!value) return undefined; // empty = done, always valid
-                const relative = value.startsWith(`${cwd}/`) ? value.slice(cwd.length + 1) : value;
-                if (!relative) return "Path cannot be empty.";
-                if (!existsSync(join(cwd, relative))) return `Path not found: ${relative}`;
-                return undefined;
-            },
-        });
-
-        if (isCancel(deepPathRaw)) {
-            cancel("Cancelled.");
-            process.exit(0);
-        }
-
-        const deepPathAbsolute = deepPathRaw as string;
-        if (!deepPathAbsolute) break; // user skipped — done
-
-        const deepPath = deepPathAbsolute.startsWith(`${cwd}/`) ? deepPathAbsolute.slice(cwd.length + 1) : deepPathAbsolute;
-
+        const deepPath = await browseForPath(browseMsg);
         if (!deepPath) break;
 
         if (style === "only") {
