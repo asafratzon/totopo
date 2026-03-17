@@ -5,10 +5,10 @@
 // =========================================================================================================================================
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import { cancel, isCancel, log, multiselect, outro, select, text } from "@clack/prompts";
+import { cancel, groupMultiselect, isCancel, log, multiselect, outro, path, select } from "@clack/prompts";
 
 // biome-ignore lint/style/noNonNullAssertion: guarded immediately below; non-null assertion needed for closure type inference
 const workspaceDir = process.env.TOTOPO_REPO_ROOT!;
@@ -82,6 +82,39 @@ function expandExclusion(paths: string[], excl: string): string[] {
     return expandExclusion([...withoutAncestor, ...children], excl);
 }
 
+function scanCwdDepth2(): { dirs: Record<string, string[]>; files: string[] } {
+    const dirs: Record<string, string[]> = {};
+    const files: string[] = [];
+
+    for (const item of readdirSync(cwd)) {
+        const itemPath = join(cwd, item);
+        if (statSync(itemPath).isDirectory()) {
+            const children = readdirSync(itemPath).map((child) => `${item}/${child}`);
+            if (children.length === 0) {
+                files.push(item); // empty dir → treat as flat item
+            } else {
+                dirs[item] = children;
+            }
+        } else {
+            files.push(item);
+        }
+    }
+
+    return { dirs, files };
+}
+
+function normalizeSelection(selected: string[], dirNames: string[]): string[] {
+    const withoutGroupKey = selected.filter((s) => s !== "Files");
+    const dirSet = new Set(dirNames);
+
+    return withoutGroupKey.filter((s) => {
+        const slashIdx = s.indexOf("/");
+        if (slashIdx === -1) return true; // depth-1 item, always keep
+        const parent = s.slice(0, slashIdx);
+        return !(dirSet.has(parent) && withoutGroupKey.includes(parent));
+    });
+}
+
 async function promptSelectivePaths(): Promise<string[]> {
     const allItems = readdirSync(cwd);
 
@@ -104,59 +137,104 @@ async function promptSelectivePaths(): Promise<string[]> {
     }
 
     const style = styleChoice as "only" | "except";
-    const initialValues = style === "except" ? allItems : [];
+    const { dirs, files } = scanCwdDepth2();
+    const dirNames = Object.keys(dirs);
 
     if (style === "only") {
-        log.info("Tip: to include a nested path (e.g. src/auth), leave its parent unselected — you can add it by path in the next step.");
+        log.info(
+            "Tip: check a folder header to include everything inside it, or expand it to pick specific files. Use the next step for paths deeper than what's shown.",
+        );
     } else {
-        log.info("Tip: to exclude a nested path (e.g. src/utils), leave its parent selected — you can target it by path in the next step.");
+        log.info(
+            "Tip: everything is selected at the folder level — uncheck a folder header to exclude it entirely, or expand it to exclude specific files. Use the next step for deeper paths.",
+        );
     }
 
-    const selected = await multiselect({
+    // ── flat fallback when there are no dirs ──────────────────────────────────
+    if (dirNames.length === 0) {
+        const flatSelected = await multiselect({
+            message: "Choose paths:",
+            options: files.map((f) => ({ value: f, label: f })),
+            initialValues: style === "except" ? files : [],
+            required: true,
+        });
+
+        if (isCancel(flatSelected)) {
+            cancel("Cancelled.");
+            process.exit(0);
+        }
+
+        return flatSelected as string[];
+    }
+
+    // ── build groupMultiselect options ────────────────────────────────────────
+    const groupOptions: Record<string, { value: string; label: string }[]> = {};
+    for (const [dir, children] of Object.entries(dirs)) {
+        groupOptions[dir] = children.map((child) => ({
+            value: child,
+            label: child.slice(child.indexOf("/") + 1),
+        }));
+    }
+    if (files.length > 0) {
+        groupOptions.Files = files.map((f) => ({ value: f, label: f }));
+    }
+
+    // "except" → pre-select dir headers + root files (depth-1 only)
+    const initialValues = style === "except" ? [...dirNames, ...files] : [];
+
+    const rawSelected = await groupMultiselect({
         message: "Choose paths:",
-        options: allItems.map((item) => ({ value: item, label: item })),
+        options: groupOptions,
         initialValues,
         required: true,
+        selectableGroups: true,
     });
 
-    if (isCancel(selected)) {
+    if (isCancel(rawSelected)) {
         cancel("Cancelled.");
         process.exit(0);
     }
 
-    const pathInput = await text({
-        message:
-            style === "only"
-                ? "Add nested paths to include (optional, comma-separated, relative to current directory):"
-                : "Exclude nested paths (optional, comma-separated, relative to current directory):",
-        placeholder: "e.g. src/auth, src/db/migrations  —  leave blank to skip",
-    });
+    const selected = normalizeSelection(rawSelected as string[], dirNames);
 
-    if (isCancel(pathInput)) {
-        cancel("Cancelled.");
-        process.exit(0);
+    // ── path prompt loop for depth-3+ targets ────────────────────────────────
+    // Repeats until the user presses Enter on an empty input.
+    let result = selected;
+    const promptMsg =
+        style === "only" ? "Add a deeper path to include (press Enter to finish):" : "Exclude a deeper path (press Enter to finish):";
+
+    while (true) {
+        const deepPathRaw = await path({
+            message: promptMsg,
+            root: cwd,
+            validate: (value) => {
+                if (!value) return undefined; // empty = done, always valid
+                const relative = value.startsWith(`${cwd}/`) ? value.slice(cwd.length + 1) : value;
+                if (!relative) return "Path cannot be empty.";
+                if (!existsSync(join(cwd, relative))) return `Path not found: ${relative}`;
+                return undefined;
+            },
+        });
+
+        if (isCancel(deepPathRaw)) {
+            cancel("Cancelled.");
+            process.exit(0);
+        }
+
+        const deepPathAbsolute = deepPathRaw as string;
+        if (!deepPathAbsolute) break; // user skipped — done
+
+        const deepPath = deepPathAbsolute.startsWith(`${cwd}/`) ? deepPathAbsolute.slice(cwd.length + 1) : deepPathAbsolute;
+
+        if (!deepPath) break;
+
+        if (style === "only") {
+            result = [...new Set([...result, deepPath])];
+        } else {
+            result = expandExclusion(result, deepPath);
+        }
     }
 
-    const extraPaths = (pathInput as string)
-        .split(",")
-        .map((p) => p.trim())
-        .filter(Boolean);
-
-    const invalid = extraPaths.filter((p) => !existsSync(join(cwd, p)));
-    if (invalid.length > 0) {
-        log.error(`Path(s) not found: ${invalid.join(", ")}`);
-        process.exit(1);
-    }
-
-    if (style === "only") {
-        return [...new Set([...(selected as string[]), ...extraPaths])];
-    }
-
-    // "except" mode: subtract extra paths from selection, expanding parent dirs as needed
-    let result = selected as string[];
-    for (const excl of extraPaths) {
-        result = expandExclusion(result, excl);
-    }
     return result;
 }
 
