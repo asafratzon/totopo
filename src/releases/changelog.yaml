@@ -1,18 +1,44 @@
-# releases format:
-#
-#   releases:                       # array — newest first; managed by pnpm rc:promote (do not edit by hand)
-#     - version: "x.y.z"
-#       date: "YYYY-MM-DD"
-#       added:                      # new features   (optional — only include categories with entries)
-#         - "Description"
-#       changed:                    # behaviour changes
-#         - "Description"
-#       fixed:                      # bug fixes
-#         - "Description"
-#       security:                   # security fixes
-#         - "Description"
-
 releases:
+  - version: 0.5.0
+    date: "2026-03-17"
+    added:
+      - >-
+        Workspace scoping — on every session start the user chooses how much of the project to expose: full repo root
+        (previous default), current directory only, or a selective set of files/folders from the current directory.
+        Selective mode offers an "only the following" or "all except for" style picker followed by a multiselect of
+        non-dotfiles in the current directory.
+      - >-
+        Agent context injection — on every new container start, a ~/.claude/CLAUDE.md is written inside the container
+        describing the active scope (which paths are mounted, what operations require the host) plus the full content of
+        the project's CLAUDE.md. The agent always knows it is running inside a totopo dev container.
+      - >-
+        Scope mismatch detection — when reconnecting to a stopped or running container whose workspace was scoped to a
+        different directory, totopo warns and offers to recreate the container with a fresh scope or continue with the
+        existing one.
+      - >-
+        Scope labels and env vars — the active scope is stored as Docker labels (totopo.scope, totopo.scope.cwd,
+        totopo.scope.paths) for mismatch detection and exposed inside the container as TOTOPO_SCOPE, TOTOPO_HOST_CWD,
+        and TOTOPO_SELECTIVE_PATHS.
+    changed:
+      - >-
+        Scope selection now always appears on Start session — previously skipped when a compatible container already
+        existed; selecting the same scope connects or resumes directly, selecting a different scope recreates silently
+        without a confirmation prompt
+      - >-
+        src/core/ restructured into commands/ (entry points invoked by the CLI) and lib/ (shared utilities);
+        settings-menu.ts renamed to commands/settings.ts, settings.ts renamed to lib/config.ts
+      - >-
+        ai.sh replaced by bin/totopo.js — the entry point is now a plain Node.js ESM script; tsx is no longer needed to
+        bootstrap the CLI, only to run the TypeScript command files
+      - package.json bin updated to ./bin/totopo.js; pnpm start added as a local dev alias
+    fixed:
+      - >-
+        CWD scope created an empty .totopo/ directory inside the selected directory — Docker was creating the nested
+        mount point on the host because /workspace itself is a bind mount of cwd; .totopo is now mounted at
+        /home/devuser/.totopo inside the container for cwd and selective scopes, keeping the host directory clean
+      - >-
+        Starting a session from a nested directory did not prompt for scope when an existing repo-scoped container was
+        present — repo mode no longer suppresses the scope prompt on reconnect
   - version: 0.4.0
     date: "2026-03-17"
     changed:
@@ -172,74 +198,6 @@ releases:
       - "Workspace naming convention: totopo-<project>"
       - Port cleanup on stop/reset
       - Status box with project name and API key indicator in menu UI
-# in_progress format:
-#
-#   in_progress:
-#     base_version: "x.y.z"        # next release version (updated by pnpm rc if needed)
-#     entries:                      # array — one element per rc iteration; accumulates until pnpm rc:promote
-#       - rc_version: "x.y.z-rc-1" # must match the published rc tag
-#         date: "YYYY-MM-DD"
-#         added:                    # new features   (optional — only include categories with entries)
-#           - "Description"
-#         changed:                  # behaviour changes
-#           - "Description"
-#         fixed:                    # bug fixes
-#           - "Description"
-#         security:                 # security fixes
-#           - "Description"
-#
-# pnpm rc hard-blocks if entries is empty or not an array.
-# pnpm rc:promote squashes all rc entries by category into a single releases entry.
-
 in_progress:
-  base_version: "0.5.0"
-  entries:
-    - rc_version: "0.5.0-rc-4"
-      date: "2026-03-17"
-      fixed:
-        - >-
-          CWD scope created an empty .totopo/ directory inside the selected directory — Docker was creating the nested
-          mount point on the host because /workspace itself is a bind mount of cwd; .totopo is now mounted at
-          /home/devuser/.totopo inside the container for cwd and selective scopes, keeping the host directory clean
-    - rc_version: "0.5.0-rc-3"
-      date: "2026-03-17"
-      changed:
-        - >-
-          Scope selection now always appears on Start session — previously skipped when a compatible container already
-          existed; selecting the same scope connects or resumes directly, selecting a different scope recreates silently
-          without a confirmation prompt
-      fixed:
-        - >-
-          Starting a session from a nested directory did not prompt for scope when an existing repo-scoped container
-          was present — repo mode no longer suppresses the scope prompt on reconnect
-    - rc_version: "0.5.0-rc-2"
-      date: "2026-03-17"
-      changed:
-        - >-
-          src/core/ restructured into commands/ (entry points invoked by the CLI) and lib/ (shared utilities);
-          settings-menu.ts renamed to commands/settings.ts, settings.ts renamed to lib/config.ts
-        - >-
-          ai.sh replaced by bin/totopo.js — the entry point is now a plain Node.js ESM script; tsx is no longer
-          needed to bootstrap the CLI, only to run the TypeScript command files
-        - >-
-          package.json bin updated to ./bin/totopo.js; pnpm start added as a local dev alias
-    - rc_version: "0.5.0-rc-1"
-      date: "2026-03-17"
-      added:
-        - >-
-          Workspace scoping — on every session start the user chooses how much of the project to expose: full repo
-          root (previous default), current directory only, or a selective set of files/folders from the current
-          directory. Selective mode offers an "only the following" or "all except for" style picker followed by a
-          multiselect of non-dotfiles in the current directory.
-        - >-
-          Agent context injection — on every new container start, a ~/.claude/CLAUDE.md is written inside the
-          container describing the active scope (which paths are mounted, what operations require the host) plus the
-          full content of the project's CLAUDE.md. The agent always knows it is running inside a totopo dev container.
-        - >-
-          Scope mismatch detection — when reconnecting to a stopped or running container whose workspace was scoped to
-          a different directory, totopo warns and offers to recreate the container with a fresh scope or continue with
-          the existing one.
-        - >-
-          Scope labels and env vars — the active scope is stored as Docker labels (totopo.scope, totopo.scope.cwd,
-          totopo.scope.paths) for mismatch detection and exposed inside the container as TOTOPO_SCOPE,
-          TOTOPO_HOST_CWD, and TOTOPO_SELECTIVE_PATHS.
+  base_version: 0.5.1
+  entries: []
