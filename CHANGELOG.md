@@ -7,6 +7,31 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.6.0] — 2026-03-17
+
+### Added
+
+- Selective scope now shows hidden files and directories (dotfiles/dotdirs such as .env, .github, .vscode) in the multiselect — previously all entries beginning with "." were filtered out and could not be mounted.
+- Selective scope gains an optional path input step after the multiselect — users can enter comma-separated relative paths (e.g. src/auth, src/db/migrations) to include deeply nested items not reachable from the top-level picker; invalid paths produce an error and exit cleanly.
+
+### Changed
+
+- Selective scope UX overhauled — the flat multiselect + freeform text input is replaced by a depth-2 tree picker using groupMultiselect (directory headers are expandable and selectable as a group) followed by a repeating path autocomplete prompt for targets deeper than two levels. "Except" mode pre-selects all depth-1 items; checking/unchecking a folder header includes or excludes its entire contents. Falls back to a flat multiselect when the current directory contains no subdirectories.
+- Selective scope "except" mode now collapses fully-selected groups back to the parent directory name for efficient mounting, instead of listing individual depth-2 children.
+- Space/Enter keyboard instructions shown before the path picker in both "only" and "except" modes; removed the prior tip messages that referenced UI elements not yet visible.
+- Selective scope deeper-path step replaced the single-item select-based directory browser with a type-prefix + multiselect flow — user types a path prefix (e.g. src/ or src/api), sees a one-level-deep multiselect of that directory's contents, picks items with Space, confirms with Enter; loop repeats until blank Enter. groupMultiselect can now be skipped with blank Enter to go straight to this step. .totopo/ is filtered from the top-level picker. A summary of all selected paths is shown before the container starts.
+- Selective scope deeper-path prompt now shows a concrete example derived from the actual current directory (e.g. the real first subdirectory and one of its children) instead of the generic "src/ or src/api" placeholder, and the hint explicitly states that a path relative to the current directory is expected.
+- Selective scope readability improvements — groupMultiselect hint lines now mention the deeper-path step and how to skip directly to it; the deeper-path prompt clarifies paths are added one at a time with blank Enter to finish; the final mounted-paths summary is rendered as a titled note box with one path per line instead of a single joined line.
+
+### Fixed
+
+- Selective scope "except" mode nested exclusion — entering a nested path in the text step now correctly excludes it by recursively expanding its parent directory into individual children and dropping the target, rather than incorrectly adding it as an extra mount.
+- Selective scope groupMultiselect group headers were permanently stuck selected — dir names were placed in initialValues which clack never removes when toggling; initialValues now uses the actual child values so headers derive their checked state from children and toggle correctly with Space.
+- Minor fixes.
+- Selective scope deeper-path step replaced clack's path prompt (which showed only files and broke on absolute paths) with a custom select-based directory browser that shows both files and directories, supports navigating up, and lets the user select a directory or file before returning the relative path.
+
+---
+
 ## [0.5.0] — 2026-03-17
 
 ### Added

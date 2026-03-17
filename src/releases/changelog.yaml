@@ -1,22 +1,56 @@
-# AGENTS: Do NOT remove or modify the comment blocks in this file. They are instructions for you.
-#
-# releases format:
-#
-#   releases:                       # array — newest first; managed by pnpm rc:promote (do not edit by hand)
-#     - version: "x.y.z"
-#       date: "YYYY-MM-DD"
-#       added:                      # new features   (optional — only include categories with entries)
-#         - "Description"
-#       changed:                    # behaviour changes
-#         - "Description"
-#       fixed:                      # bug fixes
-#         - "Description"
-#       security:                   # security fixes
-#         - "Description"
-#
-# Versioning: 0.x.0 = minor (new features); 0.x.y = patch (bug fixes only). When in doubt, ask the user.
-
 releases:
+  - version: 0.6.0
+    date: "2026-03-17"
+    added:
+      - >-
+        Selective scope now shows hidden files and directories (dotfiles/dotdirs such as .env, .github, .vscode) in the
+        multiselect — previously all entries beginning with "." were filtered out and could not be mounted.
+      - >-
+        Selective scope gains an optional path input step after the multiselect — users can enter comma-separated
+        relative paths (e.g. src/auth, src/db/migrations) to include deeply nested items not reachable from the
+        top-level picker; invalid paths produce an error and exit cleanly.
+    changed:
+      - >-
+        Selective scope UX overhauled — the flat multiselect + freeform text input is replaced by a depth-2 tree picker
+        using groupMultiselect (directory headers are expandable and selectable as a group) followed by a repeating path
+        autocomplete prompt for targets deeper than two levels. "Except" mode pre-selects all depth-1 items;
+        checking/unchecking a folder header includes or excludes its entire contents. Falls back to a flat multiselect
+        when the current directory contains no subdirectories.
+      - >-
+        Selective scope "except" mode now collapses fully-selected groups back to the parent directory name for
+        efficient mounting, instead of listing individual depth-2 children.
+      - >-
+        Space/Enter keyboard instructions shown before the path picker in both "only" and "except" modes; removed the
+        prior tip messages that referenced UI elements not yet visible.
+      - >-
+        Selective scope deeper-path step replaced the single-item select-based directory browser with a type-prefix +
+        multiselect flow — user types a path prefix (e.g. src/ or src/api), sees a one-level-deep multiselect of that
+        directory's contents, picks items with Space, confirms with Enter; loop repeats until blank Enter.
+        groupMultiselect can now be skipped with blank Enter to go straight to this step. .totopo/ is filtered from the
+        top-level picker. A summary of all selected paths is shown before the container starts.
+      - >-
+        Selective scope deeper-path prompt now shows a concrete example derived from the actual current directory (e.g.
+        the real first subdirectory and one of its children) instead of the generic "src/ or src/api" placeholder, and
+        the hint explicitly states that a path relative to the current directory is expected.
+      - >-
+        Selective scope readability improvements — groupMultiselect hint lines now mention the deeper-path step and how
+        to skip directly to it; the deeper-path prompt clarifies paths are added one at a time with blank Enter to
+        finish; the final mounted-paths summary is rendered as a titled note box with one path per line instead of a
+        single joined line.
+    fixed:
+      - >-
+        Selective scope "except" mode nested exclusion — entering a nested path in the text step now correctly excludes
+        it by recursively expanding its parent directory into individual children and dropping the target, rather than
+        incorrectly adding it as an extra mount.
+      - >-
+        Selective scope groupMultiselect group headers were permanently stuck selected — dir names were placed in
+        initialValues which clack never removes when toggling; initialValues now uses the actual child values so headers
+        derive their checked state from children and toggle correctly with Space.
+      - Minor fixes.
+      - >-
+        Selective scope deeper-path step replaced clack's path prompt (which showed only files and broke on absolute
+        paths) with a custom select-based directory browser that shows both files and directories, supports navigating
+        up, and lets the user select a directory or file before returning the relative path.
   - version: 0.5.0
     date: "2026-03-17"
     added:
@@ -216,99 +250,6 @@ releases:
       - "Workspace naming convention: totopo-<project>"
       - Port cleanup on stop/reset
       - Status box with project name and API key indicator in menu UI
-
-# in_progress format:
-#
-#   in_progress:
-#     base_version: "x.y.z"        # next release version (updated by pnpm rc if needed)
-#     entries:                      # array — one element per rc iteration; accumulates until pnpm rc:promote
-#       - rc_version: "x.y.z-rc-1" # must match the published rc tag
-#         date: "YYYY-MM-DD"
-#         added:                    # new features   (optional — only include categories with entries)
-#           - "Description"
-#         changed:                  # behaviour changes
-#           - "Description"
-#         fixed:                    # bug fixes
-#           - "Description"
-#         security:                 # security fixes
-#           - "Description"
-#
-# pnpm rc hard-blocks if entries is empty or not an array.
-# pnpm rc:promote squashes all rc entries by category into a single releases entry.
-
 in_progress:
-  base_version: 0.6.0
-  entries:
-    - rc_version: 0.6.0-rc-1
-      date: "2026-03-17"
-      added:
-        - >-
-          Selective scope now shows hidden files and directories (dotfiles/dotdirs such as .env, .github, .vscode) in
-          the multiselect — previously all entries beginning with "." were filtered out and could not be mounted.
-        - >-
-          Selective scope gains an optional path input step after the multiselect — users can enter comma-separated
-          relative paths (e.g. src/auth, src/db/migrations) to include deeply nested items not reachable from the
-          top-level picker; invalid paths produce an error and exit cleanly.
-    - rc_version: 0.6.0-rc-2
-      date: "2026-03-17"
-      changed:
-        - >-
-          Selective scope UX overhauled — the flat multiselect + freeform text input is replaced by a depth-2 tree
-          picker using groupMultiselect (directory headers are expandable and selectable as a group) followed by a
-          repeating path autocomplete prompt for targets deeper than two levels. "Except" mode pre-selects all
-          depth-1 items; checking/unchecking a folder header includes or excludes its entire contents. Falls back to
-          a flat multiselect when the current directory contains no subdirectories.
-      fixed:
-        - >-
-          Selective scope "except" mode nested exclusion — entering a nested path in the text step now correctly
-          excludes it by recursively expanding its parent directory into individual children and dropping the target,
-          rather than incorrectly adding it as an extra mount.
-    - rc_version: 0.6.0-rc-3
-      date: "2026-03-17"
-      fixed:
-        - >-
-          Selective scope groupMultiselect group headers were permanently stuck selected — dir names were placed in
-          initialValues which clack never removes when toggling; initialValues now uses the actual child values so
-          headers derive their checked state from children and toggle correctly with Space.
-      changed:
-        - >-
-          Selective scope "except" mode now collapses fully-selected groups back to the parent directory name for
-          efficient mounting, instead of listing individual depth-2 children.
-        - >-
-          Space/Enter keyboard instructions shown before the path picker in both "only" and "except" modes; removed
-          the prior tip messages that referenced UI elements not yet visible.
-    - rc_version: 0.6.0-rc-4
-      date: "2026-03-17"
-      fixed:
-        - Minor fixes.
-    - rc_version: 0.6.0-rc-5
-      date: "2026-03-17"
-      fixed:
-        - >-
-          Selective scope deeper-path step replaced clack's path prompt (which showed only files and broke on absolute
-          paths) with a custom select-based directory browser that shows both files and directories, supports navigating
-          up, and lets the user select a directory or file before returning the relative path.
-    - rc_version: 0.6.0-rc-6
-      date: "2026-03-17"
-      changed:
-        - >-
-          Selective scope deeper-path step replaced the single-item select-based directory browser with a
-          type-prefix + multiselect flow — user types a path prefix (e.g. src/ or src/api), sees a one-level-deep
-          multiselect of that directory's contents, picks items with Space, confirms with Enter; loop repeats until
-          blank Enter. groupMultiselect can now be skipped with blank Enter to go straight to this step. .totopo/
-          is filtered from the top-level picker. A summary of all selected paths is shown before the container starts.
-    - rc_version: 0.6.0-rc-7
-      date: "2026-03-17"
-      changed:
-        - >-
-          Selective scope deeper-path prompt now shows a concrete example derived from the actual current directory
-          (e.g. the real first subdirectory and one of its children) instead of the generic "src/ or src/api"
-          placeholder, and the hint explicitly states that a path relative to the current directory is expected.
-    - rc_version: 0.6.0-rc-8
-      date: "2026-03-17"
-      changed:
-        - >-
-          Selective scope readability improvements — groupMultiselect hint lines now mention the deeper-path step and
-          how to skip directly to it; the deeper-path prompt clarifies paths are added one at a time with blank Enter
-          to finish; the final mounted-paths summary is rendered as a titled note box with one path per line instead
-          of a single joined line.
+  base_version: 0.6.1
+  entries: []
