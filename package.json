@@ -4,7 +4,7 @@
     "description": "Secure AI Box — isolated dev environments for AI coding assistants",
     "type": "module",
     "bin": {
-        "totopo": "./ai.sh"
+        "totopo": "./bin/totopo.js"
     },
     "dependencies": {
         "@clack/prompts": "^1.1.0",
@@ -29,6 +29,7 @@
         }
     },
     "scripts": {
+        "start": "node bin/totopo.js",
         "prepare": "git config core.hooksPath .githooks",
         "typecheck": "tsc --noEmit",
         "lint": "biome check .",
@@ -59,7 +60,7 @@
         "devcontainer"
     ],
     "files": [
-        "ai.sh",
+        "bin/",
         "src/core/",
         "templates/",
         "tsconfig.json",

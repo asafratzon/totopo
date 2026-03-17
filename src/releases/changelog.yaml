@@ -194,6 +194,17 @@ releases:
 in_progress:
   base_version: "0.5.0"
   entries:
+    - rc_version: "0.5.0-rc-2"
+      date: "2026-03-17"
+      changed:
+        - >-
+          src/core/ restructured into commands/ (entry points invoked by the CLI) and lib/ (shared utilities);
+          settings-menu.ts renamed to commands/settings.ts, settings.ts renamed to lib/config.ts
+        - >-
+          ai.sh replaced by bin/totopo.js — the entry point is now a plain Node.js ESM script; tsx is no longer
+          needed to bootstrap the CLI, only to run the TypeScript command files
+        - >-
+          package.json bin updated to ./bin/totopo.js; pnpm start added as a local dev alias
     - rc_version: "0.5.0-rc-1"
       date: "2026-03-17"
       added:
