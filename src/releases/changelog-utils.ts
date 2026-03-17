@@ -67,6 +67,15 @@ const CATEGORIES = ["added", "changed", "fixed", "security"] as const;
 export function validateChangelog(data: Changelog): void {
     const errors: string[] = [];
 
+    // Validate in_progress.entries is an array (not a map — a common mis-edit)
+    if (!Array.isArray(data.in_progress.entries)) {
+        errors.push(
+            `in_progress.entries must be an array of RcEntry objects (each with rc_version, date, and category fields), got ${typeof data.in_progress.entries}. ` +
+                `Check RELEASES.md for the correct format.`,
+        );
+        throw new Error(`changelog.yaml validation failed:\n${errors.map((e) => `  - ${e}`).join("\n")}`);
+    }
+
     // Validate in_progress entries
     for (let i = 0; i < data.in_progress.entries.length; i++) {
         const entry = data.in_progress.entries[i];
