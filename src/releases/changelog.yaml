@@ -159,5 +159,23 @@ releases:
       - Port cleanup on stop/reset
       - Status box with project name and API key indicator in menu UI
 in_progress:
-  base_version: 0.4.1
-  entries: []
+  base_version: 0.5.0
+  entries:
+    added:
+      - >-
+        Workspace scoping — on every session start the user chooses how much of the project to expose: full repo root
+        (previous default), current directory only, or a selective set of files/folders from the current directory.
+        Selective mode offers an "only the following" or "all except for" style picker followed by a multiselect of
+        non-dotfiles in the current directory.
+      - >-
+        Agent context injection — on every new container start, a ~/.claude/CLAUDE.md is written inside the container
+        describing the active scope (which paths are mounted, what operations require the host) plus the full content of
+        the project's CLAUDE.md. The agent always knows it is running inside a totopo dev container.
+      - >-
+        Scope mismatch detection — when reconnecting to a stopped or running container whose workspace was scoped to a
+        different directory, totopo warns and offers to recreate the container with a fresh scope or continue with the
+        existing one.
+      - >-
+        Scope labels and env vars — the active scope is stored as Docker labels (totopo.scope, totopo.scope.cwd,
+        totopo.scope.paths) for mismatch detection and exposed inside the container as TOTOPO_SCOPE,
+        TOTOPO_HOST_CWD, and TOTOPO_SELECTIVE_PATHS.

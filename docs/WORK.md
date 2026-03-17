@@ -48,11 +48,13 @@ USER'S PROJECT (any git repo where totopo is used)
 
 ## Working Now
 
-- **Workspace scoping** — support three modes when starting a session: repo root (current default), current directory, or current directory selectively (user picks which files/folders to mount). Complement with built-in agent context injection so the agent knows it lives in a dev container, may need host help for some operations, and in selective-mount mode is aware it should confirm before creating files or folders that are not mounted
+_Nothing in progress._
 
 ## Upcoming
 
 Brief descriptions for planning; each is input for plan mode before we decide to work on it.
+
+- **Agent context injection for AGENTS.md** — extend `buildAgentContextDoc()` in `dev.ts` to also read and inject `AGENTS.md` from the repo root (alongside CLAUDE.md). The function already accepts scope context; this is a straightforward extension to include a second source file.
 
 - **Stop: select which workspace** — when multiple workspaces are running, let the user choose which to stop (related to workspace scoping but implemented separately)
 
