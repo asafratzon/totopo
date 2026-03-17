@@ -8,7 +8,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import { cancel, groupMultiselect, isCancel, log, multiselect, outro, select, text } from "@clack/prompts";
+import { cancel, groupMultiselect, isCancel, log, multiselect, note, outro, select, text } from "@clack/prompts";
 
 // biome-ignore lint/style/noNonNullAssertion: guarded immediately below; non-null assertion needed for closure type inference
 const workspaceDir = process.env.TOTOPO_REPO_ROOT!;
@@ -140,7 +140,7 @@ async function promptDeeperPaths(style: "only" | "except"): Promise<string[]> {
 
     while (true) {
         const prefixRaw = await text({
-            message: `Add a nested path to ${verb} — path relative to current dir, e.g. ${example} — or leave blank to finish:`,
+            message: `Add a nested path to ${verb} (one at a time, blank Enter to finish) — relative to current dir, e.g. ${example}:`,
             placeholder: "leave blank to finish",
         });
 
@@ -224,9 +224,9 @@ async function promptSelectivePaths(): Promise<string[]> {
     const dirNames = Object.keys(dirs);
 
     if (style === "only") {
-        log.info("Use Space to select items to include, Enter to confirm. Skip with Enter to use path input only.");
+        log.info("Space to select · Enter to confirm · Skip entirely with Enter to go straight to path input.");
     } else {
-        log.info("All items are pre-selected. Use Space to deselect items to exclude, Enter to confirm.");
+        log.info("All items pre-selected · Space to deselect · Enter to confirm · Add deeper exclusions in the next step.");
     }
 
     // ── flat fallback when there are no dirs ──────────────────────────────────
@@ -289,7 +289,7 @@ async function promptSelectivePaths(): Promise<string[]> {
     }
 
     if (result.length > 0) {
-        log.info(`Mounting: ${result.join("  •  ")}`);
+        note(result.map((p) => `  ${p}`).join("\n"), "Paths to mount");
     }
     return result;
 }
