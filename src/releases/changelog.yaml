@@ -297,3 +297,10 @@ in_progress:
           multiselect of that directory's contents, picks items with Space, confirms with Enter; loop repeats until
           blank Enter. groupMultiselect can now be skipped with blank Enter to go straight to this step. .totopo/
           is filtered from the top-level picker. A summary of all selected paths is shown before the container starts.
+    - rc_version: 0.6.0-rc-7
+      date: "2026-03-17"
+      changed:
+        - >-
+          Selective scope deeper-path prompt now shows a concrete example derived from the actual current directory
+          (e.g. the real first subdirectory and one of its children) instead of the generic "src/ or src/api"
+          placeholder, and the hint explicitly states that a path relative to the current directory is expected.
