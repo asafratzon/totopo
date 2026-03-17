@@ -48,17 +48,11 @@ USER'S PROJECT (any git repo where totopo is used)
 
 ## Working Now
 
-_Nothing — ready for next task._
-
-## Recently Completed
-
-- **Remove DevPod dependency** — replaced devpod up/ssh with docker build + docker run + docker exec; removed devcontainer.json template and all DevPod references across src, docs, README, AGENTS, package.json
+- **Workspace scoping** — support three modes when starting a session: repo root (current default), current directory, or current directory selectively (user picks which files/folders to mount). Complement with built-in agent context injection so the agent knows it lives in a dev container, may need host help for some operations, and in selective-mount mode is aware it should confirm before creating files or folders that are not mounted
 
 ## Upcoming
 
 Brief descriptions for planning; each is input for plan mode before we decide to work on it.
-
-- **Workspace scoping** — support three modes when starting a session: repo root (current default), current directory, or current directory selectively (user picks which files/folders to mount). Complement with built-in agent context injection so the agent knows it lives in a dev container, may need host help for some operations, and in selective-mount mode is aware it should confirm before creating files or folders that are not mounted
 
 - **Stop: select which workspace** — when multiple workspaces are running, let the user choose which to stop (related to workspace scoping but implemented separately)
 
