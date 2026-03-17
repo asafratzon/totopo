@@ -7,6 +7,20 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.4.0] — 2026-03-17
+
+### Changed
+
+- DevPod removed — container lifecycle and shell access now use raw Docker directly; docker build + docker run replace devpod up, and docker exec -it replaces devpod ssh. No SSH daemon, no open port, no key management. DevPod CLI is no longer a prerequisite.
+- Onboarding no longer creates devcontainer.json — only Dockerfile and post-start.mjs are copied to .totopo/; the devcontainer.json template has been removed from the package
+- Doctor command no longer checks for DevPod or its provider — only Docker installed and Docker running are checked; .totopo/ config check now requires only Dockerfile (not devcontainer.json)
+
+### Fixed
+
+- Container exited immediately after docker run -d — bash has no TTY in detached mode; docker run now passes sleep infinity as the command to keep the container alive for docker exec to connect
+
+---
+
 ## [0.3.0] — 2026-03-16
 
 ### Added

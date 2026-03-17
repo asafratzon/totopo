@@ -1,4 +1,21 @@
 releases:
+  - version: 0.4.0
+    date: "2026-03-17"
+    changed:
+      - >-
+        DevPod removed — container lifecycle and shell access now use raw Docker directly; docker build + docker run
+        replace devpod up, and docker exec -it replaces devpod ssh. No SSH daemon, no open port, no key management.
+        DevPod CLI is no longer a prerequisite.
+      - >-
+        Onboarding no longer creates devcontainer.json — only Dockerfile and post-start.mjs are copied to .totopo/; the
+        devcontainer.json template has been removed from the package
+      - >-
+        Doctor command no longer checks for DevPod or its provider — only Docker installed and Docker running are
+        checked; .totopo/ config check now requires only Dockerfile (not devcontainer.json)
+    fixed:
+      - >-
+        Container exited immediately after docker run -d — bash has no TTY in detached mode; docker run now passes sleep
+        infinity as the command to keep the container alive for docker exec to connect
   - version: 0.3.0
     date: "2026-03-16"
     added:
@@ -142,24 +159,5 @@ releases:
       - Port cleanup on stop/reset
       - Status box with project name and API key indicator in menu UI
 in_progress:
-  base_version: 0.4.0
-  entries:
-    - rc_version: "0.4.0-rc-2"
-      date: "2026-03-17"
-      fixed:
-        - >-
-          Container exited immediately after docker run -d — bash has no TTY in detached mode; docker run now passes
-          sleep infinity as the command to keep the container alive for docker exec to connect
-    - rc_version: "0.4.0-rc-1"
-      date: "2026-03-17"
-      changed:
-        - >-
-          DevPod removed — container lifecycle and shell access now use raw Docker directly; docker build + docker run
-          replace devpod up, and docker exec -it replaces devpod ssh. No SSH daemon, no open port, no key management.
-          DevPod CLI is no longer a prerequisite.
-        - >-
-          Onboarding no longer creates devcontainer.json — only Dockerfile and post-start.mjs are copied to .totopo/;
-          the devcontainer.json template has been removed from the package
-        - >-
-          Doctor command no longer checks for DevPod or its provider — only Docker installed and Docker running are
-          checked; .totopo/ config check now requires only Dockerfile (not devcontainer.json)
+  base_version: 0.4.1
+  entries: []
