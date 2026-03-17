@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =========================================================================================================================================
-// scripts/reset.ts — Full reset: delete all totopo workspaces and Docker images
+// scripts/reset.ts — Full reset: delete all totopo containers and Docker images
 // Called by ai.sh — do not run directly.
 // Run 'npx totopo' → Start session after this to get a fresh build.
 // =========================================================================================================================================
@@ -8,34 +8,30 @@
 import { spawnSync } from "node:child_process";
 import { log, outro } from "@clack/prompts";
 
-// ─── Step 1: Find all totopo-managed-* DevPod workspaces ─────────────────────────────────────────────────────────────────────────────────
-const listResult = spawnSync("devpod", ["list", "--output", "json"], {
-    encoding: "utf8",
-});
+// ─── Step 1: Find all totopo-managed-* containers ────────────────────────────
+const listResult = spawnSync(
+    "docker",
+    ["ps", "-a", "--filter", "name=totopo-managed-", "--format", "{{.Names}}"],
+    { encoding: "utf8" },
+);
 
-const workspaces: string[] = [];
-if (listResult.stdout) {
-    const matches = listResult.stdout.matchAll(/"id":"(totopo-managed-[^"]+)"/g);
-    for (const match of matches) {
-        if (match[1]) workspaces.push(match[1]);
-    }
-}
+const containers = (listResult.stdout ?? "").trim().split("\n").filter(Boolean);
 
-// ─── Step 2: Stop and delete all totopo workspaces ───────────────────────────────────────────────────────────────────────────────────────
-if (workspaces.length === 0) {
-    log.info("No totopo workspaces found.");
+// ─── Step 2: Stop and remove all totopo containers ───────────────────────────
+if (containers.length === 0) {
+    log.info("No totopo containers found.");
 } else {
-    log.step(`Stopping and deleting ${workspaces.length} workspace(s)...`);
-    for (const ws of workspaces) {
-        log.step(`  Removing ${ws}...`);
-        spawnSync("devpod", ["stop", ws], { stdio: "inherit" });
-        spawnSync("devpod", ["delete", ws, "--force"], { stdio: "inherit" });
+    log.step(`Stopping and removing ${containers.length} container(s)...`);
+    for (const name of containers) {
+        log.step(`  Removing ${name}...`);
+        spawnSync("docker", ["stop", name], { stdio: "inherit" });
+        spawnSync("docker", ["rm", name], { stdio: "inherit" });
     }
 }
 
-// ─── Step 3: Remove cached Docker images ─────────────────────────────────────────────────────────────────────────────────────────────────
+// ─── Step 3: Remove cached Docker images ─────────────────────────────────────
 // Images are identified via the LABEL totopo.managed=true baked into the
-// Dockerfile template — works regardless of whether workspaces still exist.
+// Dockerfile template — works regardless of whether containers still exist.
 log.step("Removing cached Docker images...");
 
 const findImages = spawnSync("docker", ["images", "--filter", "label=totopo.managed=true", "--format", "{{.ID}}"], { encoding: "utf8" });
@@ -50,5 +46,5 @@ if (imageIds.length > 0) {
 
 spawnSync("docker", ["image", "prune", "--force"], { stdio: "inherit" });
 
-// ─── Done ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// ─── Done ────────────────────────────────────────────────────────────────────
 outro("Reset complete. Run 'npx totopo' and select 'Start session' to start fresh.");
