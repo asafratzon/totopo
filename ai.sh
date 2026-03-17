@@ -63,9 +63,9 @@ if [ ! -f "$TSX" ]; then
 fi
 
 # ─── Onboarding ──────────────────────────────────────────────────────────────
-if [ ! -f "$REPO_ROOT/.totopo/devcontainer.json" ]; then
+if [ ! -f "$REPO_ROOT/.totopo/Dockerfile" ]; then
   "$TSX" "$PACKAGE_DIR/src/core/onboard.ts"
-  if [ ! -f "$REPO_ROOT/.totopo/devcontainer.json" ]; then
+  if [ ! -f "$REPO_ROOT/.totopo/Dockerfile" ]; then
     exit 0
   fi
 fi

@@ -13,7 +13,7 @@ Spin up a secure, isolated AI coding environment in any git project — in one c
 ```
 Host machine
 ├── your editor       → edits files normally (bind-mounted from container)
-├── terminal          → SSH'd into container via DevPod
+├── terminal          → connected to container via docker exec
 │   ├── claude        → AI tools run here, isolated
 │   ├── kilo
 │   └── opencode
@@ -25,17 +25,6 @@ Host machine
 ## Prerequisites
 
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/)
-- [DevPod CLI](https://devpod.sh/docs/getting-started/install)
-
-### One-time DevPod setup
-
-After installing the DevPod CLI, register Docker as the backend provider:
-
-```bash
-devpod provider add docker
-```
-
-This only needs to be done once per machine.
 
 ---
 
@@ -75,7 +64,6 @@ your-project/
 └── .totopo/
     ├── .env              # API keys — gitignored, never committed
     ├── Dockerfile        # Container image definition
-    ├── devcontainer.json # Dev container config
     └── post-start.mjs   # Security + readiness check on every start
 ```
 
@@ -101,7 +89,6 @@ status      # Re-run security + readiness check
 | Non-root user            | All processes run as `devuser` (uid 1001)                                                         |
 | Filesystem isolation     | Only the repo is mounted — host is not visible                                                    |
 | Git remote block         | `protocol.allow never` in `/etc/gitconfig` — enforced at the git layer, requires root to override |
-| No credentials forwarded | `gitCredentialHelperConfigLocation: none` in devcontainer.json                                    |
 | No privilege escalation  | `no-new-privileges:true` security opt                                                             |
 | Secrets never in image   | API keys injected at runtime via `.env` only                                                      |
 

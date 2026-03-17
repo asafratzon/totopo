@@ -49,32 +49,9 @@ const dockerInfo = spawnSync("docker", ["info"], {
 });
 check("Docker running", dockerInfo.status === 0, dockerInfo.status === 0 ? undefined : "Docker daemon not responding");
 
-// ─── DevPod installed ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-const devpodInstalled = commandExists("devpod");
-check("DevPod installed", devpodInstalled, devpodInstalled ? undefined : "'devpod' not found in PATH");
-
-// ─── DevPod provider configured ──────────────────────────────────────────────────────────────────────────────────────────────────────────
-if (devpodInstalled) {
-    let providerOk = false;
-    for (let attempt = 1; attempt <= 5; attempt++) {
-        const r = spawnSync("devpod", ["provider", "list"], {
-            encoding: "utf8",
-            stdio: "pipe",
-        });
-        if (r.stdout?.toLowerCase().includes("docker")) {
-            providerOk = true;
-            break;
-        }
-        if (attempt < 5) {
-            spawnSync("sleep", ["1"]);
-        }
-    }
-    check("DevPod provider configured", providerOk, providerOk ? undefined : "no provider found — run: devpod provider add docker");
-}
-
 // ─── .totopo/ config present ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
-const configOk = existsSync(`${repoRoot}/.totopo/devcontainer.json`) && existsSync(`${repoRoot}/.totopo/Dockerfile`);
-check(".totopo/ config present", configOk, configOk ? undefined : "missing .totopo/devcontainer.json or .totopo/Dockerfile");
+const configOk = existsSync(`${repoRoot}/.totopo/Dockerfile`);
+check(".totopo/ config present", configOk, configOk ? undefined : "missing .totopo/Dockerfile");
 
 // ─── Report ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 if (errors.length > 0) {

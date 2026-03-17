@@ -32,7 +32,7 @@ Never declare a checkpoint if the codebase is broken or half-migrated.
 - Claude Code runs **inside the dev container**; user SSHs in from host terminal
 - Repo is bind-mounted — edits are immediately visible on the host
 - Remote git (push/pull/fetch) is **blocked inside the container** — user pushes from host
-- Never suggest devpod or docker commands directly — users interact exclusively through the totopo menu (start/stop/reset)
+- Never suggest docker commands directly — users interact exclusively through the totopo menu (start/stop/reset)
 
 ## Project
 
@@ -51,7 +51,7 @@ Never declare a checkpoint if the codebase is broken or half-migrated.
 | Core scripts       | `src/core/*.ts` via tsx       |
 | Release tooling    | `src/releases/*.ts` via tsx   |
 | Terminal UI        | `@clack/prompts`              |
-| Container          | Docker + DevPod               |
+| Container          | Docker                        |
 | Runtime / packages | Node.js + pnpm                |
 | Lint / format      | Biome                         |
 
@@ -59,7 +59,7 @@ Never declare a checkpoint if the codebase is broken or half-migrated.
 
 - **Security is non-negotiable** — never weaken container isolation; explain security implications of any change touching isolation, git config, or permissions
 - `ai.sh` is the only bash file — all logic lives in `src/core/*.ts` (CLI) or `src/releases/*.ts` (dev tooling)
-- All totopo config in `.totopo/` — DevPod always gets `--devcontainer-path .totopo/devcontainer.json`
+- All totopo config in `.totopo/`
 - Propose before implementing anything non-trivial
 - **Never commit without explicit user instruction** — during work, ask "ready to commit?" if it feels like a natural point; only commit when the user says so
 - One task at a time — complete and verify before moving on

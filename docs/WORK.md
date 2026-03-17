@@ -30,7 +30,6 @@ totopo PACKAGE (this repo — distributed via npx in future)
 │       └── changelog.yaml   ← source of truth for all release notes
 └── templates/         ← copied into user's .totopo/ during onboarding
     ├── Dockerfile
-    ├── devcontainer.json
     ├── post-start.mjs
     └── env
 
@@ -38,7 +37,6 @@ USER'S PROJECT (any git repo where totopo is used)
 └── .totopo/            ← created by onboarding; config only, no scripts
     ├── .env           (gitignored — API keys)
     ├── Dockerfile     (regenerated on session start in host-mirror mode)
-    ├── devcontainer.json
     ├── post-start.mjs
     └── settings.json  (runtimeMode + selectedTools; committed with project)
 ```
@@ -50,25 +48,29 @@ USER'S PROJECT (any git repo where totopo is used)
 
 ## Working Now
 
-Nothing in progress.
+_Nothing — ready for next task._
+
+## Recently Completed
+
+- **Remove DevPod dependency** — replaced devpod up/ssh with docker build + docker run + docker exec; removed devcontainer.json template and all DevPod references across src, docs, README, AGENTS, package.json
 
 ## Upcoming
 
 Brief descriptions for planning; each is input for plan mode before we decide to work on it.
 
+- **Workspace scoping** — support three modes when starting a session: repo root (current default), current directory, or current directory selectively (user picks which files/folders to mount). Complement with built-in agent context injection so the agent knows it lives in a dev container, may need host help for some operations, and in selective-mount mode is aware it should confirm before creating files or folders that are not mounted
+
+- **Stop: select which workspace** — when multiple workspaces are running, let the user choose which to stop (related to workspace scoping but implemented separately)
+
 - **Settings submenu** — view/edit API keys, check for updates, uninstall (remove `.totopo/` and stop container)
 
 - **Docs** — polish README for npm page (install, quickstart, security model); contribution guide
-
-- **Workspace scoping** — support three modes when starting a session: repo root (current default), current directory, or current directory selectively (user picks which files/folders to mount). Complement with built-in agent context injection so the agent knows it lives in a dev container, may need host help for some operations, and in selective-mount mode is aware it should confirm before creating files or folders that are not mounted
 
 - **Troubleshoot/help menu option** — add a troubleshoot entry to the main menu (scope TBD)
 
 - **Tech choices review** — audit tech decisions across the package, dev container, and repo; output a DECISIONS.md explaining rationale for each major choice
 
 - **Security status review** — assess current security posture, gaps, and tradeoffs; output a SECURITY.md as a concise reference
-
-- **Stop: select which workspace** — when multiple workspaces are running, let the user choose which to stop (related to workspace scoping but implemented separately)
 
 - **Terminal output review** — review and refine all terminal printings across every flow for consistency, clarity, and polish, including more detailed container status.
 
