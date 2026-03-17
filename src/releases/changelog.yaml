@@ -194,6 +194,17 @@ releases:
 in_progress:
   base_version: "0.5.0"
   entries:
+    - rc_version: "0.5.0-rc-3"
+      date: "2026-03-17"
+      changed:
+        - >-
+          Scope selection now always appears on Start session — previously skipped when a compatible container already
+          existed; selecting the same scope connects or resumes directly, selecting a different scope recreates silently
+          without a confirmation prompt
+      fixed:
+        - >-
+          Starting a session from a nested directory did not prompt for scope when an existing repo-scoped container
+          was present — repo mode no longer suppresses the scope prompt on reconnect
     - rc_version: "0.5.0-rc-2"
       date: "2026-03-17"
       changed:

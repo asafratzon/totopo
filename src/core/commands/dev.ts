@@ -8,7 +8,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
-import { cancel, confirm, isCancel, log, multiselect, outro, select } from "@clack/prompts";
+import { cancel, isCancel, log, multiselect, outro, select } from "@clack/prompts";
 
 // biome-ignore lint/style/noNonNullAssertion: guarded immediately below; non-null assertion needed for closure type inference
 const workspaceDir = process.env.TOTOPO_REPO_ROOT!;
@@ -183,13 +183,17 @@ function readContainerScopeLabel(name: string): ScopeConfig | null {
     return { mode: mode as WorkspaceScope, hostCwd, selectedPaths };
 }
 
-// ─── Scope mismatch detection ─────────────────────────────────────────────────
-// Returns true when the current cwd is incompatible with the existing container scope.
-// null existing scope (pre-feature container) is treated as repo mode — always compatible.
-function scopeMismatch(existing: ScopeConfig | null): boolean {
-    if (!existing) return false;
-    if (existing.mode === "repo") return false;
-    return existing.hostCwd !== cwd;
+// ─── Scope comparison ─────────────────────────────────────────────────────────
+// null existing scope (pre-feature container) is treated as repo mode.
+function scopesMatch(selected: ScopeConfig, existing: ScopeConfig | null): boolean {
+    const eff = existing ?? { mode: "repo" as WorkspaceScope, hostCwd: workspaceDir, selectedPaths: [] };
+    if (selected.mode !== eff.mode) return false;
+    if (selected.mode === "repo") return true;
+    if (selected.hostCwd !== eff.hostCwd) return false;
+    if (selected.mode === "selective") {
+        return JSON.stringify([...selected.selectedPaths].sort()) === JSON.stringify([...eff.selectedPaths].sort());
+    }
+    return true;
 }
 
 // ─── Build agent context document ─────────────────────────────────────────────
@@ -286,6 +290,9 @@ function runContainer(scope: ScopeConfig): void {
     }
 }
 
+// ─── Always prompt scope first ────────────────────────────────────────────────
+const scope = await promptScope();
+
 // ─── Inspect container state ──────────────────────────────────────────────────
 const inspect = spawnSync("docker", ["inspect", "--format", "{{.State.Status}}", containerName], {
     encoding: "utf8",
@@ -295,9 +302,7 @@ const inspect = spawnSync("docker", ["inspect", "--format", "{{.State.Status}}",
 const containerStatus = inspect.status === 0 ? inspect.stdout.trim() : null;
 
 if (containerStatus === null) {
-    // ─── Container not found — prompt scope, build image, run ─────────────────
-    const scope = await promptScope();
-
+    // ─── No container — build image and run ───────────────────────────────────
     log.step("Building container image...");
     const build = spawnSync("docker", ["build", "-f", `${workspaceDir}/.totopo/Dockerfile`, "-t", imageName, workspaceDir], {
         stdio: "inherit",
@@ -309,76 +314,45 @@ if (containerStatus === null) {
 
     log.step("Starting dev container...");
     runContainer(scope);
-
     log.step("Injecting agent context...");
     injectAgentContext(containerName, buildAgentContextDoc(scope));
-
     runPostStart(containerName);
 } else if (containerStatus === "exited") {
-    // ─── Container stopped — check scope compatibility ─────────────────────────
+    // ─── Container stopped — resume or recreate based on scope ────────────────
     const existingScope = readContainerScopeLabel(containerName);
 
-    if (scopeMismatch(existingScope)) {
-        const recreate = await confirm({
-            message: `Container was started from a different directory (${existingScope?.hostCwd}). Recreate with new scope?`,
-        });
-
-        if (isCancel(recreate)) {
-            cancel("Cancelled.");
-            process.exit(0);
-        }
-
-        if (recreate) {
-            const scope = await promptScope();
-            removeContainer(containerName);
-            log.step("Starting dev container...");
-            runContainer(scope);
-            log.step("Injecting agent context...");
-            injectAgentContext(containerName, buildAgentContextDoc(scope));
-            runPostStart(containerName);
-        } else {
-            log.step("Resuming dev container with existing scope...");
-            const start = spawnSync("docker", ["start", containerName], { stdio: "inherit" });
-            if (start.status !== 0) {
-                outro("Failed to start dev container.");
-                process.exit(start.status ?? 1);
-            }
-            runPostStart(containerName);
-        }
-    } else {
+    if (scopesMatch(scope, existingScope)) {
         log.step("Resuming dev container...");
         const start = spawnSync("docker", ["start", containerName], { stdio: "inherit" });
         if (start.status !== 0) {
             outro("Failed to start dev container.");
             process.exit(start.status ?? 1);
         }
+        log.step("Injecting agent context...");
+        injectAgentContext(containerName, buildAgentContextDoc(scope));
+        runPostStart(containerName);
+    } else {
+        log.step("Recreating dev container with new scope...");
+        removeContainer(containerName);
+        runContainer(scope);
+        log.step("Injecting agent context...");
+        injectAgentContext(containerName, buildAgentContextDoc(scope));
         runPostStart(containerName);
     }
 } else {
-    // ─── Container already running — check scope compatibility ────────────────
+    // ─── Container running — connect directly or recreate based on scope ──────
     const existingScope = readContainerScopeLabel(containerName);
 
-    if (scopeMismatch(existingScope)) {
-        log.warn(`Container is running with a different directory scope (${existingScope?.hostCwd}).`);
-        const recreate = await confirm({ message: "Recreate with new scope?" });
-
-        if (isCancel(recreate)) {
-            cancel("Cancelled.");
-            process.exit(0);
-        }
-
-        if (recreate) {
-            const scope = await promptScope();
-            removeContainer(containerName);
-            log.step("Starting dev container...");
-            runContainer(scope);
-            log.step("Injecting agent context...");
-            injectAgentContext(containerName, buildAgentContextDoc(scope));
-            runPostStart(containerName);
-        }
-        // else: fall through to connect with existing scope
+    if (scopesMatch(scope, existingScope)) {
+        // same scope — connect directly
+    } else {
+        log.step("Recreating dev container with new scope...");
+        removeContainer(containerName);
+        runContainer(scope);
+        log.step("Injecting agent context...");
+        injectAgentContext(containerName, buildAgentContextDoc(scope));
+        runPostStart(containerName);
     }
-    // else: same scope — connect directly (zero prompts — happy path)
 }
 
 // ─── Connect ──────────────────────────────────────────────────────────────────
