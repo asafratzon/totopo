@@ -2,10 +2,10 @@
 // =============================================================================
 // post-start.mjs — Security validation & readiness check
 // Runs automatically on every container start via postStartCommand.
+// Must use only Node.js built-ins — no external packages available in container.
 // =============================================================================
 
 import { execSync } from "node:child_process";
-import { intro, log, outro } from "@clack/prompts";
 
 const run = (cmd) => {
     try {
@@ -18,24 +18,31 @@ const run = (cmd) => {
     }
 };
 
+// ─── ANSI helpers ─────────────────────────────────────────────────────────────
+const green = (s) => `\x1b[32m${s}\x1b[0m`;
+const yellow = (s) => `\x1b[33m${s}\x1b[0m`;
+const red = (s) => `\x1b[31m${s}\x1b[0m`;
 const dim = (s) => `\x1b[2m${s}\x1b[0m`;
-const grey = (s) => `\x1b[90m${s}\x1b[0m`;
+const bold = (s) => `\x1b[1m${s}\x1b[0m`;
 
 let errors = 0;
 
-const ok = (label, detail) => log.success(`${label.padEnd(24)}${detail ? dim(detail) : ""}`);
-const skip = (label, detail) => log.info(`${grey(label.padEnd(24))}${detail ? grey(detail) : ""}`);
-const warn = (label, detail) => log.warn(`${label.padEnd(24)}${detail ? dim(detail) : ""}`);
+const grey = (s) => `\x1b[90m${s}\x1b[0m`;
+
+const ok = (label, detail) => console.log(`${green("✓")} ${label.padEnd(24)}${detail ? dim(detail) : ""}`);
+const skip = (label, detail) => console.log(`${grey("–")} ${grey(label.padEnd(24))}${detail ? grey(detail) : ""}`);
+const warn = (label, detail) => console.log(`${yellow("▲")} ${label.padEnd(24)}${detail ? dim(detail) : ""}`);
 const fail = (label, detail) => {
-    log.error(`${label.padEnd(24)}${detail || ""}`);
+    console.log(`${red("✗")} ${label.padEnd(24)}${detail || ""}`);
     errors++;
 };
+const section = (title) => console.log(`\n${bold(title)}`);
 
 // ─── Header ──────────────────────────────────────────────────────────────────
-intro("totopo — Secure AI Box");
+console.log(`\n${bold("totopo — Secure AI Box")}\n`);
 
 // ─── Security ────────────────────────────────────────────────────────────────
-log.step("Security");
+section("Security");
 
 const whoami = run("whoami");
 if (whoami !== "root") {
@@ -59,7 +66,7 @@ try {
 }
 
 // ─── AI tools ────────────────────────────────────────────────────────────────
-log.step("AI tools");
+section("AI tools");
 
 const checkTool = (cmd) => {
     const out = run(`${cmd} --version`);
@@ -75,7 +82,7 @@ checkTool("kilo");
 checkTool("opencode");
 
 // ─── Runtimes ────────────────────────────────────────────────────────────────
-log.step("Runtimes");
+section("Runtimes");
 
 const checkRuntime = (label, version) => {
     if (version !== null) ok(label, version);
@@ -98,7 +105,7 @@ checkRuntime("cargo", run("cargo --version"));
 checkRuntime("java", run("java --version")?.split("\n")[0] ?? null);
 
 // ─── Dev tools ───────────────────────────────────────────────────────────────
-log.step("Dev tools");
+section("Dev tools");
 
 ok("gh", run("gh --version")?.split("\n")[0] ?? "not found");
 ok("rg", run("rg --version")?.split("\n")[0] ?? "not found");
@@ -108,7 +115,7 @@ ok("jq", run("jq --version") ?? "not found");
 ok("yq", run("yq --version") ?? "not found");
 
 // ─── API keys ────────────────────────────────────────────────────────────────
-log.step("API keys");
+section("API keys");
 
 const checkKey = (varName) => {
     const val = process.env[varName];
@@ -124,8 +131,8 @@ checkKey("KILO_API_KEY");
 
 // ─── Summary ─────────────────────────────────────────────────────────────────
 if (errors === 0) {
-    outro("Ready.");
+    console.log(`\n${green("●")} ${bold("Ready.")}\n`);
 } else {
-    outro(`${errors} error(s) — see above. Rebuild the container to fix.`);
+    console.log(`\n${red("●")} ${bold(`${errors} error(s) — see above. Rebuild the container to fix.`)}\n`);
     process.exit(1);
 }

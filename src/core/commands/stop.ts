@@ -1,29 +1,34 @@
 #!/usr/bin/env node
 // =========================================================================================================================================
-// src/core/commands/stop.ts — Stop and remove all totopo dev containers
+// src/core/commands/stop.ts — Stop and remove THIS project's dev container
 // Invoked by bin/totopo.js — do not run directly.
 // =========================================================================================================================================
 
 import { spawnSync } from "node:child_process";
-import { log, outro } from "@clack/prompts";
+import { cancel, confirm, isCancel, log, outro } from "@clack/prompts";
 
-// ─── Find all totopo-managed-* containers ────────────────────────────────────
-const listResult = spawnSync("docker", ["ps", "-a", "--filter", "name=totopo-managed-", "--format", "{{.Names}}"], { encoding: "utf8" });
+const [projectName = "unknown"] = process.argv.slice(2);
+const containerName = `totopo-managed-${projectName}`;
 
-const containers = (listResult.stdout ?? "").trim().split("\n").filter(Boolean);
+// ─── Check if container exists ────────────────────────────────────────────────
+const inspectResult = spawnSync("docker", ["inspect", "--type", "container", containerName], { encoding: "utf8" });
 
-if (containers.length === 0) {
-    log.info("No totopo containers found.");
+if (inspectResult.status !== 0) {
+    log.info(`Container ${containerName} is not running.`);
     process.exit(0);
 }
 
-// ─── Stop and remove each container ──────────────────────────────────────────
-log.step("Stopping all totopo containers...");
+// ─── Confirm ─────────────────────────────────────────────────────────────────
+const confirmed = await confirm({ message: `Stop ${containerName}?` });
 
-for (const name of containers) {
-    log.step(`Stopping ${name}...`);
-    spawnSync("docker", ["stop", name], { stdio: "inherit" });
-    spawnSync("docker", ["rm", name], { stdio: "inherit" });
+if (isCancel(confirmed) || !confirmed) {
+    cancel();
+    process.exit(0);
 }
 
-outro("All totopo containers stopped and removed.");
+// ─── Stop and remove ─────────────────────────────────────────────────────────
+log.step(`Stopping ${containerName}...`);
+spawnSync("docker", ["stop", containerName], { stdio: "inherit" });
+spawnSync("docker", ["rm", containerName], { stdio: "inherit" });
+
+outro(`${containerName} stopped and removed.`);

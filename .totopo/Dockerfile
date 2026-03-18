@@ -17,13 +17,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # Build essentials (needed for Rust compilation, C extensions, etc.)
     build-essential pkg-config libssl-dev \
     # Utilities
-    jq unzip zip tree htop procps lsb-release gnupg ca-certificates \
+    jq unzip zip tree htop procps lsb-release gnupg ca-certificates sox \
     # Modern search/navigation tools
     ripgrep fzf \
     # Database clients
     sqlite3 postgresql-client default-mysql-client redis-tools \
     # Python (system runtime — required by build scripts)
     python3 python3-pip python3-venv pipx \
+    # Java build tools
+    maven \
     && rm -rf /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------
@@ -59,6 +61,18 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
     apt-get install -y nodejs && rm -rf /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------
+# Layer 6 — Eclipse Temurin 17 JDK (Adoptium apt repo)
+# ---------------------------------------------------------------------------
+RUN curl -fsSL https://packages.adoptium.net/artifactory/api/gpg/key/public \
+        | gpg --dearmor -o /usr/share/keyrings/adoptium.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/adoptium.gpg] \
+        https://packages.adoptium.net/artifactory/deb $(lsb_release -cs) main" \
+        > /etc/apt/sources.list.d/adoptium.list && \
+    apt-get update && apt-get install -y temurin-17-jdk && rm -rf /var/lib/apt/lists/*
+RUN echo 'export JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java))))' \
+        > /etc/profile.d/java.sh
+
+# ---------------------------------------------------------------------------
 # Layer 8 — Git remote block
 # ---------------------------------------------------------------------------
 RUN git config --system protocol.allow never && \
@@ -82,6 +96,12 @@ RUN groupadd --gid 1001 devuser && \
 
 USER devuser
 WORKDIR /workspace
+
+# ---------------------------------------------------------------------------
+# Layer 13 — Python user tools (uv + poetry via pipx)
+# ---------------------------------------------------------------------------
+RUN pipx install uv && pipx install poetry
+RUN /home/devuser/.local/bin/uv python install 3.12
 
 ENV PATH="/home/devuser/.local/bin:${PATH}"
 RUN echo 'export PS1="\[\033[01;32m\][devcontainer]\[\033[00m\] \[\033[01;34m\]\w\[\033[00m\] \$ "' \

@@ -84,6 +84,20 @@ const dockerResult = spawnSync("docker", ["ps", "--filter", "name=totopo-managed
 });
 const activeCount = dockerResult.stdout ? dockerResult.stdout.trim().split("\n").filter(Boolean).length : 0;
 
+// Is THIS project's container running?
+const projectContainerResult = spawnSync("docker", ["ps", "--filter", `name=totopo-managed-${projectName}`, "--format", "{{.Names}}"], {
+    encoding: "utf8",
+});
+const projectRunning = (projectContainerResult.stdout ?? "")
+    .trim()
+    .split("\n")
+    .filter(Boolean)
+    .some((n) => n === `totopo-managed-${projectName}`);
+
+// Does THIS project's image exist?
+const projectImageResult = spawnSync("docker", ["images", "-q", `totopo-managed-${projectName}`], { encoding: "utf8" });
+const projectImageExists = (projectImageResult.stdout ?? "").trim().length > 0;
+
 let hasKey = false;
 const envPath = join(repoRoot, ".totopo/.env");
 if (existsSync(envPath)) {
@@ -102,10 +116,21 @@ if (existsSync(envPath)) {
 // stdout → /dev/tty so the clack UI renders on the terminal
 // stderr → pipe so the selected action string is captured
 const ttyFd = openSync("/dev/tty", "w");
-const menuResult = spawnSync(tsx, [join(packageDir, "src/core/commands/menu.ts"), projectName, String(activeCount), String(hasKey)], {
-    stdio: ["inherit", ttyFd, "pipe"],
-    encoding: "utf8",
-});
+const menuResult = spawnSync(
+    tsx,
+    [
+        join(packageDir, "src/core/commands/menu.ts"),
+        projectName,
+        String(activeCount),
+        String(hasKey),
+        String(projectRunning),
+        String(projectImageExists),
+    ],
+    {
+        stdio: ["inherit", ttyFd, "pipe"],
+        encoding: "utf8",
+    },
+);
 const action = (menuResult.stderr ?? "").trim();
 
 // ─── Execute selection ────────────────────────────────────────────────────────
@@ -114,10 +139,14 @@ switch (action) {
         run("dev.ts");
         break;
     case "stop":
-        run("stop.ts");
+        run("stop.ts", [projectName]);
         break;
-    case "reset":
-        run("reset.ts");
+    case "rebuild":
+        run("rebuild.ts", [projectName]);
+        run("dev.ts");
+        break;
+    case "manage":
+        run("manage.ts", [projectName]);
         break;
     case "doctor":
         run("doctor.ts", ["--verbose"]);
