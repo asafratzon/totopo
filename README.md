@@ -112,6 +112,12 @@ git push / pull / fetch
 
 ---
 
+## Limitations
+
+**No audio / microphone support** — the container has no access to host audio devices. Features that require microphone input (e.g. Claude Code's `/voice` mode) will not work inside the container.
+
+---
+
 ## Troubleshooting
 
 **Container fails to start** — the startup check prints exactly which check failed and why.

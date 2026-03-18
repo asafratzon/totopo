@@ -69,7 +69,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # Build essentials (needed for Rust compilation, C extensions, etc.)
     build-essential pkg-config libssl-dev \
     # Utilities
-    jq unzip zip tree htop procps lsb-release gnupg ca-certificates \
+    jq unzip zip tree htop procps lsb-release gnupg ca-certificates sox \
     # Modern search/navigation tools
     ripgrep fzf \
     # Database clients
