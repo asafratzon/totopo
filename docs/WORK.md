@@ -65,11 +65,7 @@ Brief descriptions for planning; each is input for plan mode before we decide to
 
 - **Agent context injection for AGENTS.md** — extend `buildAgentContextDoc()` in `dev.ts` to also read and inject `AGENTS.md` from the repo root (alongside CLAUDE.md). The function already accepts scope context; this is a straightforward extension to include a second source file. Also expand the injected context to explicitly tell the agent: (1) whether git is available (only in repo scope — cwd/selective scopes do not mount `.git` because doing so would allow the agent to read the full commit history of files outside its mount via `git show`, defeating the security boundary); (2) instruct the agent to surface its scope and limitations to the user at the start of every session, so the user is always aware of what the agent can and cannot access.
 
-- **Settings submenu** — view/edit API keys, check for updates
-
 - **Docs** — polish README for npm page (install, quickstart, security model); contribution guide
-
-- **Troubleshoot/help menu option** — refer to pacakge docs in repo root, and invite to open issues if encountered.
 
 - **Tech choices review** — audit tech decisions across the package, dev container, and repo; output a DECISIONS.md explaining rationale for each major choice
 
