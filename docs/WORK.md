@@ -13,10 +13,11 @@ totopo PACKAGE (this repo — distributed via npx in future)
 │   │   ├── commands/  ← entry points invoked by bin/totopo.js
 │   │   │   ├── dev.ts
 │   │   │   ├── doctor.ts
+│   │   │   ├── manage.ts          ← manage workspaces submenu (stop/remove/uninstall)
 │   │   │   ├── menu.ts
 │   │   │   ├── onboard.ts
-│   │   │   ├── reset.ts
-│   │   │   ├── settings.ts    ← settings menu (mode switch + tool selection)
+│   │   │   ├── rebuild.ts         ← remove image to force a fresh build on next start
+│   │   │   ├── settings.ts        ← settings menu (mode switch + tool selection)
 │   │   │   ├── stop.ts
 │   │   │   └── sync-dockerfile.ts ← silent pre-flight: regenerate Dockerfile if stale
 │   │   └── lib/       ← shared utilities imported by commands
@@ -27,10 +28,11 @@ totopo PACKAGE (this repo — distributed via npx in future)
 │   └── releases/      ← developer release tooling (NOT in npm package)
 │       ├── rc.ts
 │       ├── release.ts
+│       ├── check.ts               ← pre-release health checks (validates changelog.yaml)
 │       ├── sync-github-releases.ts
 │       ├── changelog-utils.ts
 │       ├── generate-changelog.ts
-│       └── changelog.yaml   ← source of truth for all release notes
+│       └── changelog.yaml         ← source of truth for all release notes
 └── templates/         ← copied into user's .totopo/ during onboarding
     ├── Dockerfile
     ├── post-start.mjs
@@ -52,12 +54,7 @@ recompute paths.
 
 ## Working Now
 
-- **Stop / Remove overhaul** — rework the stop and removal experience as two distinct menu entries:
-  - **Stop** — only shown in the main menu when at least one `totopo-managed-*` container is running; if multiple are running, show a multiselect so the user can pick which to stop (single running container skips the picker and shows confirmation prompt so user know which is being stopped).
-  - **Remove** — always visible in the main menu; leads to a submenu with two options:
-    - *Remove container images* — multiselect of all `totopo-managed-*` images on the host, each labelled with its workspace name in parentheses; stops any running containers for selected images before removing.
-    - *Uninstall totopo from this project* — confirms with the user, then: stops all containers belonging to this project, removes their images (label-based, project-scoped only), and deletes `.totopo/` from the repo root. Does not touch other projects.
-  - The existing Reset option (wipe all workspaces + images) should be removed.
+---
 
 ## Upcoming
 

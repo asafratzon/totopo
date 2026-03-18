@@ -6,19 +6,18 @@
 
 import { box, cancel, isCancel, select } from "@clack/prompts";
 
-// Parse CLI args passed by bin/totopo.js: project name, active container count, API key presence, project state
-const [projectName = "unknown", activeCountStr, hasKeyStr, projectRunningStr, projectImageExistsStr] = process.argv.slice(2);
+// Parse CLI args passed by bin/totopo.js: project name, active container count, project state
+const [projectName = "unknown", activeCountStr, , projectRunningStr, projectImageExistsStr] = process.argv.slice(2);
 const activeCount = Number.parseInt(activeCountStr ?? "0", 10);
-const hasKey = hasKeyStr === "true";
 const projectRunning = projectRunningStr === "true";
 const projectImageExists = projectImageExistsStr === "true";
 
 // ─── Status box ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-const sessionLabel = activeCount === 1 ? "1 container running" : `${activeCount} containers running`;
+const containersLabel = activeCount === 0 ? "none" : activeCount === 1 ? "1 running" : `${activeCount} running`;
 const lines = [];
-lines.push(`status: ${sessionLabel}`);
-lines.push(`api keys: ${hasKey ? "configured" : "none"} (.totopo/.env)`);
-box(lines.join("\n"), ` totopo · ${projectName} `, {
+lines.push(`workspace:   ${projectName}`);
+lines.push(`containers:  ${containersLabel}`);
+box(lines.join("\n"), " totopo ", {
     contentAlign: "center",
     titleAlign: "center",
     width: "auto",
@@ -32,9 +31,9 @@ const action = await select({
         { value: "dev", label: "Start session" },
         ...(projectRunning ? [{ value: "stop", label: "Stop" }] : []),
         ...(projectImageExists ? [{ value: "rebuild", label: "Rebuild" }] : []),
+        { value: "settings", label: "Settings" },
         { value: "manage", label: "Manage workspaces" },
         { value: "doctor", label: "Doctor" },
-        { value: "settings", label: "Settings" },
         { value: "quit", label: "Quit" },
     ],
 });

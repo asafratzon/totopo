@@ -117,17 +117,7 @@ ok("yq", run("yq --version") ?? "not found");
 // ─── API keys ────────────────────────────────────────────────────────────────
 section("API keys");
 
-const checkKey = (varName) => {
-    const val = process.env[varName];
-    if (val) {
-        ok(varName, `${val.substring(0, 12)}...`);
-    } else {
-        warn(varName, "not set — add to .totopo/.env");
-    }
-};
-
-checkKey("ANTHROPIC_API_KEY");
-checkKey("KILO_API_KEY");
+console.log(`ℹ ${dim("Optionally add API keys to .totopo/.env before starting the container.")}`);
 
 // ─── Summary ─────────────────────────────────────────────────────────────────
 if (errors === 0) {

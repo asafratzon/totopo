@@ -38,12 +38,16 @@ const fullOption =
 
 const modeChoice = await select({
     message: "Runtime mode:",
-    options: [hostMirrorOption, fullOption],
+    options: [hostMirrorOption, fullOption, { value: "back" as const, label: "← Back" }],
 });
 
 if (isCancel(modeChoice)) {
     cancel("Cancelled.");
     process.exit(0);
+}
+
+if (modeChoice === "back") {
+    process.exit(2); // 2 = "back" signal to bin/totopo.js
 }
 
 const mode = modeChoice as RuntimeMode;
