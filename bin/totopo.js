@@ -116,44 +116,52 @@ if (existsSync(envPath)) {
 // stdout → /dev/tty so the clack UI renders on the terminal
 // stderr → pipe so the selected action string is captured
 const ttyFd = openSync("/dev/tty", "w");
-const menuResult = spawnSync(
-    tsx,
-    [
-        join(packageDir, "src/core/commands/menu.ts"),
-        projectName,
-        String(activeCount),
-        String(hasKey),
-        String(projectRunning),
-        String(projectImageExists),
-    ],
-    {
-        stdio: ["inherit", ttyFd, "pipe"],
-        encoding: "utf8",
-    },
-);
-const action = (menuResult.stderr ?? "").trim();
 
-// ─── Execute selection ────────────────────────────────────────────────────────
-switch (action) {
-    case "dev":
-        run("dev.ts");
-        break;
-    case "stop":
-        run("stop.ts", [projectName]);
-        break;
-    case "rebuild":
-        run("rebuild.ts", [projectName]);
-        run("dev.ts");
-        break;
-    case "manage":
-        run("manage.ts", [projectName]);
-        break;
-    case "doctor":
-        run("doctor.ts", ["--verbose"]);
-        break;
-    case "settings":
-        run("settings.ts");
-        break;
-    default:
-        break; // quit or cancelled
+let showMenu = true;
+while (showMenu) {
+    showMenu = false;
+
+    const menuResult = spawnSync(
+        tsx,
+        [
+            join(packageDir, "src/core/commands/menu.ts"),
+            projectName,
+            String(activeCount),
+            String(hasKey),
+            String(projectRunning),
+            String(projectImageExists),
+        ],
+        {
+            stdio: ["inherit", ttyFd, "pipe"],
+            encoding: "utf8",
+        },
+    );
+    const action = (menuResult.stderr ?? "").trim();
+
+    // ─── Execute selection ────────────────────────────────────────────────────────
+    switch (action) {
+        case "dev":
+            run("dev.ts");
+            break;
+        case "stop":
+            run("stop.ts", [projectName]);
+            break;
+        case "rebuild":
+            run("rebuild.ts", [projectName]);
+            run("dev.ts");
+            break;
+        case "manage": {
+            const result = run("manage.ts", [projectName]);
+            if (result.status === 2) showMenu = true; // Back selected
+            break;
+        }
+        case "doctor":
+            run("doctor.ts", ["--verbose"]);
+            break;
+        case "settings":
+            run("settings.ts");
+            break;
+        default:
+            break; // quit or cancelled
+    }
 }
