@@ -47,13 +47,14 @@ process.env.TOTOPO_REPO_ROOT = repoRoot;
 // ─── Auto-install dependencies ────────────────────────────────────────────────
 const tsx = join(packageDir, "node_modules/.bin/tsx");
 if (!existsSync(tsx)) {
-    console.log("  Installing totopo dependencies...");
+    process.stdout.write("  Getting ready…");
     let pm = "npm";
     try {
         execSync("which pnpm", { stdio: "ignore" });
         pm = "pnpm";
     } catch {}
     execSync(`${pm} install --silent`, { cwd: packageDir, stdio: "inherit" });
+    process.stdout.write("\r\x1b[2K"); // clear the line
 }
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
