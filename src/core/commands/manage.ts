@@ -29,7 +29,7 @@ const action = await select({
 });
 
 if (isCancel(action) || action === "back") {
-    process.exit(0);
+    process.exit(2); // 2 = "back" signal to bin/totopo.js
 }
 
 // ─── A: Stop running containers ───────────────────────────────────────────────
