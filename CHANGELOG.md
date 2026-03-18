@@ -7,6 +7,30 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.7.0] — 2026-03-18
+
+### Added
+
+- Rebuild menu item — stops this project's container (if running) and removes its image, then immediately launches a fresh build via dev.ts. Only shown when the project image exists.
+- Manage workspaces submenu — groups cross-project housekeeping behind a dedicated entry: stop running containers (multiselect), remove images (multiselect with workspace labels, stops dependent containers first), and uninstall from this project (stops container, removes image, deletes .totopo/).
+- Back option added to Settings menu — selecting it returns to the main menu without saving changes, consistent with the Back behaviour in Manage workspaces.
+
+### Changed
+
+- Stop menu item is now project-scoped — targets only this project's container (totopo-managed-<project>) and shows a confirmation prompt before stopping. Previously stopped all totopo containers globally.
+- Stop and Rebuild are conditionally shown — Stop appears only when this project's container is running; Rebuild appears only when this project's image exists.
+- Reset (wipe workspaces + images) removed from the top-level menu — its functionality is now available through Manage workspaces → Remove images and Manage workspaces → Uninstall from this project.
+- Status box redesigned — title simplified to "totopo"; content now shows workspace name and container count ("none" / "1 running" / "N running"). API key indicator removed from the box.
+- post-start.mjs API keys section no longer warns per-key — replaced with a single info line ("Optionally add API keys to .totopo/.env before starting the container."), matching the message shown at the end of onboarding.
+
+### Fixed
+
+- Back in Manage workspaces submenu now returns to the main menu instead of exiting — bin/totopo.js wraps the menu loop and re-shows the main menu when manage.ts exits with code 2 (back signal).
+- Dependency install message changed from "Installing totopo dependencies…" to "Getting ready…" and is now cleared from the terminal once installation completes.
+- docs: WORK.md architecture tree corrected — reset.ts renamed to rebuild.ts, manage.ts and check.ts added as missing entries.
+
+---
+
 ## [0.6.1] — 2026-03-17
 
 ### Changed
