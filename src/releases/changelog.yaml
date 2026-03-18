@@ -296,3 +296,12 @@ in_progress:
         - >-
           Reset (wipe workspaces + images) removed from the top-level menu — its functionality is now available
           through Manage workspaces → Remove images and Manage workspaces → Uninstall from this project.
+    - rc_version: 0.7.0-rc-2
+      date: "2026-03-18"
+      fixed:
+        - >-
+          Back in Manage workspaces submenu now returns to the main menu instead of exiting — bin/totopo.js wraps
+          the menu loop and re-shows the main menu when manage.ts exits with code 2 (back signal).
+        - >-
+          Dependency install message changed from "Installing totopo dependencies…" to "Getting ready…" and is
+          now cleared from the terminal once installation completes.
