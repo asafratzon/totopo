@@ -5,7 +5,7 @@
 Two distinct concerns — keep them separate:
 
 ```
-totopo PACKAGE (this repo — distributed via npx in future)
+1. totopo PACKAGE (this repo — distributed via npx)
 ├── bin/
 │   └── totopo.js      ← entry point (run from user's project directory)
 ├── src/
@@ -20,12 +20,12 @@ totopo PACKAGE (this repo — distributed via npx in future)
 │   │   │   ├── settings.ts        ← settings menu (mode switch + tool selection)
 │   │   │   ├── stop.ts
 │   │   │   └── sync-dockerfile.ts ← silent pre-flight: regenerate Dockerfile if stale
-│   │   └── lib/       ← shared utilities imported by commands
+│   │   └── lib/                   ← shared utilities imported by commands
 │   │       ├── config.ts          ← read/write .totopo/settings.json
 │   │       ├── detect-host.ts     ← detect host runtime versions
 │   │       ├── generate-dockerfile.ts  ← generate Dockerfile (full or host-mirror)
 │   │       └── select-tools.ts    ← multiselect UI for runtime tool selection
-│   └── releases/      ← developer release tooling (NOT in npm package)
+│   └── releases/                  ← developer release tooling (NOT in npm package)
 │       ├── rc.ts
 │       ├── release.ts
 │       ├── check.ts               ← pre-release health checks (validates changelog.yaml)
@@ -33,12 +33,12 @@ totopo PACKAGE (this repo — distributed via npx in future)
 │       ├── changelog-utils.ts
 │       ├── generate-changelog.ts
 │       └── changelog.yaml         ← source of truth for all release notes
-└── templates/         ← copied into user's .totopo/ during onboarding
+└── templates/                     ← copied into user's .totopo/ during onboarding
     ├── Dockerfile
     ├── post-start.mjs
     └── env
 
-USER'S PROJECT (any git repo where totopo is used)
+2. USER'S PROJECT (any git repo where totopo is used)
 └── .totopo/            ← created by onboarding; config only, no scripts
     ├── .env           (gitignored — API keys)
     ├── Dockerfile     (regenerated on session start in host-mirror mode)
@@ -54,7 +54,7 @@ recompute paths.
 
 ## Working Now
 
----
+- **Compiled JS entry point (Option C)** — replace `bin/totopo.js` (which shells out to `tsx` at runtime) with a compiled TypeScript pipeline: add a `build` script (`tsc` compiles `src/core/` → `dist/`), point `bin` at `dist/bin/totopo.js`, move `tsx` to devDependencies, and update the release workflow to build before publish. Each command becomes an exported `async function` rather than a standalone script. Gains: ~200–400 ms faster startup, no runtime `tsx` dependency, fully cross-platform. Cost: refactor all commands from top-level-await scripts into importable modules; add build step to CI/release flow.
 
 ## Upcoming
 
@@ -62,16 +62,6 @@ Brief descriptions for planning; each is input for plan mode before we decide to
 
 - **Agent context injection for AGENTS.md** — extend `buildAgentContextDoc()` in `dev.ts` to also read and inject `AGENTS.md` from the repo root (alongside CLAUDE.md). The function already accepts scope context; this is a straightforward extension to include a second source file. Also expand the injected context to explicitly tell the agent: (1) whether git is available (only in repo scope — cwd/selective scopes do not mount `.git` because doing so would allow the agent to read the full commit history of files outside its mount via `git show`, defeating the security boundary); (2) instruct the agent to surface its scope and limitations to the user at the start of every session, so the user is always aware of what the agent can and cannot access.
 
-- **Docs** — polish README for npm page (install, quickstart, security model); contribution guide
-
-- **Tech choices review** — audit tech decisions across the package, dev container, and repo; output a DECISIONS.md explaining rationale for each major choice
-
-- **Security status review** — assess current security posture, gaps, and tradeoffs; output a SECURITY.md as a concise reference
-
-- **Terminal output review** — review and refine all terminal printings across every flow for consistency, clarity, and polish, including more detailed container status.
-
-- **Autostart agent** - improved experience upon connecting to the dev container so user could during onboarding decide if he want to auto start specific agent (claude/opencode/kilo etc.).
+- **Tech choices and Security review** — audit tech decisions across the package, dev container, and repo; assess current security posture, gaps, and tradeoffs output a DECISIONS.md explaining rationale for each major choice.
 
 - **README illustrations** — add visuals to README.md using Google's Banana Pro AI.
-
-- **Compiled JS entry point (Option C)** — replace `bin/totopo.js` (which shells out to `tsx` at runtime) with a compiled TypeScript pipeline: add a `build` script (`tsc` compiles `src/core/` → `dist/`), point `bin` at `dist/bin/totopo.js`, move `tsx` to devDependencies, and update the release workflow to build before publish. Each command becomes an exported `async function` rather than a standalone script. Gains: ~200–400 ms faster startup, no runtime `tsx` dependency, fully cross-platform. Cost: refactor all commands from top-level-await scripts into importable modules; add build step to CI/release flow.
