@@ -159,9 +159,11 @@ while (showMenu) {
         case "doctor":
             run("doctor.ts", ["--verbose"]);
             break;
-        case "settings":
-            run("settings.ts");
+        case "settings": {
+            const result = run("settings.ts");
+            if (result.status === 2) showMenu = true; // Back selected
             break;
+        }
         default:
             break; // quit or cancelled
     }

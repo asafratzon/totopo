@@ -305,3 +305,21 @@ in_progress:
         - >-
           Dependency install message changed from "Installing totopo dependencies…" to "Getting ready…" and is
           now cleared from the terminal once installation completes.
+    - rc_version: 0.7.0-rc-3
+      date: "2026-03-18"
+      added:
+        - >-
+          Back option added to Settings menu — selecting it returns to the main menu without saving changes,
+          consistent with the Back behaviour in Manage workspaces.
+      changed:
+        - >-
+          Status box redesigned — title simplified to "totopo"; content now shows workspace name and container
+          count ("none" / "1 running" / "N running"). API key indicator removed from the box.
+        - >-
+          post-start.mjs API keys section no longer warns per-key — replaced with a single info line
+          ("Optionally add API keys to .totopo/.env before starting the container."), matching the message
+          shown at the end of onboarding.
+      fixed:
+        - >-
+          docs: WORK.md architecture tree corrected — reset.ts renamed to rebuild.ts, manage.ts and
+          check.ts added as missing entries.

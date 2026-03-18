@@ -126,5 +126,5 @@ if (commitScope === "local") {
     }
 }
 
-log.warn("Add your API keys to .totopo/.env before starting the container.");
-outro("Setup complete. Run totopo again to start your session.");
+log.info("Optionally add API keys to .totopo/.env before starting the container.");
+outro("Setup complete.");

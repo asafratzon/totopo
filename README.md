@@ -4,7 +4,7 @@ Spin up a secure, isolated AI coding environment in any git project — in one c
 
 ## Status
 
-⚠️ **Early development (v0.1)** — experimental. API and behavior may change. Not yet recommended for production use.
+⚠️ **Early development (pre-1.0)** — experimental. API and behavior may change. Not yet recommended for production use.
 
 ## How It Works
 
@@ -53,7 +53,7 @@ status
 
 ### 4. Stop
 
-Run `npx totopo` again and select **Stop all**.
+Run `npx totopo` again and select **Stop**.
 
 ---
 
@@ -94,7 +94,7 @@ status      # Re-run security + readiness check
 
 Remote git operations are blocked inside the container. Push from your host terminal instead.
 
-See `.totopo/README.md` for full details on the security model.
+See `docs/VISION.md` for full details on the security model.
 
 ---
 
@@ -122,6 +122,6 @@ git push / pull / fetch
 
 **Container fails to start** — the startup check prints exactly which check failed and why.
 
-**API key warnings** — check `.totopo/.env` has the correct variable names, then use **Reset** from the totopo menu to rebuild the container.
+**API key warnings** — check `.totopo/.env` has the correct variable names, then use **Rebuild** from the totopo menu to rebuild the container.
 
-**AI tool not found** — use **Reset** from the totopo menu to rebuild the container image. Do not install tools manually inside a running container as changes won't persist.
+**AI tool not found** — use **Rebuild** from the totopo menu to rebuild the container image. Do not install tools manually inside a running container as changes won't persist.
