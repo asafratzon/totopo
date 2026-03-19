@@ -17,7 +17,7 @@ export async function run(args: MenuArgs): Promise<string> {
     // ─── Status box ──────────────────────────────────────────────────────────────
     const containersLabel = activeCount === 0 ? "none" : activeCount === 1 ? "1 running" : `${activeCount} running`;
     box(`workspace:   ${projectName}\ncontainers:  ${containersLabel}\nkeys:        ~/.totopo/.env`, " totopo ", {
-        contentAlign: "center",
+        contentAlign: "left",
         titleAlign: "center",
         width: "auto",
         rounded: true,

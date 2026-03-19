@@ -69,9 +69,17 @@ try {
 section("AI tools");
 
 const checkTool = (cmd) => {
+    // Try --version first; some tools (e.g. opencode) may write version to
+    // stderr or exit non-zero in a non-TTY context, so fall back to `which`
+    // to confirm the binary exists before reporting failure.
     const out = run(`${cmd} --version`);
-    if (out !== null) {
+    if (out !== null && out.trim() !== "") {
         ok(cmd, out.split("\n")[0]);
+        return;
+    }
+    const which = run(`which ${cmd}`);
+    if (which !== null) {
+        ok(cmd, "installed");
     } else {
         fail(cmd, "not found — rebuild container");
     }
