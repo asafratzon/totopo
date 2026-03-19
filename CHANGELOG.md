@@ -7,6 +7,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [0.8.0] — 2026-03-19
+
+### Changed
+
+- Compiled JS entry point — src/core/ is now compiled to dist/ via tsc; tsx moved to devDependencies; bin/totopo.js imports from dist/ directly, eliminating runtime transpilation and reducing startup time by ~200-400 ms.
+
+---
+
 ## [0.7.0] — 2026-03-18
 
 ### Added
