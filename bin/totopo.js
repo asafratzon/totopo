@@ -5,8 +5,8 @@
 // =============================================================================
 
 import { execSync, spawnSync } from "node:child_process";
-import { existsSync, openSync, readFileSync, realpathSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { basename, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 // ─── Guard: inside container ──────────────────────────────────────────────────
@@ -25,9 +25,8 @@ try {
 }
 
 // ─── Paths ────────────────────────────────────────────────────────────────────
-// realpathSync resolves the npm symlink in node_modules/.bin/ back to the
-// real package root, so TOTOPO_PACKAGE_DIR is always the installed package.
-const packageDir = dirname(dirname(realpathSync(fileURLToPath(import.meta.url))));
+// dirname(dirname(...)) walks up from bin/ to the package root.
+const packageDir = dirname(dirname(fileURLToPath(import.meta.url)));
 
 let repoRoot;
 try {
@@ -44,34 +43,39 @@ try {
 process.env.TOTOPO_PACKAGE_DIR = packageDir;
 process.env.TOTOPO_REPO_ROOT = repoRoot;
 
-// ─── Auto-install dependencies ────────────────────────────────────────────────
-const tsx = join(packageDir, "node_modules/.bin/tsx");
-if (!existsSync(tsx)) {
-    process.stdout.write("  Getting ready…");
-    let pm = "npm";
-    try {
-        execSync("which pnpm", { stdio: "ignore" });
-        pm = "pnpm";
-    } catch {}
-    execSync(`${pm} install --silent`, { cwd: packageDir, stdio: "inherit" });
-    process.stdout.write("\r\x1b[2K"); // clear the line
+// ─── Guard: dist/ must exist ─────────────────────────────────────────────────
+if (!existsSync(new URL("../dist/commands/sync-dockerfile.js", import.meta.url))) {
+    console.error("");
+    console.error("  totopo: compiled output not found.");
+    console.error("  This should not happen with a published package.");
+    console.error("  If you are developing locally, run: pnpm build");
+    console.error("");
+    process.exit(1);
 }
 
-// ─── Helper ───────────────────────────────────────────────────────────────────
-const run = (script, args = []) => spawnSync(tsx, [join(packageDir, `src/core/commands/${script}`), ...args], { stdio: "inherit" });
+// ─── Import compiled commands ─────────────────────────────────────────────────
+const { run: syncDockerfile } = await import("../dist/commands/sync-dockerfile.js");
+const { run: doctor } = await import("../dist/commands/doctor.js");
+const { run: onboard } = await import("../dist/commands/onboard.js");
+const { run: menu } = await import("../dist/commands/menu.js");
+const { run: dev } = await import("../dist/commands/dev.js");
+const { run: stop } = await import("../dist/commands/stop.js");
+const { run: rebuild } = await import("../dist/commands/rebuild.js");
+const { run: manage } = await import("../dist/commands/manage.js");
+const { run: settings } = await import("../dist/commands/settings.js");
 
 // ─── Onboarding ───────────────────────────────────────────────────────────────
-if (!existsSync(join(repoRoot, ".totopo/Dockerfile"))) {
-    run("onboard.ts");
-    if (!existsSync(join(repoRoot, ".totopo/Dockerfile"))) process.exit(0);
+if (!existsSync(`${repoRoot}/.totopo/Dockerfile`)) {
+    const completed = await onboard(packageDir, repoRoot);
+    if (!completed) process.exit(0);
 }
 
 // ─── Sync Dockerfile with host runtimes ───────────────────────────────────────
-run("sync-dockerfile.ts");
+await syncDockerfile(packageDir, repoRoot);
 
 // ─── Doctor (silent pre-check) ────────────────────────────────────────────────
-const doctor = run("doctor.ts");
-if (doctor.status !== 0) {
+const doctorResult = await doctor(repoRoot, false);
+if (!doctorResult.ok) {
     console.error("  Fix the issues above and re-run totopo.");
     console.error("");
     process.exit(1);
@@ -85,7 +89,6 @@ const dockerResult = spawnSync("docker", ["ps", "--filter", "name=totopo-managed
 });
 const activeCount = dockerResult.stdout ? dockerResult.stdout.trim().split("\n").filter(Boolean).length : 0;
 
-// Is THIS project's container running?
 const projectContainerResult = spawnSync("docker", ["ps", "--filter", `name=totopo-managed-${projectName}`, "--format", "{{.Names}}"], {
     encoding: "utf8",
 });
@@ -95,12 +98,11 @@ const projectRunning = (projectContainerResult.stdout ?? "")
     .filter(Boolean)
     .some((n) => n === `totopo-managed-${projectName}`);
 
-// Does THIS project's image exist?
 const projectImageResult = spawnSync("docker", ["images", "-q", `totopo-managed-${projectName}`], { encoding: "utf8" });
 const projectImageExists = (projectImageResult.stdout ?? "").trim().length > 0;
 
 let hasKey = false;
-const envPath = join(repoRoot, ".totopo/.env");
+const envPath = `${repoRoot}/.totopo/.env`;
 if (existsSync(envPath)) {
     for (const line of readFileSync(envPath, "utf8").split("\n")) {
         const trimmed = line.trim();
@@ -113,55 +115,35 @@ if (existsSync(envPath)) {
     }
 }
 
-// ─── Interactive menu (clack) ─────────────────────────────────────────────────
-// stdout → /dev/tty so the clack UI renders on the terminal
-// stderr → pipe so the selected action string is captured
-const ttyFd = openSync("/dev/tty", "w");
-
+// ─── Interactive menu loop ────────────────────────────────────────────────────
 let showMenu = true;
 while (showMenu) {
     showMenu = false;
 
-    const menuResult = spawnSync(
-        tsx,
-        [
-            join(packageDir, "src/core/commands/menu.ts"),
-            projectName,
-            String(activeCount),
-            String(hasKey),
-            String(projectRunning),
-            String(projectImageExists),
-        ],
-        {
-            stdio: ["inherit", ttyFd, "pipe"],
-            encoding: "utf8",
-        },
-    );
-    const action = (menuResult.stderr ?? "").trim();
+    const action = await menu({ projectName, activeCount, hasKey, projectRunning, projectImageExists });
 
-    // ─── Execute selection ────────────────────────────────────────────────────────
     switch (action) {
         case "dev":
-            run("dev.ts");
+            await dev(packageDir, repoRoot);
             break;
         case "stop":
-            run("stop.ts", [projectName]);
+            await stop(projectName);
             break;
         case "rebuild":
-            run("rebuild.ts", [projectName]);
-            run("dev.ts");
+            await rebuild(projectName);
+            await dev(packageDir, repoRoot);
             break;
         case "manage": {
-            const result = run("manage.ts", [projectName]);
-            if (result.status === 2) showMenu = true; // Back selected
+            const result = await manage(projectName, repoRoot);
+            if (result === "back") showMenu = true;
             break;
         }
         case "doctor":
-            run("doctor.ts", ["--verbose"]);
+            await doctor(repoRoot, true);
             break;
         case "settings": {
-            const result = run("settings.ts");
-            if (result.status === 2) showMenu = true; // Back selected
+            const result = await settings(packageDir, repoRoot);
+            if (result === "back") showMenu = true;
             break;
         }
         default:

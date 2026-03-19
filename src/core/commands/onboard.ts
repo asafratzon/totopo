@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 // =========================================================================================================================================
 // src/core/commands/onboard.ts — First-time setup for a project using totopo
 // Invoked by bin/totopo.js when no .totopo/ config is found in the project.
@@ -7,124 +6,120 @@
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { box, cancel, confirm, intro, isCancel, log, outro, select } from "@clack/prompts";
-import { type RuntimeMode, writeSettings } from "../lib/config.ts";
-import { detectHostRuntimes } from "../lib/detect-host.ts";
-import { generateDockerfile } from "../lib/generate-dockerfile.ts";
-import { selectTools } from "../lib/select-tools.ts";
+import { type RuntimeMode, writeSettings } from "../lib/config.js";
+import { detectHostRuntimes } from "../lib/detect-host.js";
+import { generateDockerfile } from "../lib/generate-dockerfile.js";
+import { selectTools } from "../lib/select-tools.js";
 
-const packageDir = process.env.TOTOPO_PACKAGE_DIR;
-const repoRoot = process.env.TOTOPO_REPO_ROOT;
+// Returns true if onboarding completed, false if cancelled
+export async function run(packageDir: string, repoRoot: string): Promise<boolean> {
+    const templatesDir = join(packageDir, "templates");
+    const totopoDir = join(repoRoot, ".totopo");
+    const projectName = basename(repoRoot);
 
-if (!packageDir || !repoRoot) {
-    log.error("TOTOPO_PACKAGE_DIR / TOTOPO_REPO_ROOT not set — run via npx totopo");
-    process.exit(1);
-}
+    // ─── Intro ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+    intro("totopo — First-time setup");
 
-const templatesDir = join(packageDir, "templates");
-const totopoDir = join(repoRoot, ".totopo");
-const projectName = basename(repoRoot);
+    box(`project  : ${projectName}\nlocation : ${totopoDir}`, "No .totopo/ config found — totopo will create it now.", {
+        contentAlign: "center",
+        titleAlign: "center",
+        width: "auto",
+        rounded: true,
+    });
 
-// ─── Intro ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-intro("totopo — First-time setup");
+    const ok = await confirm({ message: "Continue?" });
 
-box(`project  : ${projectName}\nlocation : ${totopoDir}`, "No .totopo/ config found — totopo will create it now.", {
-    contentAlign: "center",
-    titleAlign: "center",
-    width: "auto",
-    rounded: true,
-});
-
-const ok = await confirm({ message: "Continue?" });
-
-if (isCancel(ok) || !ok) {
-    cancel("Setup cancelled.");
-    process.exit(0);
-}
-
-// ─── Copy templates ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-mkdirSync(totopoDir, { recursive: true });
-
-cpSync(join(templatesDir, "Dockerfile"), join(totopoDir, "Dockerfile"));
-cpSync(join(templatesDir, "post-start.mjs"), join(totopoDir, "post-start.mjs"));
-
-log.success("Copied config templates to .totopo/");
-
-// ─── Runtime mode ────────────────────────────────────────────────────────────
-const modeChoice = await select({
-    message: "Runtime mode:",
-    options: [
-        { value: "host-mirror", label: "Host-mirror  (recommended — match your installed runtimes)" },
-        { value: "full", label: "Full  (latest stable versions of every tool)" },
-    ],
-});
-
-if (isCancel(modeChoice)) {
-    cancel("Setup cancelled.");
-    process.exit(0);
-}
-
-const mode = modeChoice as RuntimeMode;
-let selectedTools: string[] = [];
-
-if (mode === "host-mirror") {
-    const hostRuntimes = detectHostRuntimes();
-    selectedTools = await selectTools(hostRuntimes);
-    const dockerfile = generateDockerfile("host-mirror", templatesDir, selectedTools, hostRuntimes);
-    writeFileSync(join(totopoDir, "Dockerfile"), dockerfile);
-}
-
-writeSettings(totopoDir, { runtimeMode: mode, selectedTools });
-
-// ─── Commit scope ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-const scopeChoice = await select({
-    message: "Commit .totopo/ config to git?",
-    options: [
-        { value: "shared", label: "Shared — commit config files, only .env stays private" },
-        { value: "local", label: "Local only — add entire .totopo/ to .gitignore" },
-    ],
-});
-
-if (isCancel(scopeChoice)) {
-    cancel("Setup cancelled.");
-    process.exit(0);
-}
-
-const commitScope = scopeChoice as "shared" | "local";
-
-// ─── Create .env ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-const envPath = join(totopoDir, ".env");
-if (existsSync(envPath)) {
-    log.info(".totopo/.env already exists — leaving it untouched");
-} else {
-    cpSync(join(templatesDir, "env"), envPath);
-    log.success("Created .totopo/.env");
-}
-
-// ─── Gitignore ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-const gitignorePath = join(repoRoot, ".gitignore");
-const gitignoreContent = existsSync(gitignorePath) ? readFileSync(gitignorePath, "utf8") : null;
-
-if (commitScope === "local") {
-    const entry = ".totopo/";
-    const addition = "\n# totopo — config is local-only for this project\n.totopo/\n";
-    if (gitignoreContent?.includes(entry)) {
-        log.info(".totopo/ already in .gitignore");
-    } else {
-        const newContent = gitignoreContent !== null ? gitignoreContent + addition : addition;
-        writeFileSync(gitignorePath, newContent);
-        log.success("Added .totopo/ to .gitignore");
+    if (isCancel(ok) || !ok) {
+        cancel("Setup cancelled.");
+        return false;
     }
-} else {
-    const entry = ".totopo/.env";
-    const addition = "\n# totopo — API keys must never be committed\n.totopo/.env\n";
-    if (gitignoreContent?.includes(entry)) {
-        log.info(".totopo/.env already in .gitignore");
-    } else {
-        const newContent = gitignoreContent !== null ? gitignoreContent + addition : addition;
-        writeFileSync(gitignorePath, newContent);
-        log.success("Added .totopo/.env to .gitignore");
-    }
-}
 
-log.info("Optionally add API keys to .totopo/.env before starting the container.");
-outro("Setup complete.");
+    // ─── Copy templates ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+    mkdirSync(totopoDir, { recursive: true });
+
+    cpSync(join(templatesDir, "Dockerfile"), join(totopoDir, "Dockerfile"));
+    cpSync(join(templatesDir, "post-start.mjs"), join(totopoDir, "post-start.mjs"));
+
+    log.success("Copied config templates to .totopo/");
+
+    // ─── Runtime mode ────────────────────────────────────────────────────────────
+    const modeChoice = await select({
+        message: "Runtime mode:",
+        options: [
+            { value: "host-mirror", label: "Host-mirror  (recommended — match your installed runtimes)" },
+            { value: "full", label: "Full  (latest stable versions of every tool)" },
+        ],
+    });
+
+    if (isCancel(modeChoice)) {
+        cancel("Setup cancelled.");
+        return false;
+    }
+
+    const mode = modeChoice as RuntimeMode;
+    let selectedTools: string[] = [];
+
+    if (mode === "host-mirror") {
+        const hostRuntimes = detectHostRuntimes();
+        selectedTools = await selectTools(hostRuntimes);
+        const dockerfile = generateDockerfile("host-mirror", templatesDir, selectedTools, hostRuntimes);
+        writeFileSync(join(totopoDir, "Dockerfile"), dockerfile);
+    }
+
+    writeSettings(totopoDir, { runtimeMode: mode, selectedTools });
+
+    // ─── Commit scope ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+    const scopeChoice = await select({
+        message: "Commit .totopo/ config to git?",
+        options: [
+            { value: "shared", label: "Shared — commit config files, only .env stays private" },
+            { value: "local", label: "Local only — add entire .totopo/ to .gitignore" },
+        ],
+    });
+
+    if (isCancel(scopeChoice)) {
+        cancel("Setup cancelled.");
+        return false;
+    }
+
+    const commitScope = scopeChoice as "shared" | "local";
+
+    // ─── Create .env ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+    const envPath = join(totopoDir, ".env");
+    if (existsSync(envPath)) {
+        log.info(".totopo/.env already exists — leaving it untouched");
+    } else {
+        cpSync(join(templatesDir, "env"), envPath);
+        log.success("Created .totopo/.env");
+    }
+
+    // ─── Gitignore ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+    const gitignorePath = join(repoRoot, ".gitignore");
+    const gitignoreContent = existsSync(gitignorePath) ? readFileSync(gitignorePath, "utf8") : null;
+
+    if (commitScope === "local") {
+        const entry = ".totopo/";
+        const addition = "\n# totopo — config is local-only for this project\n.totopo/\n";
+        if (gitignoreContent?.includes(entry)) {
+            log.info(".totopo/ already in .gitignore");
+        } else {
+            const newContent = gitignoreContent !== null ? gitignoreContent + addition : addition;
+            writeFileSync(gitignorePath, newContent);
+            log.success("Added .totopo/ to .gitignore");
+        }
+    } else {
+        const entry = ".totopo/.env";
+        const addition = "\n# totopo — API keys must never be committed\n.totopo/.env\n";
+        if (gitignoreContent?.includes(entry)) {
+            log.info(".totopo/.env already in .gitignore");
+        } else {
+            const newContent = gitignoreContent !== null ? gitignoreContent + addition : addition;
+            writeFileSync(gitignorePath, newContent);
+            log.success("Added .totopo/.env to .gitignore");
+        }
+    }
+
+    log.info("Optionally add API keys to .totopo/.env before starting the container.");
+    outro("Setup complete.");
+    return true;
+}

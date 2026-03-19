@@ -4,7 +4,7 @@
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { HostRuntimes } from "./detect-host.ts";
+import type { HostRuntimes } from "./detect-host.js";
 
 export function generateDockerfile(mode: "full", templatesDir: string): string;
 export function generateDockerfile(mode: "host-mirror", templatesDir: string, selectedTools: string[], hostRuntimes: HostRuntimes): string;

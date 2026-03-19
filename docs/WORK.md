@@ -7,10 +7,13 @@ Two distinct concerns — keep them separate:
 ```
 1. totopo PACKAGE (this repo — distributed via npx)
 ├── bin/
-│   └── totopo.js      ← entry point (run from user's project directory)
+│   └── totopo.js      ← entry point; imports compiled commands from dist/
+├── dist/              ← compiled output of src/core/ (generated; not committed)
+│   ├── commands/      ← compiled command modules
+│   └── lib/           ← compiled shared utilities
 ├── src/
-│   ├── core/          ← user-facing CLI (included in npm package)
-│   │   ├── commands/  ← entry points invoked by bin/totopo.js
+│   ├── core/          ← TypeScript source (compiled to dist/; not shipped directly)
+│   │   ├── commands/  ← command modules imported by bin/totopo.js
 │   │   │   ├── dev.ts
 │   │   │   ├── doctor.ts
 │   │   │   ├── manage.ts          ← manage workspaces submenu (stop/remove/uninstall)
@@ -50,11 +53,14 @@ Two distinct concerns — keep them separate:
 `TOTOPO_REPO_ROOT` (git root of `$PWD`) and exports them so commands don't
 recompute paths.
 
+Published npm package ships: `bin/`, `dist/`, `templates/`, `LICENSE`.
+Build step (`pnpm build`) runs automatically as part of `pnpm rc` before publish.
+
 ---
 
 ## Working Now
 
-- **Compiled JS entry point (Option C)** — replace `bin/totopo.js` (which shells out to `tsx` at runtime) with a compiled TypeScript pipeline: add a `build` script (`tsc` compiles `src/core/` → `dist/`), point `bin` at `dist/bin/totopo.js`, move `tsx` to devDependencies, and update the release workflow to build before publish. Each command becomes an exported `async function` rather than a standalone script. Gains: ~200–400 ms faster startup, no runtime `tsx` dependency, fully cross-platform. Cost: refactor all commands from top-level-await scripts into importable modules; add build step to CI/release flow.
+_(nothing active)_
 
 ## Upcoming
 
