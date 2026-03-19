@@ -1,4 +1,36 @@
 releases:
+  - version: 0.9.0-rc-2
+    date: "2026-03-19"
+    added:
+      - >-
+        Reset API keys — new Advanced menu option that overwrites ~/.totopo/.env with the template, with a confirmation
+        prompt warning that the action affects all totopo projects on the machine.
+      - >-
+        Menu hints — contextual hints added to all main menu and Advanced menu options, visible when the option is
+        highlighted before confirming.
+    changed:
+      - >-
+        Kilo removed — @kilocode/cli uninstalled from the container image; kilo volume mounts, agent context injection,
+        and all references removed. Supported tools are now opencode, claude, and codex.
+      - >-
+        API keys moved to ~/.totopo/.env — keys are no longer stored in .totopo/.env inside the project repo. The global
+        file lives outside all project directories and is never mounted into the container, preventing agents from reading
+        it regardless of workspace scope. The .totopo/.env gitignore entry is no longer added during onboarding.
+      - >-
+        Status box updated — keys line added showing ~/.totopo/.env so the key file location is always visible at a
+        glance. hasKey field removed from MenuArgs (was unused).
+      - >-
+        Advanced menu reordered — Doctor moved to the bottom above Back; Reset API keys placed after Remove images.
+      - >-
+        templates/env restructured — strong security warning header added; keys reordered with OpenCode providers first
+        (OpenAI, Anthropic, Gemini, xAI, Groq, OpenRouter); Kilo key removed; one comment per key, no filler text.
+      - >-
+        AI tools order updated — opencode listed first in Dockerfile npm install, post-start.mjs checks, README, and
+        all documentation to reflect its role as the primary multi-provider tool.
+    fixed:
+      - >-
+        Agent context directories are now created with mkdirSync recursive before writing context files, so first-run
+        sessions no longer crash when .totopo/agents/ subdirectories do not yet exist.
   - version: 0.8.0
     date: "2026-03-19"
     changed:

@@ -10,7 +10,6 @@ Created by `npx totopo`. Manages the secure dev container for this project.
 | ---------------- | ---------------------------------------------------------- |
 | `Dockerfile`     | Builds the container image                                 |
 | `post-start.mjs` | Runs on every start — security checks + readiness summary  |
-| `.env`           | API keys (gitignored — never committed)                    |
 | `settings.json`  | Runtime mode + selected tools (committed with project)     |
 | `agents/`        | Agent session data — created on first session start        |
 
@@ -26,8 +25,6 @@ so session history and conversation data persist across rebuilds:
 agents/claude/           → ~/.claude/                    (Claude Code)
 agents/opencode/config/  → ~/.config/opencode/           (OpenCode)
 agents/opencode/data/    → ~/.local/share/opencode/
-agents/kilo/config/      → ~/.config/kilo/               (Kilo)
-agents/kilo/data/        → ~/.local/share/kilo/
 agents/codex/            → ~/.codex/                     (Codex)
 ```
 
@@ -45,7 +42,7 @@ To reset agent memory: **Advanced → Clear agent memory** from the totopo menu.
 - **Non-root user** (`devuser`, uid 1001) — cannot modify system-level config
 - **Git remote access blocked** via `protocol.allow = never` in `/etc/gitconfig` — push, pull, fetch, and clone are all refused; local operations work normally
 - **No host credentials forwarded** — host git credentials are never copied into the container
-- **API keys passed at runtime** via `--env-file .totopo/.env` — never baked into the image
+- **API keys passed at runtime** via `--env-file ~/.totopo/.env` — never baked into the image and never mounted into the container
 - **No privilege escalation** — `no-new-privileges:true` prevents any process from gaining elevated permissions
 
 ---
@@ -54,9 +51,8 @@ To reset agent memory: **Advanced → Clear agent memory** from the totopo menu.
 
 | Command    | Package                     |
 | ---------- | --------------------------- |
-| `claude`   | `@anthropic-ai/claude-code` |
-| `kilo`     | `@kilocode/cli`             |
 | `opencode` | `opencode-ai`               |
+| `claude`   | `@anthropic-ai/claude-code` |
 | `codex`    | `@openai/codex`             |
 
 Tools are installed during image build. To update a tool version: edit `Dockerfile`,

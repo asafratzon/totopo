@@ -77,9 +77,8 @@ const checkTool = (cmd) => {
     }
 };
 
-checkTool("claude");
-checkTool("kilo");
 checkTool("opencode");
+checkTool("claude");
 checkTool("codex");
 
 // ─── Runtimes ────────────────────────────────────────────────────────────────

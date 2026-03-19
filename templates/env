@@ -1,19 +1,30 @@
 # =============================================================================
 # totopo — API Keys
 # =============================================================================
-# Fill in your keys before starting the container.
-# Add .totopo/.env to your project's .gitignore — keys must never be committed.
+#
+# WARNING: This file is loaded into every totopo container at runtime via
+# --env-file. It lives at ~/.totopo/.env on your host machine and is never
+# mounted into the container filesystem — agents cannot read it directly.
+#
+# However, treat this file as sensitive. Do not commit it, do not share it,
+# and do not paste it into agent sessions. If you believe a key has been
+# exposed, rotate it immediately from your provider's dashboard.
 # =============================================================================
 
-# Anthropic (Claude Code — optional if using Pro subscription via browser auth)
+# OpenAI — GPT models, used by OpenCode and Codex
+OPENAI_API_KEY=
+
+# Anthropic — Claude models, used by Claude Code and OpenCode
 ANTHROPIC_API_KEY=
 
-# Kilo AI
-KILO_API_KEY=
-
-# OpenCode supports multiple providers — add whichever you use
-OPENAI_API_KEY=
+# Google — Gemini models
 GEMINI_API_KEY=
 
-# Optional: OpenRouter (gives access to many models via one key)
+# xAI — Grok models
+XAI_API_KEY=
+
+# Groq — fast inference for open models (Llama, Mixtral, etc.)
+GROQ_API_KEY=
+
+# OpenRouter — unified gateway to 200+ models from multiple providers
 OPENROUTER_API_KEY=
