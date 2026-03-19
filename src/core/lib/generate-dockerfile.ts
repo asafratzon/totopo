@@ -51,7 +51,7 @@ function buildHostMirrorDockerfile(selectedTools: string[], host: HostRuntimes):
         `# =============================================================================
 # Secure AI Dev Container — host-mirror mode
 # =============================================================================
-# Non-root user, no git remote access, AI tools: claude, kilo, opencode
+# Non-root user, no git remote access, AI tools: claude, kilo, opencode, codex
 # Runtimes: selected by totopo host-mirror (regenerated on each session start)
 # =============================================================================
 
@@ -196,6 +196,7 @@ RUN npm install -g \
     @anthropic-ai/claude-code \
     @kilocode/cli \
     opencode-ai \
+    @openai/codex \
     && npm cache clean --force`,
     );
 

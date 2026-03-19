@@ -80,6 +80,7 @@ const checkTool = (cmd) => {
 checkTool("claude");
 checkTool("kilo");
 checkTool("opencode");
+checkTool("codex");
 
 // ─── Runtimes ────────────────────────────────────────────────────────────────
 section("Runtimes");
