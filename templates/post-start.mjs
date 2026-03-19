@@ -68,20 +68,26 @@ try {
 // ─── AI tools ────────────────────────────────────────────────────────────────
 section("AI tools");
 
+const aiToolResults = [];
+
 const checkTool = (cmd) => {
     // Try --version first; some tools (e.g. opencode) may write version to
     // stderr or exit non-zero in a non-TTY context, so fall back to `which`
     // to confirm the binary exists before reporting failure.
     const out = run(`${cmd} --version`);
     if (out !== null && out.trim() !== "") {
-        ok(cmd, out.split("\n")[0]);
+        const version = out.split("\n")[0];
+        ok(cmd, version);
+        aiToolResults.push({ cmd, version, found: true });
         return;
     }
     const which = run(`which ${cmd}`);
     if (which !== null) {
         ok(cmd, "installed");
+        aiToolResults.push({ cmd, version: "installed", found: true });
     } else {
         fail(cmd, "not found — rebuild container");
+        aiToolResults.push({ cmd, version: null, found: false });
     }
 };
 
@@ -125,11 +131,18 @@ ok("yq", run("yq --version") ?? "not found");
 // ─── API keys ────────────────────────────────────────────────────────────────
 section("API keys");
 
-console.log(`ℹ ${dim("Optionally add API keys to .totopo/.env before starting the container.")}`);
+console.log(`ℹ ${dim("Add API keys to ~/.totopo/.env on your host machine.")}`);
 
 // ─── Summary ─────────────────────────────────────────────────────────────────
 if (errors === 0) {
-    console.log(`\n${green("●")} ${bold("Ready.")}\n`);
+    section("AI tools");
+    for (const { cmd, version, found } of aiToolResults) {
+        if (found) ok(cmd, version);
+        else fail(cmd, "not found — rebuild container");
+    }
+
+    console.log(`\n${green("●")} ${bold("Ready.")}`);
+    console.log(`${dim("Run 'opencode', 'claude', or 'codex' to start an agent. Run 'status' to recheck.")}\n`);
 } else {
     console.log(`\n${red("●")} ${bold(`${errors} error(s) — see above. Rebuild the container to fix.`)}\n`);
     process.exit(1);
