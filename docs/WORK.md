@@ -68,8 +68,4 @@ Brief descriptions for planning; each is input for plan mode before we decide to
 
 - **Package README + illustrations** — explain Tech choices and Security review: audit tech decisions across the package, dev container, and repo; assess current security posture, gaps, and tradeoffs explaining rationale for each major choice. add visuals to README.md using Google's Banana Pro AI.
 
----
 
-## Done
-
-- **Multi-agent context injection + session persistence** — replaced single-tool `buildAgentContextDoc()` with `buildAgentContextDocs()` generating context for all four supported agents (claude, opencode, kilo, codex) with identical treatment. Each tool gets its own read-write bind mount from `.totopo/agents/<tool>/` for session persistence across container rebuilds. Context is written directly to host paths (no `docker cp`). Added `buildAgentMountArgs()` to lazily create and mount all agent dirs. Removed project-file reading from context injection (agents discover project `CLAUDE.md`/`AGENTS.md` via their own file-walk). Added scope warning notice in `promptScope()` for `cwd`/`selective` modes. Extended git availability section to cover remote-blocked-by-design for all scopes. Added selective-scope file-creation warning in injected context. Added `@openai/codex` to Dockerfile (both full and host-mirror), `post-start.mjs`, and readiness check. Added `.totopo/agents/` to gitignore in `onboard.ts` (shared scope). Updated `docs/AGENTS.md` to be tool-agnostic.
