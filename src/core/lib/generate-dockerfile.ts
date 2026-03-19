@@ -273,7 +273,8 @@ RUN pipx install uv && pipx install poetry`;
             String.raw`RUN echo 'export PS1="\[\033[01;32m\][devcontainer]\[\033[00m\] \[\033[01;34m\]\w\[\033[00m\] \$ "' \
         >> /home/devuser/.bashrc && \
     echo 'echo ""' >> /home/devuser/.bashrc && \
-    echo "echo \"  Type 'status' to re-run the readiness check.\"" >> /home/devuser/.bashrc && \
+    echo "echo \"  Run 'opencode', 'claude', or 'codex' to start an agent.\"" >> /home/devuser/.bashrc && \
+    echo 'echo ""' >> /home/devuser/.bashrc && \
     echo 'alias status="node /workspace/.totopo/post-start.mjs"' >> /home/devuser/.bashrc
 
 CMD ["/bin/bash"]`,
