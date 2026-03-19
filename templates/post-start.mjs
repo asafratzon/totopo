@@ -142,7 +142,7 @@ if (errors === 0) {
     }
 
     console.log(`\n${green("●")} ${bold("Ready.")}`);
-    console.log(`${dim("Run 'opencode', 'claude', or 'codex' to start an agent. Run 'status' to recheck.")}\n`);
+    console.log(`${grey("Type 'status' to re-run the readiness check.")}\n`);
 } else {
     console.log(`\n${red("●")} ${bold(`${errors} error(s) — see above. Rebuild the container to fix.`)}\n`);
     process.exit(1);

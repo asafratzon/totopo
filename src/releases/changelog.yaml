@@ -380,6 +380,13 @@ in_progress:
           documents the directory layout including agents/, the security model, all four AI tools, and current menu
           action names. Replaces the stale hand-written file that referenced removed features (devcontainer.json, Reset)
           and was missing codex and the agents/ directory.
+    - rc_version: 0.9.0-rc-5
+      date: "2026-03-19"
+      changed:
+        - >-
+          post-start.mjs Ready block — status hint moved to grey line immediately under Ready; agent run hint
+          moved to .bashrc so it prints in default white on every shell start, followed by a blank line before
+          the prompt.
     - rc_version: 0.9.0-rc-4
       date: "2026-03-19"
       changed:
