@@ -32,3 +32,6 @@ Thumbs.db
 
 # Build output
 dist/
+
+# totopo — agent session data is local only
+.totopo/agents/
