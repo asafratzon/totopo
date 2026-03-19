@@ -320,66 +320,13 @@ releases:
 in_progress:
   base_version: 0.9.0
   entries:
-    - rc_version: 0.9.0-rc-1
+    - rc_version: 0.9.0-rc-7
       date: "2026-03-19"
-      added:
+      fixed:
         - >-
-          Multi-agent context injection — on every session start, totopo now injects a context file into the global
-          config location of all four supported agents: Claude Code (~/.claude/CLAUDE.md), OpenCode
-          (~/.config/opencode/AGENTS.md), Kilo (~/.config/kilo/AGENTS.md), and Codex (~/.codex/AGENTS.md). All four
-          tools receive identical treatment — same content, same always-overwrite behaviour. No project files are read
-          or modified; agents discover project-level CLAUDE.md/AGENTS.md through their own file-walk logic.
-        - >-
-          Agent session persistence — each agent tool gets its own read-write bind mount from .totopo/agents/<tool>/
-          into the container (e.g. .totopo/agents/claude/ → ~/.claude/). Session history, conversation transcripts,
-          and SQLite databases survive container rebuilds and restarts. Directories are created lazily on first session
-          start.
-        - >-
-          Git availability and remote-block context — injected agent context now explicitly documents git availability
-          per scope: repo scope has full local git but remote access (push/pull/fetch) is blocked container-wide by
-          protocol.allow=never; cwd and selective scopes additionally have no .git mount (intentional security
-          boundary to prevent access to full commit history outside the mount).
-        - >-
-          Selective scope file-creation warning in agent context — in selective mode, agents are instructed to notify
-          the user before creating files outside mounted paths, explain that such files will not sync to the host, and
-          suggest running the operation on the host instead.
-        - >-
-          Scoped workspace notice — when the user selects cwd or selective scope, a warning is shown listing what may
-          not be available to the agent: personal host agent config files, project-level context files outside the
-          mount, and git.
-        - >-
-          OpenAI Codex added — @openai/codex installed in the container image (both full and host-mirror Dockerfiles).
-          codex added to post-start.mjs readiness check. .totopo/agents/codex/ mounted at ~/.codex/ for persistence.
-        - >-
-          Clear agent memory — new action in the Advanced submenu wipes .totopo/agents/ for the current project,
-          resetting all agent session data. If the project container is running, the user is prompted to stop it first.
-          Context is regenerated on the next session start.
-        - >-
-          Advanced submenu — replaces the previous separate Settings, Rebuild, Doctor, and Manage workspaces menu
-          entries with a single looping submenu. All options return to Advanced via Back. Stop containers and Remove
-          images carry an "all projects" hint to distinguish them from project-scoped actions.
-      changed:
-        - >-
-          Main menu simplified to four items: Open session, Stop dev container (conditional on container running),
-          Advanced, Quit. Rebuild, Settings, Doctor, and Manage workspaces removed from the top level.
-        - >-
-          Runtime mode replaces Settings as the label for the mode-switching action — reflects what it actually does
-          rather than using a generic label.
-        - >-
-          injectAgentContext() rewritten — context files are written directly to .totopo/agents/ on the host via
-          fs.writeFileSync before the container starts, then served into the container through volume mounts. No docker
-          cp, no temp files, no Docker commands required for injection.
-        - >-
-          .totopo/agents/ gitignored by default — onboarding now adds .totopo/agents/ to .gitignore (shared commit
-          scope) so agent session data is never committed.
-        - >-
-          docs/AGENTS.md made tool-agnostic — references to Claude Code replaced with generic "AI agents"; environment
-          section updated to mention all four tools and totopo's context injection.
-        - >-
-          .totopo/README.md introduced as a maintained template (templates/README.md) copied during onboarding —
-          documents the directory layout including agents/, the security model, all four AI tools, and current menu
-          action names. Replaces the stale hand-written file that referenced removed features (devcontainer.json, Reset)
-          and was missing codex and the agents/ directory.
+          API keys info message improved — onboarding and post-start.mjs now read "Optionally add API keys to
+          ~/.totopo/.env — all keys are injected into every container at runtime." to clarify that keys are
+          optional and explain how they reach the container.
     - rc_version: 0.9.0-rc-6
       date: "2026-03-19"
       fixed:
@@ -444,3 +391,63 @@ in_progress:
         - >-
           Agent context directories are now created with mkdirSync recursive before writing context files, so first-run
           sessions no longer crash when .totopo/agents/ subdirectories do not yet exist.
+    - rc_version: 0.9.0-rc-1
+      date: "2026-03-19"
+      added:
+        - >-
+          Multi-agent context injection — on every session start, totopo now injects a context file into the global
+          config location of all four supported agents: Claude Code (~/.claude/CLAUDE.md), OpenCode
+          (~/.config/opencode/AGENTS.md), Kilo (~/.config/kilo/AGENTS.md), and Codex (~/.codex/AGENTS.md). All four
+          tools receive identical treatment — same content, same always-overwrite behaviour. No project files are read
+          or modified; agents discover project-level CLAUDE.md/AGENTS.md through their own file-walk logic.
+        - >-
+          Agent session persistence — each agent tool gets its own read-write bind mount from .totopo/agents/<tool>/
+          into the container (e.g. .totopo/agents/claude/ → ~/.claude/). Session history, conversation transcripts,
+          and SQLite databases survive container rebuilds and restarts. Directories are created lazily on first session
+          start.
+        - >-
+          Git availability and remote-block context — injected agent context now explicitly documents git availability
+          per scope: repo scope has full local git but remote access (push/pull/fetch) is blocked container-wide by
+          protocol.allow=never; cwd and selective scopes additionally have no .git mount (intentional security
+          boundary to prevent access to full commit history outside the mount).
+        - >-
+          Selective scope file-creation warning in agent context — in selective mode, agents are instructed to notify
+          the user before creating files outside mounted paths, explain that such files will not sync to the host, and
+          suggest running the operation on the host instead.
+        - >-
+          Scoped workspace notice — when the user selects cwd or selective scope, a warning is shown listing what may
+          not be available to the agent: personal host agent config files, project-level context files outside the
+          mount, and git.
+        - >-
+          OpenAI Codex added — @openai/codex installed in the container image (both full and host-mirror Dockerfiles).
+          codex added to post-start.mjs readiness check. .totopo/agents/codex/ mounted at ~/.codex/ for persistence.
+        - >-
+          Clear agent memory — new action in the Advanced submenu wipes .totopo/agents/ for the current project,
+          resetting all agent session data. If the project container is running, the user is prompted to stop it first.
+          Context is regenerated on the next session start.
+        - >-
+          Advanced submenu — replaces the previous separate Settings, Rebuild, Doctor, and Manage workspaces menu
+          entries with a single looping submenu. All options return to Advanced via Back. Stop containers and Remove
+          images carry an "all projects" hint to distinguish them from project-scoped actions.
+      changed:
+        - >-
+          Main menu simplified to four items: Open session, Stop dev container (conditional on container running),
+          Advanced, Quit. Rebuild, Settings, Doctor, and Manage workspaces removed from the top level.
+        - >-
+          Runtime mode replaces Settings as the label for the mode-switching action — reflects what it actually does
+          rather than using a generic label.
+        - >-
+          injectAgentContext() rewritten — context files are written directly to .totopo/agents/ on the host via
+          fs.writeFileSync before the container starts, then served into the container through volume mounts. No docker
+          cp, no temp files, no Docker commands required for injection.
+        - >-
+          .totopo/agents/ gitignored by default — onboarding now adds .totopo/agents/ to .gitignore (shared commit
+          scope) so agent session data is never committed.
+        - >-
+          docs/AGENTS.md made tool-agnostic — references to Claude Code replaced with generic "AI agents"; environment
+          section updated to mention all four tools and totopo's context injection.
+        - >-
+          .totopo/README.md introduced as a maintained template (templates/README.md) copied during onboarding —
+          documents the directory layout including agents/, the security model, all four AI tools, and current menu
+          action names. Replaces the stale hand-written file that referenced removed features (devcontainer.json, Reset)
+          and was missing codex and the agents/ directory.
