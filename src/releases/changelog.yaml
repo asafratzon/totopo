@@ -375,3 +375,8 @@ in_progress:
         - >-
           docs/AGENTS.md made tool-agnostic — references to Claude Code replaced with generic "AI agents"; environment
           section updated to mention all four tools and totopo's context injection.
+        - >-
+          .totopo/README.md introduced as a maintained template (templates/README.md) copied during onboarding —
+          documents the directory layout including agents/, the security model, all four AI tools, and current menu
+          action names. Replaces the stale hand-written file that referenced removed features (devcontainer.json, Reset)
+          and was missing codex and the agents/ directory.
