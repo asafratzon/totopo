@@ -102,7 +102,9 @@ RUN npm install -g \
 # Layer 10 — Non-root user
 # ---------------------------------------------------------------------------
 RUN groupadd --gid 1001 devuser && \
-    useradd --uid 1001 --gid devuser --shell /bin/bash --create-home devuser
+    useradd --uid 1001 --gid devuser --shell /bin/bash --create-home devuser && \
+    mkdir -p /home/devuser/.local/state /home/devuser/.local/share /home/devuser/.local/bin && \
+    chown -R devuser:devuser /home/devuser
 
 USER devuser
 WORKDIR /workspace

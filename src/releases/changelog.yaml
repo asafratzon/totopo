@@ -380,6 +380,13 @@ in_progress:
           documents the directory layout including agents/, the security model, all four AI tools, and current menu
           action names. Replaces the stale hand-written file that referenced removed features (devcontainer.json, Reset)
           and was missing codex and the agents/ directory.
+    - rc_version: 0.9.0-rc-6
+      date: "2026-03-19"
+      fixed:
+        - >-
+          EACCES permission denied on ~/.local/state — npm install -g runs as root before the USER switch, which
+          could leave /home/devuser/.local owned by root. Layer 10 now explicitly creates .local/state, .local/share,
+          and .local/bin and chowns all of /home/devuser to devuser before switching to the non-root user.
     - rc_version: 0.9.0-rc-5
       date: "2026-03-19"
       changed:
