@@ -128,7 +128,7 @@ export async function run(packageDir: string, repoRoot: string): Promise<boolean
         }
     }
 
-    log.info(`Add API keys to ${globalEnvPath} before starting the container.`);
+    log.info(`Optionally add API keys to ${globalEnvPath} — all keys are injected into every container at runtime.`);
     outro("Setup complete.");
     return true;
 }

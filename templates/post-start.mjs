@@ -131,7 +131,7 @@ ok("yq", run("yq --version") ?? "not found");
 // ─── API keys ────────────────────────────────────────────────────────────────
 section("API keys");
 
-console.log(`ℹ ${dim("Add API keys to ~/.totopo/.env on your host machine.")}`);
+console.log(`ℹ ${dim("Optionally add API keys to ~/.totopo/.env on your host — all keys are injected into every container at runtime.")}`);
 
 // ─── Summary ─────────────────────────────────────────────────────────────────
 if (errors === 0) {
