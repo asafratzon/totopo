@@ -380,6 +380,15 @@ in_progress:
           documents the directory layout including agents/, the security model, all four AI tools, and current menu
           action names. Replaces the stale hand-written file that referenced removed features (devcontainer.json, Reset)
           and was missing codex and the agents/ directory.
+    - rc_version: 0.9.0-rc-3
+      date: "2026-03-19"
+      fixed:
+        - >-
+          post-start.mjs opencode version check — opencode --version exits non-zero in non-TTY pipe context; check now
+          falls back to `which opencode` to confirm the binary is installed before reporting failure.
+        - >-
+          Menu status box alignment — content was center-aligned causing uneven spacing between labels and values;
+          switched to left-aligned so workspace/containers/keys values line up consistently.
     - rc_version: 0.9.0-rc-2
       date: "2026-03-19"
       added:
