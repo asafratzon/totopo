@@ -10,34 +10,27 @@ interface MenuArgs {
     activeCount: number;
     hasKey: boolean;
     projectRunning: boolean;
-    projectImageExists: boolean;
 }
 
 export async function run(args: MenuArgs): Promise<string> {
-    const { projectName, activeCount, projectRunning, projectImageExists } = args;
+    const { projectName, activeCount, projectRunning } = args;
 
-    // ─── Status box ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+    // ─── Status box ──────────────────────────────────────────────────────────────
     const containersLabel = activeCount === 0 ? "none" : activeCount === 1 ? "1 running" : `${activeCount} running`;
-    const lines = [];
-    lines.push(`workspace:   ${projectName}`);
-    lines.push(`containers:  ${containersLabel}`);
-    box(lines.join("\n"), " totopo ", {
+    box(`workspace:   ${projectName}\ncontainers:  ${containersLabel}`, " totopo ", {
         contentAlign: "center",
         titleAlign: "center",
         width: "auto",
         rounded: true,
     });
 
-    // ─── Menu ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+    // ─── Menu ─────────────────────────────────────────────────────────────────────
     const action = await select({
         message: "Menu:",
         options: [
-            { value: "dev", label: "Start session" },
-            ...(projectRunning ? [{ value: "stop", label: "Stop" }] : []),
-            ...(projectImageExists ? [{ value: "rebuild", label: "Rebuild" }] : []),
-            { value: "settings", label: "Settings" },
-            { value: "manage", label: "Manage workspaces" },
-            { value: "doctor", label: "Doctor" },
+            { value: "dev", label: "Open session" },
+            ...(projectRunning ? [{ value: "stop", label: "Stop dev container" }] : []),
+            { value: "advanced", label: "Advanced" },
             { value: "quit", label: "Quit" },
         ],
     });
