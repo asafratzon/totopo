@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 // =========================================================================================================================================
 // src/core/commands/dev.ts — Start the dev container and connect via docker exec
 // Invoked by bin/totopo.js — do not run directly.
@@ -10,19 +9,6 @@ import { tmpdir } from "node:os";
 import { basename, join, relative } from "node:path";
 import { cancel, confirm, groupMultiselect, isCancel, log, multiselect, note, outro, path, select } from "@clack/prompts";
 
-// biome-ignore lint/style/noNonNullAssertion: guarded immediately below; non-null assertion needed for closure type inference
-const workspaceDir = process.env.TOTOPO_REPO_ROOT!;
-if (!workspaceDir) {
-    log.error("TOTOPO_REPO_ROOT not set — run via npx totopo");
-    process.exit(1);
-}
-
-const cwd = process.cwd();
-const projectName = basename(workspaceDir);
-const containerName = `totopo-managed-${projectName}`;
-const imageName = `totopo-managed-${projectName}`;
-const totopoDir = join(workspaceDir, ".totopo");
-
 // ─── Types ────────────────────────────────────────────────────────────────────
 type WorkspaceScope = "repo" | "cwd" | "selective";
 interface ScopeConfig {
@@ -32,7 +18,7 @@ interface ScopeConfig {
 }
 
 // ─── Prompt: scope selection ──────────────────────────────────────────────────
-async function promptScope(): Promise<ScopeConfig> {
+async function promptScope(workspaceDir: string, totopoDir: string, cwd: string): Promise<ScopeConfig> {
     const cwdIsRepo = cwd === workspaceDir;
 
     const options = [
@@ -54,7 +40,7 @@ async function promptScope(): Promise<ScopeConfig> {
     const mode = modeChoice as WorkspaceScope;
 
     if (mode === "selective") {
-        const selectedPaths = await promptSelectivePaths();
+        const selectedPaths = await promptSelectivePaths(totopoDir, cwd);
         if (selectedPaths.length === 0) {
             // Fallback to cwd mode when no visible items exist
             return { mode: "cwd", hostCwd: cwd, selectedPaths: [] };
@@ -68,7 +54,7 @@ async function promptScope(): Promise<ScopeConfig> {
 // ─── Prompt: selective path selection ─────────────────────────────────────────
 // Recursively expands a selected path into its children when a nested exclusion target is found,
 // until the excluded path itself can be dropped from the list.
-function expandExclusion(paths: string[], excl: string): string[] {
+function expandExclusion(paths: string[], excl: string, cwd: string): string[] {
     if (paths.includes(excl)) {
         return paths.filter((p) => p !== excl);
     }
@@ -79,10 +65,10 @@ function expandExclusion(paths: string[], excl: string): string[] {
     }
     const children = readdirSync(join(cwd, ancestor)).map((child) => `${ancestor}/${child}`);
     const withoutAncestor = paths.filter((p) => p !== ancestor);
-    return expandExclusion([...withoutAncestor, ...children], excl);
+    return expandExclusion([...withoutAncestor, ...children], excl, cwd);
 }
 
-function scanCwdDepth2(): { dirs: Record<string, string[]>; files: string[] } {
+function scanCwdDepth2(totopoDir: string, cwd: string): { dirs: Record<string, string[]>; files: string[] } {
     const dirs: Record<string, string[]> = {};
     const files: string[] = [];
 
@@ -123,7 +109,7 @@ function normalizeSelection(selected: string[], dirs: Record<string, string[]>):
     return result;
 }
 
-async function promptDeeperPaths(style: "only" | "except"): Promise<string[]> {
+async function promptDeeperPaths(style: "only" | "except", cwd: string): Promise<string[]> {
     const verb = style === "only" ? "include" : "exclude";
     const accumulated: string[] = [];
 
@@ -158,7 +144,7 @@ async function promptDeeperPaths(style: "only" | "except"): Promise<string[]> {
     return accumulated;
 }
 
-async function promptSelectivePaths(): Promise<string[]> {
+async function promptSelectivePaths(totopoDir: string, cwd: string): Promise<string[]> {
     const allItems = readdirSync(cwd);
 
     if (allItems.length === 0) {
@@ -180,7 +166,7 @@ async function promptSelectivePaths(): Promise<string[]> {
     }
 
     const style = styleChoice as "only" | "except";
-    const { dirs, files } = scanCwdDepth2();
+    const { dirs, files } = scanCwdDepth2(totopoDir, cwd);
     const dirNames = Object.keys(dirs);
 
     if (style === "only") {
@@ -237,14 +223,14 @@ async function promptSelectivePaths(): Promise<string[]> {
     const selected = normalizeSelection(rawSelected as string[], dirs);
 
     // ── deeper-path text+multiselect loop ─────────────────────────────────────
-    const deeperPaths = await promptDeeperPaths(style);
+    const deeperPaths = await promptDeeperPaths(style, cwd);
 
     let result = selected;
     if (style === "only") {
         result = [...new Set([...selected, ...deeperPaths])];
     } else {
         for (const p of deeperPaths) {
-            result = expandExclusion(result, p);
+            result = expandExclusion(result, p, cwd);
         }
     }
 
@@ -258,15 +244,15 @@ async function promptSelectivePaths(): Promise<string[]> {
 // For repo scope (or cwd at repo root), .totopo is naturally inside /workspace.
 // For cwd/selective with a nested dir, we mount it outside /workspace to avoid
 // Docker creating an empty .totopo directory on the host as a mount point.
-function getTotopoMountPath(scope: ScopeConfig): string {
+function getTotopoMountPath(scope: ScopeConfig, workspaceDir: string): string {
     if (scope.mode === "repo") return "/workspace/.totopo";
     if (scope.mode === "cwd" && scope.hostCwd === workspaceDir) return "/workspace/.totopo";
     return "/home/devuser/.totopo";
 }
 
 // ─── Build mount args ─────────────────────────────────────────────────────────
-function buildMountArgs(scope: ScopeConfig): string[] {
-    const totopoMount = getTotopoMountPath(scope);
+function buildMountArgs(scope: ScopeConfig, workspaceDir: string, totopoDir: string, cwd: string): string[] {
+    const totopoMount = getTotopoMountPath(scope, workspaceDir);
 
     if (scope.mode === "repo") {
         return ["-v", `${workspaceDir}:/workspace`];
@@ -346,7 +332,7 @@ function readContainerScopeLabel(name: string): ScopeConfig | null {
 
 // ─── Scope comparison ─────────────────────────────────────────────────────────
 // null existing scope (pre-feature container) is treated as repo mode.
-function scopesMatch(selected: ScopeConfig, existing: ScopeConfig | null): boolean {
+function scopesMatch(selected: ScopeConfig, existing: ScopeConfig | null, workspaceDir: string): boolean {
     const eff = existing ?? { mode: "repo" as WorkspaceScope, hostCwd: workspaceDir, selectedPaths: [] };
     if (selected.mode !== eff.mode) return false;
     if (selected.mode === "repo") return true;
@@ -359,7 +345,7 @@ function scopesMatch(selected: ScopeConfig, existing: ScopeConfig | null): boole
 
 // ─── Build agent context document ─────────────────────────────────────────────
 // Designed for future extension: also inject AGENTS.md alongside CLAUDE.md.
-function buildAgentContextDoc(scope: ScopeConfig): string {
+function buildAgentContextDoc(scope: ScopeConfig, workspaceDir: string): string {
     let scopeSection: string;
 
     if (scope.mode === "repo") {
@@ -424,7 +410,14 @@ function removeContainer(name: string): void {
 }
 
 // ─── Run container ────────────────────────────────────────────────────────────
-function runContainer(scope: ScopeConfig): void {
+function runContainer(
+    scope: ScopeConfig,
+    containerName: string,
+    imageName: string,
+    workspaceDir: string,
+    totopoDir: string,
+    cwd: string,
+): void {
     const run = spawnSync(
         "docker",
         [
@@ -432,7 +425,7 @@ function runContainer(scope: ScopeConfig): void {
             "-d",
             "--name",
             containerName,
-            ...buildMountArgs(scope),
+            ...buildMountArgs(scope, workspaceDir, totopoDir, cwd),
             "--env-file",
             `${workspaceDir}/.totopo/.env`,
             ...buildScopeEnvArgs(scope),
@@ -451,77 +444,84 @@ function runContainer(scope: ScopeConfig): void {
     }
 }
 
-// ─── Always prompt scope first ────────────────────────────────────────────────
-const scope = await promptScope();
+export async function run(_packageDir: string, repoRoot: string): Promise<void> {
+    const cwd = process.cwd();
+    const projectName = basename(repoRoot);
+    const containerName = `totopo-managed-${projectName}`;
+    const imageName = `totopo-managed-${projectName}`;
+    const totopoDir = join(repoRoot, ".totopo");
 
-// ─── Inspect container state ──────────────────────────────────────────────────
-const inspect = spawnSync("docker", ["inspect", "--format", "{{.State.Status}}", containerName], {
-    encoding: "utf8",
-    stdio: "pipe",
-});
+    // ─── Always prompt scope first ────────────────────────────────────────────────
+    const scope = await promptScope(repoRoot, totopoDir, cwd);
 
-const containerStatus = inspect.status === 0 ? inspect.stdout.trim() : null;
+    // ─── Inspect container state ──────────────────────────────────────────────────
+    const inspect = spawnSync("docker", ["inspect", "--format", "{{.State.Status}}", containerName], {
+        encoding: "utf8",
+        stdio: "pipe",
+    });
 
-if (containerStatus === null) {
-    // ─── No container — build image and run ───────────────────────────────────
-    log.step("Building container image...");
-    const build = spawnSync("docker", ["build", "-f", `${workspaceDir}/.totopo/Dockerfile`, "-t", imageName, workspaceDir], {
+    const containerStatus = inspect.status === 0 ? inspect.stdout.trim() : null;
+
+    if (containerStatus === null) {
+        // ─── No container — build image and run ───────────────────────────────────
+        log.step("Building container image...");
+        const build = spawnSync("docker", ["build", "-f", `${repoRoot}/.totopo/Dockerfile`, "-t", imageName, repoRoot], {
+            stdio: "inherit",
+        });
+        if (build.status !== 0) {
+            outro("Failed to build container image.");
+            process.exit(build.status ?? 1);
+        }
+
+        const totopoMountPath = getTotopoMountPath(scope, repoRoot);
+        log.step("Starting dev container...");
+        runContainer(scope, containerName, imageName, repoRoot, totopoDir, cwd);
+        log.step("Injecting agent context...");
+        injectAgentContext(containerName, buildAgentContextDoc(scope, repoRoot));
+        runPostStart(containerName, totopoMountPath);
+    } else if (containerStatus === "exited") {
+        // ─── Container stopped — resume or recreate based on scope ────────────────
+        const existingScope = readContainerScopeLabel(containerName);
+        const totopoMountPath = getTotopoMountPath(scope, repoRoot);
+
+        if (scopesMatch(scope, existingScope, repoRoot)) {
+            log.step("Resuming dev container...");
+            const start = spawnSync("docker", ["start", containerName], { stdio: "inherit" });
+            if (start.status !== 0) {
+                outro("Failed to start dev container.");
+                process.exit(start.status ?? 1);
+            }
+            log.step("Injecting agent context...");
+            injectAgentContext(containerName, buildAgentContextDoc(scope, repoRoot));
+            runPostStart(containerName, totopoMountPath);
+        } else {
+            log.step("Recreating dev container with new scope...");
+            removeContainer(containerName);
+            runContainer(scope, containerName, imageName, repoRoot, totopoDir, cwd);
+            log.step("Injecting agent context...");
+            injectAgentContext(containerName, buildAgentContextDoc(scope, repoRoot));
+            runPostStart(containerName, totopoMountPath);
+        }
+    } else {
+        // ─── Container running — connect directly or recreate based on scope ──────
+        const existingScope = readContainerScopeLabel(containerName);
+
+        if (!scopesMatch(scope, existingScope, repoRoot)) {
+            const totopoMountPath = getTotopoMountPath(scope, repoRoot);
+            log.step("Recreating dev container with new scope...");
+            removeContainer(containerName);
+            runContainer(scope, containerName, imageName, repoRoot, totopoDir, cwd);
+            log.step("Injecting agent context...");
+            injectAgentContext(containerName, buildAgentContextDoc(scope, repoRoot));
+            runPostStart(containerName, totopoMountPath);
+        }
+        // same scope — connect directly (fall through)
+    }
+
+    // ─── Connect ──────────────────────────────────────────────────────────────────
+    const exec = spawnSync("docker", ["exec", "-it", "-w", "/workspace", containerName, "bash", "--login"], {
         stdio: "inherit",
     });
-    if (build.status !== 0) {
-        outro("Failed to build container image.");
-        process.exit(build.status ?? 1);
-    }
 
-    const totopoMountPath = getTotopoMountPath(scope);
-    log.step("Starting dev container...");
-    runContainer(scope);
-    log.step("Injecting agent context...");
-    injectAgentContext(containerName, buildAgentContextDoc(scope));
-    runPostStart(containerName, totopoMountPath);
-} else if (containerStatus === "exited") {
-    // ─── Container stopped — resume or recreate based on scope ────────────────
-    const existingScope = readContainerScopeLabel(containerName);
-    const totopoMountPath = getTotopoMountPath(scope);
-
-    if (scopesMatch(scope, existingScope)) {
-        log.step("Resuming dev container...");
-        const start = spawnSync("docker", ["start", containerName], { stdio: "inherit" });
-        if (start.status !== 0) {
-            outro("Failed to start dev container.");
-            process.exit(start.status ?? 1);
-        }
-        log.step("Injecting agent context...");
-        injectAgentContext(containerName, buildAgentContextDoc(scope));
-        runPostStart(containerName, totopoMountPath);
-    } else {
-        log.step("Recreating dev container with new scope...");
-        removeContainer(containerName);
-        runContainer(scope);
-        log.step("Injecting agent context...");
-        injectAgentContext(containerName, buildAgentContextDoc(scope));
-        runPostStart(containerName, totopoMountPath);
-    }
-} else {
-    // ─── Container running — connect directly or recreate based on scope ──────
-    const existingScope = readContainerScopeLabel(containerName);
-
-    if (scopesMatch(scope, existingScope)) {
-        // same scope — connect directly
-    } else {
-        const totopoMountPath = getTotopoMountPath(scope);
-        log.step("Recreating dev container with new scope...");
-        removeContainer(containerName);
-        runContainer(scope);
-        log.step("Injecting agent context...");
-        injectAgentContext(containerName, buildAgentContextDoc(scope));
-        runPostStart(containerName, totopoMountPath);
-    }
+    process.exit(exec.status ?? 0);
 }
-
-// ─── Connect ──────────────────────────────────────────────────────────────────
-const exec = spawnSync("docker", ["exec", "-it", "-w", "/workspace", containerName, "bash", "--login"], {
-    stdio: "inherit",
-});
-
-process.exit(exec.status ?? 0);

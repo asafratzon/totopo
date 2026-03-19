@@ -311,5 +311,12 @@ releases:
       - Port cleanup on stop/reset
       - Status box with project name and API key indicator in menu UI
 in_progress:
-  base_version: 0.7.1
-  entries: []
+  base_version: "0.8.0"
+  entries:
+    - rc_version: "0.8.0-rc-1"
+      date: "2026-03-19"
+      changed:
+        - >-
+          Compiled JS entry point — src/core/ is now compiled to dist/ via tsc; tsx moved to
+          devDependencies; bin/totopo.js imports from dist/ directly, eliminating runtime
+          transpilation and reducing startup time by ~200-400 ms.

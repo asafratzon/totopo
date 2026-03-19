@@ -3,7 +3,7 @@
 // =============================================================================
 
 import { cancel, isCancel, log, multiselect } from "@clack/prompts";
-import type { HostRuntimes } from "./detect-host.ts";
+import type { HostRuntimes } from "./detect-host.js";
 
 const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
 

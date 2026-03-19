@@ -60,6 +60,16 @@ if (changelog.in_progress.entries.length === 0) {
 }
 log.success(`changelog.yaml has ${changelog.in_progress.entries.length} entry/entries for ${changelog.in_progress.base_version}`);
 
+// ─── Build ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+log.step("Building...");
+try {
+    execSync("pnpm build", { stdio: "inherit" });
+} catch {
+    log.error("Build failed — fix errors before releasing.");
+    process.exit(1);
+}
+log.success("Build succeeded");
+
 // ─── Sync GitHub releases ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 log.step("Syncing GitHub releases with npm...");
 await syncGithubReleases(name);

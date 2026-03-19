@@ -97,7 +97,8 @@ pnpm sync-releases
 - [ ] All Phase tasks for this version checked off in `docs/WORK.md`
 - [ ] `pnpm typecheck` passes
 - [ ] `pnpm lint` passes
-- [ ] `pnpm pack --dry-run` inspected — only `src/core/` and `templates/` in tarball
+- [ ] `pnpm build` succeeds (compiles `src/core/` → `dist/`)
+- [ ] `pnpm pack --dry-run` inspected — only `bin/`, `dist/`, and `templates/` in tarball
 - [ ] `pnpm rc` — add changelog notes, publish, test (`npx totopo@rc`)
 - [ ] `pnpm rc:promote` — squashes notes, regenerates CHANGELOG.md, promotes to latest
 - [ ] Verify on https://www.npmjs.com/package/totopo
