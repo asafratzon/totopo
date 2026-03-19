@@ -5,7 +5,7 @@
 // =============================================================================
 
 import { execSync, spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { basename, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -60,9 +60,7 @@ const { run: onboard } = await import("../dist/commands/onboard.js");
 const { run: menu } = await import("../dist/commands/menu.js");
 const { run: dev } = await import("../dist/commands/dev.js");
 const { run: stop } = await import("../dist/commands/stop.js");
-const { run: rebuild } = await import("../dist/commands/rebuild.js");
-const { run: manage } = await import("../dist/commands/manage.js");
-const { run: settings } = await import("../dist/commands/settings.js");
+const { run: advanced } = await import("../dist/commands/advanced.js");
 
 // ─── Onboarding ───────────────────────────────────────────────────────────────
 if (!existsSync(`${repoRoot}/.totopo/Dockerfile`)) {
@@ -98,29 +96,12 @@ const projectRunning = (projectContainerResult.stdout ?? "")
     .filter(Boolean)
     .some((n) => n === `totopo-managed-${projectName}`);
 
-const projectImageResult = spawnSync("docker", ["images", "-q", `totopo-managed-${projectName}`], { encoding: "utf8" });
-const projectImageExists = (projectImageResult.stdout ?? "").trim().length > 0;
-
-let hasKey = false;
-const envPath = `${repoRoot}/.totopo/.env`;
-if (existsSync(envPath)) {
-    for (const line of readFileSync(envPath, "utf8").split("\n")) {
-        const trimmed = line.trim();
-        if (!trimmed || trimmed.startsWith("#")) continue;
-        const value = trimmed.slice(trimmed.indexOf("=") + 1).trim();
-        if (value) {
-            hasKey = true;
-            break;
-        }
-    }
-}
-
 // ─── Interactive menu loop ────────────────────────────────────────────────────
 let showMenu = true;
 while (showMenu) {
     showMenu = false;
 
-    const action = await menu({ projectName, activeCount, hasKey, projectRunning, projectImageExists });
+    const action = await menu({ projectName, activeCount, projectRunning });
 
     switch (action) {
         case "dev":
@@ -129,20 +110,8 @@ while (showMenu) {
         case "stop":
             await stop(projectName);
             break;
-        case "rebuild":
-            await rebuild(projectName);
-            await dev(packageDir, repoRoot);
-            break;
-        case "manage": {
-            const result = await manage(projectName, repoRoot);
-            if (result === "back") showMenu = true;
-            break;
-        }
-        case "doctor":
-            await doctor(repoRoot, true);
-            break;
-        case "settings": {
-            const result = await settings(packageDir, repoRoot);
+        case "advanced": {
+            const result = await advanced(packageDir, projectName, repoRoot);
             if (result === "back") showMenu = true;
             break;
         }
