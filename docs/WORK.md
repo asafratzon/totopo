@@ -60,14 +60,16 @@ Build step (`pnpm build`) runs automatically as part of `pnpm rc` before publish
 
 ## Working Now
 
-_(nothing active)_
+_Nothing in progress._
 
 ## Upcoming
 
 Brief descriptions for planning; each is input for plan mode before we decide to work on it.
 
-- **Agent context injection for AGENTS.md** — extend `buildAgentContextDoc()` in `dev.ts` to also read and inject `AGENTS.md` from the repo root (alongside CLAUDE.md). The function already accepts scope context; this is a straightforward extension to include a second source file. Also expand the injected context to explicitly tell the agent: (1) whether git is available (only in repo scope — cwd/selective scopes do not mount `.git` because doing so would allow the agent to read the full commit history of files outside its mount via `git show`, defeating the security boundary); (2) instruct the agent to surface its scope and limitations to the user at the start of every session, so the user is always aware of what the agent can and cannot access.
+- **Package README + illustrations** — explain Tech choices and Security review: audit tech decisions across the package, dev container, and repo; assess current security posture, gaps, and tradeoffs explaining rationale for each major choice. add visuals to README.md using Google's Banana Pro AI.
 
-- **Tech choices and Security review** — audit tech decisions across the package, dev container, and repo; assess current security posture, gaps, and tradeoffs output a DECISIONS.md explaining rationale for each major choice.
+---
 
-- **README illustrations** — add visuals to README.md using Google's Banana Pro AI.
+## Done
+
+- **Multi-agent context injection + session persistence** — replaced single-tool `buildAgentContextDoc()` with `buildAgentContextDocs()` generating context for all four supported agents (claude, opencode, kilo, codex) with identical treatment. Each tool gets its own read-write bind mount from `.totopo/agents/<tool>/` for session persistence across container rebuilds. Context is written directly to host paths (no `docker cp`). Added `buildAgentMountArgs()` to lazily create and mount all agent dirs. Removed project-file reading from context injection (agents discover project `CLAUDE.md`/`AGENTS.md` via their own file-walk). Added scope warning notice in `promptScope()` for `cwd`/`selective` modes. Extended git availability section to cover remote-blocked-by-design for all scopes. Added selective-scope file-creation warning in injected context. Added `@openai/codex` to Dockerfile (both full and host-mirror), `post-start.mjs`, and readiness check. Added `.totopo/agents/` to gitignore in `onboard.ts` (shared scope). Updated `docs/AGENTS.md` to be tool-agnostic.

@@ -108,14 +108,26 @@ export async function run(packageDir: string, repoRoot: string): Promise<boolean
             log.success("Added .totopo/ to .gitignore");
         }
     } else {
-        const entry = ".totopo/.env";
-        const addition = "\n# totopo — API keys must never be committed\n.totopo/.env\n";
-        if (gitignoreContent?.includes(entry)) {
+        const envEntry = ".totopo/.env";
+        const agentsEntry = ".totopo/agents/";
+        let content = gitignoreContent ?? "";
+
+        if (gitignoreContent?.includes(envEntry)) {
             log.info(".totopo/.env already in .gitignore");
         } else {
-            const newContent = gitignoreContent !== null ? gitignoreContent + addition : addition;
-            writeFileSync(gitignorePath, newContent);
+            content += "\n# totopo — API keys must never be committed\n.totopo/.env\n";
             log.success("Added .totopo/.env to .gitignore");
+        }
+
+        if (gitignoreContent?.includes(agentsEntry)) {
+            log.info(".totopo/agents/ already in .gitignore");
+        } else {
+            content += "\n# totopo — agent session data is local only\n.totopo/agents/\n";
+            log.success("Added .totopo/agents/ to .gitignore");
+        }
+
+        if (content !== (gitignoreContent ?? "")) {
+            writeFileSync(gitignorePath, content);
         }
     }
 

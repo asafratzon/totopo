@@ -29,10 +29,11 @@ Never declare a checkpoint if the codebase is broken or half-migrated.
 
 ## Environment
 
-- Claude Code runs **inside the dev container**; user SSHs in from host terminal
+- AI agents run **inside the dev container**; user SSHs in from host terminal
 - Repo is bind-mounted — edits are immediately visible on the host
 - Remote git (push/pull/fetch) is **blocked inside the container** — user pushes from host
 - Never suggest docker commands directly — users interact exclusively through the totopo menu (start/stop/reset)
+- On every session start, totopo injects a context file into each supported agent's global config location (`~/.claude/CLAUDE.md`, `~/.config/opencode/AGENTS.md`, `~/.config/kilo/AGENTS.md`, `~/.codex/AGENTS.md`). These files are managed by totopo — do not edit them.
 
 ## Project
 

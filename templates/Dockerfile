@@ -1,7 +1,7 @@
 # =============================================================================
 # Secure AI Dev Container — General-purpose multi-stack
 # =============================================================================
-# Non-root user, no git remote access, AI tools: claude, kilo, opencode
+# Non-root user, no git remote access, AI tools: claude, kilo, opencode, codex
 # Runtimes: Node.js, Python, Go, Rust, Java (Temurin 21), Bun
 # =============================================================================
 
@@ -96,6 +96,7 @@ RUN npm install -g \
     @anthropic-ai/claude-code \
     @kilocode/cli \
     opencode-ai \
+    @openai/codex \
     && npm cache clean --force
 
 # ---------------------------------------------------------------------------
