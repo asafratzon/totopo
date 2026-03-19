@@ -5,7 +5,7 @@
 
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
-import { basename, join, relative } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import { cancel, confirm, groupMultiselect, isCancel, log, multiselect, note, outro, path, select } from "@clack/prompts";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -489,15 +489,25 @@ At the start of every session:
 
 // ─── Inject agent context ─────────────────────────────────────────────────────
 // Writes context files directly to .totopo/agents/ on the host. The agent dirs
-// are created by buildAgentMountArgs() and served into the container via volume
-// mounts — no docker cp required. Called before every container start/resume so
-// context always reflects the current scope.
+// are created on demand (recursive mkdir) so this is safe to call on first run
+// before any directories exist, as well as on subsequent runs where it simply
+// overwrites existing files with the latest context. The agent dirs are served
+// into the container via volume mounts — no docker cp required. Called before
+// every container start/resume so context always reflects the current scope.
 function injectAgentContext(totopoDir: string, docs: AgentContextDocs): void {
     const a = join(totopoDir, "agents");
-    writeFileSync(join(a, "claude", "CLAUDE.md"), docs.claude);
-    writeFileSync(join(a, "opencode", "config", "AGENTS.md"), docs.opencode);
-    writeFileSync(join(a, "kilo", "config", "AGENTS.md"), docs.kilo);
-    writeFileSync(join(a, "codex", "AGENTS.md"), docs.codex);
+
+    const files = [
+        { path: join(a, "claude", "CLAUDE.md"), content: docs.claude },
+        { path: join(a, "opencode", "config", "AGENTS.md"), content: docs.opencode },
+        { path: join(a, "kilo", "config", "AGENTS.md"), content: docs.kilo },
+        { path: join(a, "codex", "AGENTS.md"), content: docs.codex },
+    ];
+
+    for (const { path, content } of files) {
+        mkdirSync(dirname(path), { recursive: true });
+        writeFileSync(path, content);
+    }
 }
 
 // ─── Run post-start ───────────────────────────────────────────────────────────
