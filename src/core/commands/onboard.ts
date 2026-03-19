@@ -39,6 +39,7 @@ export async function run(packageDir: string, repoRoot: string): Promise<boolean
 
     cpSync(join(templatesDir, "Dockerfile"), join(totopoDir, "Dockerfile"));
     cpSync(join(templatesDir, "post-start.mjs"), join(totopoDir, "post-start.mjs"));
+    cpSync(join(templatesDir, "README.md"), join(totopoDir, "README.md"));
 
     log.success("Copied config templates to .totopo/");
 
