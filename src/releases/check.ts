@@ -29,6 +29,20 @@ try {
     fail("changelog.yaml structure", e instanceof Error ? e.message : String(e));
 }
 
+// ─── No rc versions in releases ──────────────────────────────────────────────
+try {
+    const data = readChangelog();
+    const rcInReleases = data.releases.filter((r) => r.version.includes("-rc-"));
+    if (rcInReleases.length > 0) {
+        const versions = rcInReleases.map((r) => r.version).join(", ");
+        fail("no rc versions in releases", `rc entries belong in in_progress.entries, not releases: ${versions}`);
+    } else {
+        pass("no rc versions in releases");
+    }
+} catch (e) {
+    fail("no rc versions in releases", e instanceof Error ? e.message : String(e));
+}
+
 // ─── Summary ─────────────────────────────────────────────────────────────────
 if (errors === 0) {
     console.log(`\n\x1b[32m●\x1b[0m \x1b[1mAll checks passed.\x1b[0m\n`);
