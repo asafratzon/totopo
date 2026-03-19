@@ -10,7 +10,7 @@ It is not an AI tool itself. It is the infrastructure that makes AI tools safe a
 
 ## The Problem
 
-AI coding assistants are powerful. Tools like Claude Code, Kilo, and OpenCode can read your codebase, write code, run commands, and make decisions autonomously. That power comes with a real risk: when you run an AI agent locally, it operates with your full user permissions. It can access files outside your project, push to remote repositories, read credentials, and interact with your system in ways you may not intend or even notice.
+AI coding assistants are powerful. Tools like Claude Code, OpenCode, and Codex can read your codebase, write code, run commands, and make decisions autonomously. That power comes with a real risk: when you run an AI agent locally, it operates with your full user permissions. It can access files outside your project, push to remote repositories, read credentials, and interact with your system in ways you may not intend or even notice.
 
 Most developers using AI CLIs today are one misconfigured prompt away from an agent that does something unintended with their codebase or system.
 

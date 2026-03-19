@@ -8,15 +8,15 @@ Spin up a secure, isolated AI coding environment in any git project — in one c
 
 ## How It Works
 
-`npx totopo` sets up a hardened Docker container in your project with AI coding assistants (Claude, Kilo, OpenCode) pre-installed. Your code stays on your host machine. The AI tools run isolated inside the container.
+`npx totopo` sets up a hardened Docker container in your project with AI coding assistants (OpenCode, Claude Code, Codex) pre-installed. Your code stays on your host machine. The AI tools run isolated inside the container.
 
 ```
 Host machine
 ├── your editor       → edits files normally (bind-mounted from container)
 ├── terminal          → connected to container via docker exec
-│   ├── claude        → AI tools run here, isolated
-│   ├── kilo
-│   └── opencode
+│   ├── opencode      → AI tools run here, isolated
+│   ├── claude
+│   └── codex
 └── git push/pull     → only possible from host, blocked inside container
 ```
 
@@ -74,9 +74,9 @@ your-project/
 Run inside the container terminal:
 
 ```bash
-claude      # Claude Code (Anthropic)
-kilo        # Kilo AI
 opencode    # OpenCode
+claude      # Claude Code (Anthropic)
+codex       # Codex (OpenAI)
 status      # Re-run security + readiness check
 ```
 
@@ -90,7 +90,7 @@ status      # Re-run security + readiness check
 | Filesystem isolation     | Only the repo is mounted — host is not visible                                                    |
 | Git remote block         | `protocol.allow never` in `/etc/gitconfig` — enforced at the git layer, requires root to override |
 | No privilege escalation  | `no-new-privileges:true` security opt                                                             |
-| Secrets never in image   | API keys injected at runtime via `.env` only                                                      |
+| Secrets never in image   | API keys loaded at runtime from `~/.totopo/.env` — never baked into the image, never mounted into the container |
 
 Remote git operations are blocked inside the container. Push from your host terminal instead.
 

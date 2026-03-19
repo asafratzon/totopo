@@ -4,7 +4,8 @@
 // =========================================================================================================================================
 
 import { spawnSync } from "node:child_process";
-import { existsSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { cancel, confirm, isCancel, log, multiselect, outro, select } from "@clack/prompts";
 
@@ -160,6 +161,21 @@ async function uninstall(projectName: string, repoRoot: string): Promise<void> {
     outro("Uninstalled. Re-run npx totopo to set up again.");
 }
 
+// ─── Reset API keys ───────────────────────────────────────────────────────────
+async function resetApiKeys(packageDir: string): Promise<void> {
+    const globalEnvPath = join(homedir(), ".totopo", ".env");
+    const confirmed = await confirm({
+        message: `Reset ${globalEnvPath}? This affects all totopo projects on this machine.`,
+    });
+    if (isCancel(confirmed) || !confirmed) {
+        cancel("Cancelled.");
+        return;
+    }
+    mkdirSync(join(homedir(), ".totopo"), { recursive: true });
+    cpSync(join(packageDir, "templates", "env"), globalEnvPath);
+    log.success(`API keys reset. Edit ${globalEnvPath} to add your keys.`);
+}
+
 // ─── Advanced submenu ─────────────────────────────────────────────────────────
 export async function run(packageDir: string, projectName: string, repoRoot: string): Promise<"back" | undefined> {
     // Dynamic imports to avoid circular deps — same pattern as bin/totopo.js
@@ -173,13 +189,14 @@ export async function run(packageDir: string, projectName: string, repoRoot: str
         const action = await select({
             message: "Advanced:",
             options: [
-                { value: "runtime-mode", label: "Runtime mode" },
-                { value: "rebuild", label: "Rebuild container" },
-                { value: "clear-memory", label: "Clear agent memory" },
-                { value: "uninstall", label: "Uninstall from this project" },
-                { value: "doctor", label: "Doctor" },
+                { value: "runtime-mode", label: "Runtime mode", hint: "switch between host-mirror and full" },
+                { value: "rebuild", label: "Rebuild container", hint: "force a fresh image build for this project" },
+                { value: "clear-memory", label: "Clear agent memory", hint: "wipe conversation history for this project" },
+                { value: "uninstall", label: "Uninstall from this project", hint: "removes .totopo/ and deletes the container and image" },
                 { value: "stop-containers", label: "Stop containers", hint: "all projects" },
                 { value: "remove-images", label: "Remove images", hint: "all projects" },
+                { value: "reset-keys", label: "Reset API keys", hint: "overwrites ~/.totopo/.env — affects all projects" },
+                { value: "doctor", label: "Doctor", hint: "check Docker and container health" },
                 { value: "back", label: "← Back" },
             ],
         });
@@ -197,6 +214,9 @@ export async function run(packageDir: string, projectName: string, repoRoot: str
                 break;
             case "clear-memory":
                 await clearAgentMemory(projectName, totopoDir);
+                break;
+            case "reset-keys":
+                await resetApiKeys(packageDir);
                 break;
             case "uninstall":
                 await uninstall(projectName, repoRoot);

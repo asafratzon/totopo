@@ -8,7 +8,6 @@ import { box, cancel, isCancel, select } from "@clack/prompts";
 interface MenuArgs {
     projectName: string;
     activeCount: number;
-    hasKey: boolean;
     projectRunning: boolean;
 }
 
@@ -17,7 +16,7 @@ export async function run(args: MenuArgs): Promise<string> {
 
     // ─── Status box ──────────────────────────────────────────────────────────────
     const containersLabel = activeCount === 0 ? "none" : activeCount === 1 ? "1 running" : `${activeCount} running`;
-    box(`workspace:   ${projectName}\ncontainers:  ${containersLabel}`, " totopo ", {
+    box(`workspace:   ${projectName}\ncontainers:  ${containersLabel}\nkeys:        ~/.totopo/.env`, " totopo ", {
         contentAlign: "center",
         titleAlign: "center",
         width: "auto",
@@ -28,9 +27,9 @@ export async function run(args: MenuArgs): Promise<string> {
     const action = await select({
         message: "Menu:",
         options: [
-            { value: "dev", label: "Open session" },
-            ...(projectRunning ? [{ value: "stop", label: "Stop dev container" }] : []),
-            { value: "advanced", label: "Advanced" },
+            { value: "dev", label: "Open session", hint: "start or resume the dev container" },
+            ...(projectRunning ? [{ value: "stop", label: "Stop dev container", hint: "stops this project's container" }] : []),
+            { value: "advanced", label: "Advanced", hint: "rebuild, memory, settings, and more" },
             { value: "quit", label: "Quit" },
         ],
     });

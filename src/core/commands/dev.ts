@@ -5,6 +5,7 @@
 
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { basename, dirname, join, relative } from "node:path";
 import { cancel, confirm, groupMultiselect, isCancel, log, multiselect, note, outro, path, select } from "@clack/prompts";
 
@@ -280,8 +281,6 @@ function buildAgentMountArgs(totopoDir: string): string[] {
         { host: join(agentsDir, "claude"), container: "/home/devuser/.claude" },
         { host: join(agentsDir, "opencode", "config"), container: "/home/devuser/.config/opencode" },
         { host: join(agentsDir, "opencode", "data"), container: "/home/devuser/.local/share/opencode" },
-        { host: join(agentsDir, "kilo", "config"), container: "/home/devuser/.config/kilo" },
-        { host: join(agentsDir, "kilo", "data"), container: "/home/devuser/.local/share/kilo" },
         { host: join(agentsDir, "codex"), container: "/home/devuser/.codex" },
     ];
     for (const { host } of mounts) mkdirSync(host, { recursive: true });
@@ -397,7 +396,6 @@ function scopesMatch(selected: ScopeConfig, existing: ScopeConfig | null, worksp
 interface AgentContextDocs {
     claude: string; // → .totopo/agents/claude/CLAUDE.md
     opencode: string; // → .totopo/agents/opencode/config/AGENTS.md
-    kilo: string; // → .totopo/agents/kilo/config/AGENTS.md
     codex: string; // → .totopo/agents/codex/AGENTS.md
 }
 
@@ -482,7 +480,6 @@ At the start of every session:
     return {
         claude: build("~/.claude/CLAUDE.md"),
         opencode: build("~/.config/opencode/AGENTS.md"),
-        kilo: build("~/.config/kilo/AGENTS.md"),
         codex: build("~/.codex/AGENTS.md"),
     };
 }
@@ -500,7 +497,6 @@ function injectAgentContext(totopoDir: string, docs: AgentContextDocs): void {
     const files = [
         { path: join(a, "claude", "CLAUDE.md"), content: docs.claude },
         { path: join(a, "opencode", "config", "AGENTS.md"), content: docs.opencode },
-        { path: join(a, "kilo", "config", "AGENTS.md"), content: docs.kilo },
         { path: join(a, "codex", "AGENTS.md"), content: docs.codex },
     ];
 
@@ -528,6 +524,20 @@ function removeContainer(name: string): void {
     spawnSync("docker", ["rm", name], { stdio: "pipe" });
 }
 
+// ─── Ensure global env file exists ───────────────────────────────────────────
+// ~/.totopo/.env lives outside all project repos so it is never mounted into
+// the container and cannot be read by agents. Created empty on first run so
+// --env-file always has a valid target.
+function ensureGlobalEnvFile(): string {
+    const globalTotopoDir = join(homedir(), ".totopo");
+    const envFile = join(globalTotopoDir, ".env");
+    mkdirSync(globalTotopoDir, { recursive: true });
+    if (!existsSync(envFile)) {
+        writeFileSync(envFile, "");
+    }
+    return envFile;
+}
+
 // ─── Run container ────────────────────────────────────────────────────────────
 function runContainer(
     scope: ScopeConfig,
@@ -537,6 +547,7 @@ function runContainer(
     totopoDir: string,
     cwd: string,
 ): void {
+    const envFile = ensureGlobalEnvFile();
     const run = spawnSync(
         "docker",
         [
@@ -546,7 +557,7 @@ function runContainer(
             containerName,
             ...buildMountArgs(scope, workspaceDir, totopoDir, cwd),
             "--env-file",
-            `${workspaceDir}/.totopo/.env`,
+            envFile,
             ...buildScopeEnvArgs(scope),
             ...buildScopeLabelArgs(scope),
             "--security-opt",

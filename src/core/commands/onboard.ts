@@ -4,6 +4,7 @@
 // =========================================================================================================================================
 
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { box, cancel, confirm, intro, isCancel, log, outro, select } from "@clack/prompts";
 import { type RuntimeMode, writeSettings } from "../lib/config.js";
@@ -85,13 +86,16 @@ export async function run(packageDir: string, repoRoot: string): Promise<boolean
 
     const commitScope = scopeChoice as "shared" | "local";
 
-    // ─── Create .env ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-    const envPath = join(totopoDir, ".env");
-    if (existsSync(envPath)) {
-        log.info(".totopo/.env already exists — leaving it untouched");
+    // ─── Create global .env ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+    // ~/.totopo/.env lives outside all project repos — never mounted into containers, never readable by agents.
+    const globalTotopoDir = join(homedir(), ".totopo");
+    const globalEnvPath = join(globalTotopoDir, ".env");
+    mkdirSync(globalTotopoDir, { recursive: true });
+    if (existsSync(globalEnvPath)) {
+        log.info(`${globalEnvPath} already exists — leaving it untouched`);
     } else {
-        cpSync(join(templatesDir, "env"), envPath);
-        log.success("Created .totopo/.env");
+        cpSync(join(templatesDir, "env"), globalEnvPath);
+        log.success(`Created ${globalEnvPath}`);
     }
 
     // ─── Gitignore ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -109,16 +113,8 @@ export async function run(packageDir: string, repoRoot: string): Promise<boolean
             log.success("Added .totopo/ to .gitignore");
         }
     } else {
-        const envEntry = ".totopo/.env";
         const agentsEntry = ".totopo/agents/";
         let content = gitignoreContent ?? "";
-
-        if (gitignoreContent?.includes(envEntry)) {
-            log.info(".totopo/.env already in .gitignore");
-        } else {
-            content += "\n# totopo — API keys must never be committed\n.totopo/.env\n";
-            log.success("Added .totopo/.env to .gitignore");
-        }
 
         if (gitignoreContent?.includes(agentsEntry)) {
             log.info(".totopo/agents/ already in .gitignore");
@@ -132,7 +128,7 @@ export async function run(packageDir: string, repoRoot: string): Promise<boolean
         }
     }
 
-    log.info("Optionally add API keys to .totopo/.env before starting the container.");
+    log.info(`Add API keys to ${globalEnvPath} before starting the container.`);
     outro("Setup complete.");
     return true;
 }
