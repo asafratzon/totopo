@@ -43,10 +43,11 @@ Two distinct concerns — keep them separate:
 
 2. USER'S PROJECT (any git repo where totopo is used)
 └── .totopo/            ← created by onboarding; config only, no scripts
-    ├── .env           (gitignored — API keys)
     ├── Dockerfile     (regenerated on session start in host-mirror mode)
     ├── post-start.mjs
     └── settings.json  (runtimeMode + selectedTools; committed with project)
+
+~/.totopo/.env          ← API keys; global, outside all repos, never mounted into container
 ```
 
 `bin/totopo.js` sets `TOTOPO_PACKAGE_DIR` (where the package is installed) and
@@ -60,12 +61,13 @@ Build step (`pnpm build`) runs automatically as part of `pnpm rc` before publish
 
 ## Working Now
 
-_Nothing in progress._
+Testing 0.9.0-rc-2 — awaiting results.
 
 ## Upcoming
 
 Brief descriptions for planning; each is input for plan mode before we decide to work on it.
 
-- **Package README + illustrations** — explain Tech choices and Security review: audit tech decisions across the package, dev container, and repo; assess current security posture, gaps, and tradeoffs explaining rationale for each major choice. add visuals to README.md using Google's Banana Pro AI.
+- **0.9.0 release** — once rc-2 passes testing, squash in_progress entries and publish 0.9.0.
+- **Package README + illustrations** — explain tech choices and security review: audit tech decisions across the package, dev container, and repo; assess current security posture, gaps, and tradeoffs. Add visuals to README.md.
 
 
