@@ -29,7 +29,7 @@ Never declare a checkpoint if the codebase is broken or half-migrated.
 
 ## Environment
 
-- AI agents run **inside the dev container**; user SSHs in from host terminal
+- AI agents run **inside the dev container**; user connects via `docker exec` from host terminal
 - Repo is bind-mounted — edits are immediately visible on the host
 - Remote git (push/pull/fetch) is **blocked inside the container** — user pushes from host
 - Never suggest docker commands directly — users interact exclusively through the totopo menu (start/stop/reset)
