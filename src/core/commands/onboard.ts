@@ -95,10 +95,10 @@ export async function run(packageDir: string, repoRoot: string): Promise<boolean
     const globalEnvPath = join(globalTotopoDir, ".env");
     mkdirSync(globalTotopoDir, { recursive: true });
     if (existsSync(globalEnvPath)) {
-        log.info(`${globalEnvPath} already exists — leaving it untouched`);
+        log.info(`${tildefy(globalEnvPath)} already exists — leaving it untouched`);
     } else {
         cpSync(join(templatesDir, "env"), globalEnvPath);
-        log.success(`Created ${globalEnvPath}`);
+        log.success(`Created ${tildefy(globalEnvPath)}`);
     }
 
     // ─── Gitignore ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
