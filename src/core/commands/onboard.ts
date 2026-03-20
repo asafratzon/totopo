@@ -17,11 +17,12 @@ export async function run(packageDir: string, repoRoot: string): Promise<boolean
     const templatesDir = join(packageDir, "templates");
     const totopoDir = join(repoRoot, ".totopo");
     const projectName = basename(repoRoot);
+    const tildefy = (p: string) => (p.startsWith(homedir()) ? p.replace(homedir(), "~") : p);
 
     // ─── Intro ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
     intro("totopo — First-time setup");
 
-    box(`project  : ${projectName}\nlocation : ${totopoDir}`, "No .totopo/ config found — totopo will create it now.", {
+    box(`project  : ${projectName}\nlocation : ${tildefy(totopoDir)}`, "No .totopo/ config found — totopo will create it now.", {
         contentAlign: "center",
         titleAlign: "center",
         width: "auto",
@@ -128,7 +129,7 @@ export async function run(packageDir: string, repoRoot: string): Promise<boolean
         }
     }
 
-    log.info(`Optionally add API keys to ${globalEnvPath} — all keys are injected into every container at runtime.`);
+    log.info(`Optionally add API keys to ${tildefy(globalEnvPath)} — they are injected into every totopo container at runtime.`);
     outro("Setup complete.");
     return true;
 }

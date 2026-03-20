@@ -1,7 +1,7 @@
 # =============================================================================
 # Secure AI Dev Container — host-mirror mode
 # =============================================================================
-# Non-root user, no git remote access, AI tools: claude, kilo, opencode, codex
+# Non-root user, no git remote access, AI tools: opencode, claude, codex
 # Runtimes: selected by totopo host-mirror (regenerated on each session start)
 # =============================================================================
 

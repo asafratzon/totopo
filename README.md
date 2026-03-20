@@ -1,21 +1,35 @@
 # totopo
 
-A simple CLI for sandboxed local AI agent development.
+<img src=".github/assets/logo.png" alt="totopo" width="100%" />
+
+A simple CLI to spin up a sandboxed Docker environment for AI coding agents.
+
+![npm version](https://img.shields.io/npm/v/totopo)
+![npm downloads](https://img.shields.io/npm/dm/totopo)
+![license](https://img.shields.io/npm/l/totopo)
 
 ## What is totopo?
 
-totopo spins up a secure, isolated dev container for any git project — with AI coding tools pre-installed — in a single command.
+`npx totopo` spins up a secure, isolated dev container for any git project — with AI coding tools pre-installed — in a single command.
 
-There are other solutions that offer more hardened security setups, and others with a richer feature set. totopo is neither of those. It is my own take on what makes a good balance between excellent developer experience and a sensible basic sandboxing setup — the combination I couldn't find elsewhere.
+There are other solutions that offer more hardened security setups, and others with a richer feature set. totopo is neither of those. It is my own take on what makes a good balance between excellent developer experience and a sensible basic sandboxing setup.
 
-<!-- VIDEO: first-run onboarding — npx totopo in a fresh git repo, runtime mode selection, first container build -->
+---
+
+## Features at a Glance
+
+- **Sandboxed Docker container** — your code runs in an isolated environment with strict filesystem and privilege boundaries
+- **Agents can't reach remote** — push, pull, fetch, and clone are blocked inside the container, preventing agents from accidentally affecting your remote repositories
+- **Scoped mounts** — expose only the files and directories the agent needs, nothing more
+- **AI coding CLIs with persistent sessions** — Claude Code, OpenCode, and Codex pre-installed, with conversation history that survives restarts and rebuilds
+- **Host-mirror or generic runtime** — use a standard dev container, or let totopo match the container environment to your host so the agent works in the exact same setup as your codebase
 
 ---
 
 ## Requirements
 
 - [Docker](https://www.docker.com/products/docker-desktop/)
-- [git](https://git-scm.com/) — totopo only works inside git repositories
+- [git](https://git-scm.com/)
 
 ---
 
@@ -26,9 +40,15 @@ cd your-project
 npx totopo
 ```
 
-Select **Open session** from the menu. If `.totopo/` doesn't exist yet, the onboarding flow runs first — it sets up the container config, prompts for API keys, and updates `.gitignore`. The first run builds the Docker image (a few minutes). Subsequent starts are fast.
+Select **Open session** from the menu. If `.totopo/` doesn't exist yet, a one-time onboarding flow runs first. The first run builds the Docker image. Subsequent starts are fast.
 
-<!-- VIDEO: opening a session, container prompt, running an AI tool, exiting -->
+<!-- VIDEO: First-time setup — running `npx totopo` in a fresh repo, selecting a runtime mode, and waiting for the Docker image to build for the first time.
+![First-time setup](.github/assets/demo-onboarding.gif)
+-->
+
+<!-- VIDEO: Starting a session once the container is already built — opening a session, running an AI tool, exiting.
+![Quick start](.github/assets/demo-quickstart.gif)
+-->
 
 ---
 
@@ -57,6 +77,10 @@ In both scoped modes, `.git` is intentionally not mounted. Mounting `.git` would
 
 Scoped sessions are well-suited for focused tasks where you want to give the agent a narrow, explicit view of your codebase.
 
+<!-- VIDEO: Using scoped mounts — selecting cwd and selective modes, showing what the agent can and can't see inside the container.
+![Scoped sandboxing](.github/assets/demo-scoped.gif)
+-->
+
 ### AI tools pre-installed
 
 The container comes with the major AI coding CLIs ready to use out of the box:
@@ -76,7 +100,9 @@ Choose between two modes:
 
 Either way, basic dev tools and all three AI CLIs are always included.
 
-<!-- VIDEO: settings menu — switching runtime mode, selecting tools, triggering a rebuild -->
+<!-- VIDEO: Switching runtime modes in the settings menu, selecting tools, and triggering a container rebuild.
+![Runtime switching](.github/assets/demo-runtime.gif)
+-->
 
 ---
 
@@ -90,9 +116,9 @@ your-project/
     ├── settings.json     # runtime mode + selected tools (committed with project)
     ├── README.md         # .totopo reference
     └── agents/           # agent session data — gitignored, created on first session start
-        ├── claude/            → ~/.claude/
-        ├── opencode/          → ~/.config/opencode/ + ~/.local/share/opencode/
-        └── codex/             → ~/.codex/
+        ├── claude/            # mounted as ~/.claude/
+        ├── opencode/          # mounted as ~/.config/opencode/ + ~/.local/share/opencode/
+        └── codex/             # mounted as ~/.codex/
 
 ~/.totopo/.env            # API keys — global, outside all repos, never mounted into container
 ```
@@ -109,4 +135,4 @@ Agent session history and conversation data are persisted in `agents/` across co
 
 ## Disclaimer
 
-totopo is a side project. It is MIT licensed and fully open source — fork it, adapt it, build on it. Feel free to open an issue if you run into something, though I can't guarantee a response timeline. Use at your own risk.
+totopo is MIT licensed and fully open source — fork it, adapt it, build on it. Issues are welcome but response times aren't guaranteed. Use at your own risk.
