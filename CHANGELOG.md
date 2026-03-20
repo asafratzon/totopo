@@ -7,6 +7,26 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [1.0.3] — 2026-03-20
+
+### Changed
+
+- Onboarding intro spacing — blank line added before the intro line (separates it from the npx command in the terminal) and between the intro line and the info box.
+- Onboarding info box title removed — redundant subtitle eliminated; the intro line and box content (project name + location) are self-explanatory.
+- README rewritten — added logo and npm badges, new Features at a Glance section, expanded sandboxing and scoped mounts descriptions, video placeholders updated, file tree mount annotations changed from arrows to comments, disclaimer trimmed.
+- Onboarding output uses tilde-relative paths — absolute home directory prefix replaced with ~/ in the .totopo location box and the global .env hint line. Hint wording updated from "every container" to "every totopo container".
+- README onboarding description simplified — one-time onboarding flow reference replaces the previous verbose description that incorrectly mentioned API key prompts.
+- Docs restructured — INBOX.md removed, WORK.md renamed to ROADMAP.md, architecture section moved from ROADMAP into AGENTS.md, VISION.md content merged into README and removed, Environment section removed from AGENTS.md, RELEASES.md checklist updated.
+- Dead env vars removed — TOTOPO_PACKAGE_DIR and TOTOPO_REPO_ROOT removed from bin/totopo.js; they were unused.
+- .totopo/Dockerfile comment corrected — kilo removed from the AI tools list in the header comment.
+
+### Fixed
+
+- Onboarding intro spacing — log.message("") replaced with process.stdout.write("\n") to produce a single blank line between the intro and the info box; log.message renders an extra clack rail character that caused double spacing.
+- Remaining absolute paths in onboarding output tilde-relative — ~/.totopo/.env "already exists" and "Created" log lines now use tildefy(), consistent with all other path output.
+
+---
+
 ## [0.9.0] — 2026-03-20
 
 ### Added
