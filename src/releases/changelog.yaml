@@ -1,6 +1,15 @@
 in_progress:
   base_version: "1.0.0"
   entries:
+    - rc_version: "1.0.0-rc-2"
+      date: "2026-03-20"
+      changed:
+        - >-
+          Onboarding intro spacing — blank line added before the intro line (separates it from the
+          npx command in the terminal) and between the intro line and the info box.
+        - >-
+          Onboarding info box title removed — redundant subtitle eliminated; the intro line and box
+          content (project name + location) are self-explanatory.
     - rc_version: "1.0.0-rc-1"
       date: "2026-03-20"
       changed:
