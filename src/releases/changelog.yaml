@@ -1,6 +1,10 @@
 in_progress:
   base_version: 1.0.4
-  entries: []
+  entries:
+    - rc_version: "1.0.4-rc-1"
+      date: "2026-03-20"
+      changed:
+        - Updated package logo in README.md.
 releases:
   - version: 1.0.3
     date: "2026-03-20"
