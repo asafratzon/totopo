@@ -22,7 +22,7 @@ export async function run(packageDir: string, repoRoot: string): Promise<boolean
     // ─── Intro ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
     process.stdout.write("\n");
     intro("totopo — First-time setup");
-    log.message("");
+    process.stdout.write("\n");
 
     box(`project  : ${projectName}\nlocation : ${tildefy(totopoDir)}`, "", {
         contentAlign: "center",
