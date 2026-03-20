@@ -20,9 +20,11 @@ export async function run(packageDir: string, repoRoot: string): Promise<boolean
     const tildefy = (p: string) => (p.startsWith(homedir()) ? p.replace(homedir(), "~") : p);
 
     // ─── Intro ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+    process.stdout.write("\n");
     intro("totopo — First-time setup");
+    log.message("");
 
-    box(`project  : ${projectName}\nlocation : ${tildefy(totopoDir)}`, "No .totopo/ config found — totopo will create it now.", {
+    box(`project  : ${projectName}\nlocation : ${tildefy(totopoDir)}`, "", {
         contentAlign: "center",
         titleAlign: "center",
         width: "auto",
