@@ -22,14 +22,6 @@ pnpm generate-changelog
 ### changelog.yaml format
 
 ```yaml
-releases:
-  - version: "x.y.z"
-    date: "YYYY-MM-DD"
-    added:     # new features
-    changed:   # changes to existing behaviour
-    fixed:     # bug fixes
-    security:  # security fixes (always include if applicable)
-
 in_progress:
   base_version: "x.y.z"   # next release version
   entries:                 # accumulates across rc iterations
@@ -37,6 +29,14 @@ in_progress:
       date: "YYYY-MM-DD"
       fixed:
         - "Description of fix"
+
+releases:
+  - version: "x.y.z"
+    date: "YYYY-MM-DD"
+    added:     # new features
+    changed:   # changes to existing behaviour
+    fixed:     # bug fixes
+    security:  # security fixes (always include if applicable)
 ```
 
 Only include categories that have entries. Keep entries concise — one line per item.

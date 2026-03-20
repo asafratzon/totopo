@@ -1,3 +1,31 @@
+in_progress:
+  base_version: "1.0.0"
+  entries:
+    - rc_version: "1.0.0-rc-1"
+      date: "2026-03-20"
+      changed:
+        - >-
+          README rewritten — added logo and npm badges, new Features at a Glance section, expanded
+          sandboxing and scoped mounts descriptions, video placeholders updated, file tree mount
+          annotations changed from arrows to comments, disclaimer trimmed.
+        - >-
+          Onboarding output uses tilde-relative paths — absolute home directory prefix replaced with ~/
+          in the .totopo location box and the global .env hint line. Hint wording updated from "every
+          container" to "every totopo container".
+        - >-
+          README onboarding description simplified — one-time onboarding flow reference replaces the
+          previous verbose description that incorrectly mentioned API key prompts.
+        - >-
+          Docs restructured — INBOX.md removed, WORK.md renamed to ROADMAP.md, architecture section
+          moved from ROADMAP into AGENTS.md, VISION.md content merged into README and removed,
+          Environment section removed from AGENTS.md, RELEASES.md checklist updated.
+        - >-
+          Dead env vars removed — TOTOPO_PACKAGE_DIR and TOTOPO_REPO_ROOT removed from bin/totopo.js;
+          they were unused.
+        - >-
+          .totopo/Dockerfile comment corrected — kilo removed from the AI tools list in the header
+          comment.
+
 releases:
   - version: 0.9.0
     date: "2026-03-20"
@@ -425,6 +453,4 @@ releases:
       - "Workspace naming convention: totopo-<project>"
       - Port cleanup on stop/reset
       - Status box with project name and API key indicator in menu UI
-in_progress:
-  base_version: 0.9.1
-  entries: []
+
