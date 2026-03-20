@@ -40,9 +40,6 @@ try {
     process.exit(1);
 }
 
-process.env.TOTOPO_PACKAGE_DIR = packageDir;
-process.env.TOTOPO_REPO_ROOT = repoRoot;
-
 // ─── Guard: dist/ must exist ─────────────────────────────────────────────────
 if (!existsSync(new URL("../dist/commands/sync-dockerfile.js", import.meta.url))) {
     console.error("");

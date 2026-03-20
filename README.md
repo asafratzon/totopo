@@ -1,59 +1,82 @@
 # totopo
 
-Spin up a secure, isolated AI coding environment in any git project — in one command.
+A simple CLI for sandboxed local AI agent development.
 
-## Status
+## What is totopo?
 
-⚠️ **Early development (pre-1.0)** — experimental. API and behavior may change. Not yet recommended for production use.
+totopo spins up a secure, isolated dev container for any git project — with AI coding tools pre-installed — in a single command.
 
-## How It Works
+There are other solutions that offer more hardened security setups, and others with a richer feature set. totopo is neither of those. It is my own take on what makes a good balance between excellent developer experience and a sensible basic sandboxing setup — the combination I couldn't find elsewhere.
 
-`npx totopo` sets up a hardened Docker container in your project with AI coding assistants (OpenCode, Claude Code, Codex) pre-installed. Your code stays on your host machine. The AI tools run isolated inside the container.
-
-```
-Host machine
-├── your editor       → edits files normally (bind-mounted from container)
-├── terminal          → connected to container via docker exec
-│   ├── opencode      → AI tools run here, isolated
-│   ├── claude
-│   └── codex
-└── git push/pull     → only possible from host, blocked inside container
-```
+<!-- VIDEO: first-run onboarding — npx totopo in a fresh git repo, runtime mode selection, first container build -->
 
 ---
 
-## Prerequisites
+## Requirements
 
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+- [Docker](https://www.docker.com/products/docker-desktop/)
+- [git](https://git-scm.com/) — totopo only works inside git repositories
 
 ---
 
 ## Quick Start
-
-### 1. Run totopo in your project directory
 
 ```bash
 cd your-project
 npx totopo
 ```
 
-If `.totopo/` doesn't exist yet, the onboarding flow runs automatically — it creates the container config, prompts for API keys, and updates `.gitignore`.
+Select **Open session** from the menu. If `.totopo/` doesn't exist yet, the onboarding flow runs first — it sets up the container config, prompts for API keys, and updates `.gitignore`. The first run builds the Docker image (a few minutes). Subsequent starts are fast.
 
-### 2. Start the container
+<!-- VIDEO: opening a session, container prompt, running an AI tool, exiting -->
 
-Select **Start session** from the menu. The first run builds the Docker image (a few minutes). Subsequent starts are fast.
+---
 
-### 3. Verify
+## Features
 
-Security checks run automatically on every container start. Re-run anytime from inside the container:
+### Sandboxed dev container
+
+Every session runs inside a Docker container. Your code is bind-mounted from the host — edits are immediately visible in your editor. The container enforces several isolation boundaries:
+
+| Control | Implementation |
+| --- | --- |
+| Non-root user | All processes run as `devuser` (uid 1001) — cannot modify system-level config |
+| Filesystem isolation | Only the repo is mounted — host filesystem is not visible |
+| Git remote block | `protocol.allow = never` in `/etc/gitconfig` — push, pull, fetch, and clone are all refused; requires root to override |
+| No host credentials forwarded | Host git credentials are never copied into the container |
+| Secrets never in image | API keys loaded at runtime from `~/.totopo/.env` — never baked into the image, never mounted into the container |
+| No privilege escalation | `no-new-privileges:true` prevents any process from gaining elevated permissions |
+
+Remote git operations are blocked inside the container. Push from your host terminal instead.
+
+### Scoped sandboxing
+
+Mount only the files and directories you need into the container rather than the full repository. Two scoped modes are available: `cwd` (current directory only) and `selective` (hand-pick individual files and folders).
+
+In both scoped modes, `.git` is intentionally not mounted. Mounting `.git` would expose the full commit history of every repository file — including files outside the mounted paths — which defeats the point of scoped access. As a result, git is unavailable inside a scoped session and the agent operates without repository history. The agent is instructed to surface these limitations at session start.
+
+Scoped sessions are well-suited for focused tasks where you want to give the agent a narrow, explicit view of your codebase.
+
+### AI tools pre-installed
+
+The container comes with the major AI coding CLIs ready to use out of the box:
 
 ```bash
-status
+opencode    # OpenCode
+claude      # Claude Code (Anthropic)
+codex       # Codex (OpenAI)
 ```
 
-### 4. Stop
+### Dev container runtime
 
-Run `npx totopo` again and select **Stop**.
+Choose between two modes:
+
+- **Host-mirror** — the container runtime matches your host Node.js version and selected tools, keeping the environment consistent with your local setup.
+- **Generic** — a full dev container with the latest stable versions of all tools. Good default if you don't need version parity with your host.
+
+Either way, basic dev tools and all three AI CLIs are always included.
+
+<!-- VIDEO: settings menu — switching runtime mode, selecting tools, triggering a rebuild -->
 
 ---
 
@@ -62,66 +85,28 @@ Run `npx totopo` again and select **Stop**.
 ```
 your-project/
 └── .totopo/
-    ├── .env              # API keys — gitignored, never committed
-    ├── Dockerfile        # Container image definition
-    └── post-start.mjs   # Security + readiness check on every start
+    ├── Dockerfile        # container image definition
+    ├── post-start.mjs    # security checks + readiness summary on every start
+    ├── settings.json     # runtime mode + selected tools (committed with project)
+    ├── README.md         # .totopo reference
+    └── agents/           # agent session data — gitignored, created on first session start
+        ├── claude/            → ~/.claude/
+        ├── opencode/          → ~/.config/opencode/ + ~/.local/share/opencode/
+        └── codex/             → ~/.codex/
+
+~/.totopo/.env            # API keys — global, outside all repos, never mounted into container
 ```
 
----
-
-## AI Tools
-
-Run inside the container terminal:
-
-```bash
-opencode    # OpenCode
-claude      # Claude Code (Anthropic)
-codex       # Codex (OpenAI)
-status      # Re-run security + readiness check
-```
-
----
-
-## Security Model
-
-| Control                  | Implementation                                                                                    |
-| ------------------------ | ------------------------------------------------------------------------------------------------- |
-| Non-root user            | All processes run as `devuser` (uid 1001)                                                         |
-| Filesystem isolation     | Only the repo is mounted — host is not visible                                                    |
-| Git remote block         | `protocol.allow never` in `/etc/gitconfig` — enforced at the git layer, requires root to override |
-| No privilege escalation  | `no-new-privileges:true` security opt                                                             |
-| Secrets never in image   | API keys loaded at runtime from `~/.totopo/.env` — never baked into the image, never mounted into the container |
-
-Remote git operations are blocked inside the container. Push from your host terminal instead.
-
-See `docs/VISION.md` for full details on the security model.
-
----
-
-## Git Workflow
-
-```bash
-# Inside container — local operations ✅
-git add .
-git commit -m "message"
-git log / diff / branch
-
-# Remote operations — host terminal only 🚫 blocked inside container
-git push / pull / fetch
-```
+Agent session history and conversation data are persisted in `agents/` across container rebuilds and restarts. This directory is gitignored — session data stays local to your machine.
 
 ---
 
 ## Limitations
 
-**No audio / microphone support** — the container has no access to host audio devices. Features that require microphone input (e.g. Claude Code's `/voice` mode) will not work inside the container.
+**Audio / microphone** — the image includes `sox` (required by Claude Code for voice mode), but audio passthrough from the host depends on your OS. macOS, Linux, and Windows each require different device configuration. If you need voice mode, set up audio passthrough manually for your platform.
 
 ---
 
-## Troubleshooting
+## Disclaimer
 
-**Container fails to start** — the startup check prints exactly which check failed and why.
-
-**API key warnings** — check `.totopo/.env` has the correct variable names, then use **Rebuild** from the totopo menu to rebuild the container.
-
-**AI tool not found** — use **Rebuild** from the totopo menu to rebuild the container image. Do not install tools manually inside a running container as changes won't persist.
+totopo is a side project. It is MIT licensed and fully open source — fork it, adapt it, build on it. Feel free to open an issue if you run into something, though I can't guarantee a response timeline. Use at your own risk.

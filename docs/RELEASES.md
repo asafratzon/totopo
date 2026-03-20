@@ -94,7 +94,7 @@ pnpm sync-releases
 
 ## Release Checklist
 
-- [ ] All Phase tasks for this version checked off in `docs/WORK.md`
+- [ ] All Phase tasks for this version checked off in `docs/ROADMAP.md`
 - [ ] `pnpm typecheck` passes
 - [ ] `pnpm lint` passes
 - [ ] `pnpm build` succeeds (compiles `src/core/` → `dist/`)
