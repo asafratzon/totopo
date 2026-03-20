@@ -1,6 +1,16 @@
 in_progress:
   base_version: "1.0.0"
   entries:
+    - rc_version: "1.0.0-rc-3"
+      date: "2026-03-20"
+      fixed:
+        - >-
+          Onboarding intro spacing — log.message("") replaced with process.stdout.write("\n") to
+          produce a single blank line between the intro and the info box; log.message renders an
+          extra clack rail character that caused double spacing.
+        - >-
+          Remaining absolute paths in onboarding output tilde-relative — ~/.totopo/.env "already
+          exists" and "Created" log lines now use tildefy(), consistent with all other path output.
     - rc_version: "1.0.0-rc-2"
       date: "2026-03-20"
       changed:
