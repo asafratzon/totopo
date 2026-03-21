@@ -2,36 +2,33 @@
 
 <img src=".github/assets/logo.png" alt="totopo" width="100%" />
 
-A simple CLI to spin up a sandboxed Docker environment for AI coding agents.
+A simple CLI to spin up a sandboxed Docker environment for AI coding agents — pre-installed tools, any git project.
 
 ![npm version](https://img.shields.io/npm/v/totopo)
 ![npm downloads](https://img.shields.io/npm/dm/totopo)
 ![license](https://img.shields.io/npm/l/totopo)
 
-## What is totopo?
+## Why totopo?
 
-`npx totopo` spins up a secure, isolated dev container for any git project — with AI coding tools pre-installed — in a single command.
+Here's the thing about AI agents: they're probabilistic. They occasionally misinterpret instructions, take unexpected shortcuts, or simply get it wrong. Most of the time they're fine. But "most of the time" isn't a great argument for giving them unrestricted access to your machine, your credentials, and your remote repositories.
 
-There are other solutions that offer more hardened security setups, and others with a richer feature set. totopo is neither of those. It is my own take on what makes a good balance between excellent developer experience and a sensible basic sandboxing setup.
+totopo draws a simple boundary: agents get a full, capable environment to work in — they just can't touch anything outside the project, and they can't reach your remote. That's it. No domain whitelisting, no paranoia, no compromise on what the agent can actually do.
+Reasonable containment for non-deterministic tools. Nothing more, nothing less.
 
----
+Note: no sandbox substitutes for good judgment. Consider keeping any sensitive secrets or privileged scripts away from your agents.
 
 ## Features at a Glance
 
 - **Sandboxed Docker container** — your code runs in an isolated environment with strict filesystem and privilege boundaries
 - **Agents can't reach remote** — push, pull, fetch, and clone are blocked inside the container, preventing agents from accidentally affecting your remote repositories
-- **Scoped mounts** — expose only the files and directories the agent needs, nothing more
-- **AI coding CLIs with persistent sessions** — Claude Code, OpenCode, and Codex pre-installed, with conversation history that survives restarts and rebuilds
+- **AI CLIs with persistent sessions** — OpenCode, Claude Code and Codex pre-installed, with conversation history that survives restarts and rebuilds
 - **Host-mirror or generic runtime** — use a standard dev container, or let totopo match the container environment to your host so the agent works in the exact same setup as your codebase
-
----
+- **Scoped mounts** — expose only the files and directories the agent needs, nothing more
 
 ## Requirements
 
-- [Docker](https://www.docker.com/products/docker-desktop/)
-- [git](https://git-scm.com/)
-
----
+- [Docker](https://www.docker.com/products/docker-desktop/) - used to build and run the sandboxed environment
+- [git](https://git-scm.com/) - safeguard to ensure agents only run in projects with version control in place
 
 ## Quick Start
 
@@ -42,15 +39,11 @@ npx totopo
 
 Select **Open session** from the menu. If `.totopo/` doesn't exist yet, a one-time onboarding flow runs first. The first run builds the Docker image. Subsequent starts are fast.
 
-<!-- VIDEO: First-time setup — running `npx totopo` in a fresh repo, selecting a runtime mode, and waiting for the Docker image to build for the first time.
 ![First-time setup](.github/assets/demo-onboarding.gif)
--->
+*First-time setup — running `npx totopo` in a fresh repo, selecting a runtime mode, and waiting for the Docker image to build for the first time.*
 
-<!-- VIDEO: Starting a session once the container is already built — opening a session, running an AI tool, exiting.
 ![Quick start](.github/assets/demo-quickstart.gif)
--->
-
----
+*Starting a session once the container is already built — opening a session, running an AI tool, exiting.*
 
 ## Features
 
@@ -77,11 +70,10 @@ In both scoped modes, `.git` is intentionally not mounted. Mounting `.git` would
 
 Scoped sessions are well-suited for focused tasks where you want to give the agent a narrow, explicit view of your codebase.
 
-<!-- VIDEO: Using scoped mounts — selecting cwd and selective modes, showing what the agent can and can't see inside the container.
 ![Scoped sandboxing](.github/assets/demo-scoped.gif)
--->
+*Using scoped mounts — selecting cwd and selective modes, showing what the agent can and can't see inside the container.*
 
-### AI tools pre-installed
+### AI CLIs with persistent sessions
 
 The container comes with the major AI coding CLIs ready to use out of the box:
 
@@ -91,6 +83,8 @@ claude      # Claude Code (Anthropic)
 codex       # Codex (OpenAI)
 ```
 
+Agent session data is scoped per project — each repository gets its own isolated history, so agents don't bleed context between projects. To clear memory, run `npx totopo` and navigate to Advanced > Clear agent memory. This stops the container if running and removes the .totopo/agents/ directory.
+
 ### Dev container runtime
 
 Choose between two modes:
@@ -99,12 +93,6 @@ Choose between two modes:
 - **Generic** — a full dev container with the latest stable versions of all tools. Good default if you don't need version parity with your host.
 
 Either way, basic dev tools and all three AI CLIs are always included.
-
-<!-- VIDEO: Switching runtime modes in the settings menu, selecting tools, and triggering a container rebuild.
-![Runtime switching](.github/assets/demo-runtime.gif)
--->
-
----
 
 ## What gets created in your project
 
@@ -123,16 +111,12 @@ your-project/
 ~/.totopo/.env            # API keys — global, outside all repos, never mounted into container
 ```
 
-Agent session history and conversation data are persisted in `agents/` across container rebuilds and restarts. This directory is gitignored — session data stays local to your machine.
-
----
+Agent session history and conversation data are persisted in the `agents` directory across container rebuilds and restarts. This directory is gitignored so session data stays local to your machine.
 
 ## Limitations
 
 **Audio / microphone** — the image includes `sox` (required by Claude Code for voice mode), but audio passthrough from the host depends on your OS. macOS, Linux, and Windows each require different device configuration. If you need voice mode, set up audio passthrough manually for your platform.
 
----
-
 ## Disclaimer
 
-totopo is MIT licensed and fully open source — fork it, adapt it, build on it. Issues are welcome but response times aren't guaranteed. Use at your own risk.
+MIT licensed and fully open source. Fork it, adapt it, make it yours. Issues are welcome — no promises on response time. Use at your own risk.
