@@ -1,15 +1,15 @@
 in_progress:
-  base_version: 1.0.5
-  entries:
-    - rc_version: "1.0.5-rc-1"
-      date: "2026-03-20"
-      changed:
-        - README.md updates, demo GIFs added.
-        - Totopo banner updated.
-        - CONTRIBUTING.md introduced.
-        - CLAUDE.md removed.
-        - ROADMAP.md "Working Now" section cleared.
+  base_version: 1.0.6
+  entries: []
 releases:
+  - version: 1.0.5
+    date: "2026-03-21"
+    changed:
+      - README.md updates, demo GIFs added.
+      - Totopo banner updated.
+      - CONTRIBUTING.md introduced.
+      - CLAUDE.md removed.
+      - ROADMAP.md "Working Now" section cleared.
   - version: 1.0.4
     date: "2026-03-20"
     changed:

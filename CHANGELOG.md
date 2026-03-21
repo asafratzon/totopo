@@ -7,6 +7,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [1.0.5] — 2026-03-21
+
+### Changed
+
+- README.md updates, demo GIFs added.
+- Totopo banner updated.
+- CONTRIBUTING.md introduced.
+- CLAUDE.md removed.
+- ROADMAP.md "Working Now" section cleared.
+
+---
+
 ## [1.0.4] — 2026-03-20
 
 ### Changed
