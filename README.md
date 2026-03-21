@@ -2,7 +2,7 @@
 
 <img src=".github/assets/logo.png" alt="totopo" width="100%" />
 
-A simple CLI to spin up a sandboxed Docker environment for AI coding agents — pre-installed tools, any git project.
+A simple CLI to spin up a sandboxed environment for AI coding agents.
 
 ![npm version](https://img.shields.io/npm/v/totopo)
 ![npm downloads](https://img.shields.io/npm/dm/totopo)
@@ -17,14 +17,6 @@ Reasonable containment for non-deterministic tools. Nothing more, nothing less.
 
 Note: no sandbox substitutes for good judgment. Consider keeping any sensitive secrets or privileged scripts away from your agents.
 
-## Features at a Glance
-
-- **Sandboxed Docker container** — your code runs in an isolated environment with strict filesystem and privilege boundaries
-- **Agents can't reach remote** — push, pull, fetch, and clone are blocked inside the container, preventing agents from accidentally affecting your remote repositories
-- **AI CLIs with persistent sessions** — OpenCode, Claude Code and Codex pre-installed, with conversation history that survives restarts and rebuilds
-- **Host-mirror or generic runtime** — use a standard dev container, or let totopo match the container environment to your host so the agent works in the exact same setup as your codebase
-- **Scoped mounts** — expose only the files and directories the agent needs, nothing more
-
 ## Requirements
 
 - [Docker](https://www.docker.com/products/docker-desktop/) - used to build and run the sandboxed environment
@@ -37,15 +29,24 @@ cd your-project
 npx totopo
 ```
 
-Select **Open session** from the menu. If `.totopo/` doesn't exist yet, a one-time onboarding flow runs first. The first run builds the Docker image. Subsequent starts are fast.
-
+First-time setup — running `npx totopo` in a fresh repo, selecting a runtime mode, and waiting for the Docker image to build for the first time:
 ![First-time setup](.github/assets/demo-onboarding.gif)
-*First-time setup — running `npx totopo` in a fresh repo, selecting a runtime mode, and waiting for the Docker image to build for the first time.*
 
+Opening a session when totopo is already initialized is quick. The agent is aware of the sandbox environment:
 ![Quick start](.github/assets/demo-quickstart.gif)
-*Starting a session once the container is already built — opening a session, running an AI tool, exiting.*
 
-## Features
+## Core features at a glance
+
+- **Sandboxed Docker container** — your code runs in an isolated environment with strict filesystem and privilege boundaries
+- **Agents can't reach remote** — push, pull, fetch, and clone are blocked inside the container, preventing agents from accidentally affecting your remote repositories
+- **AI CLIs with persistent sessions** — OpenCode, Claude Code and Codex pre-installed, with conversation history that survives restarts and rebuilds
+- **Host-mirror or generic runtime** — use a standard dev container, or let totopo match the container environment to your host so the agent works in the exact same setup as your codebase
+- **Agents are sandbox aware** — agents are informed of their sandbox constraints at session start, so they can factor that into how they work.
+- **Scoped mounts** — expose only the files and directories the agent needs
+
+---
+
+## Features in Detail
 
 ### Sandboxed dev container
 
@@ -70,8 +71,8 @@ In both scoped modes, `.git` is intentionally not mounted. Mounting `.git` would
 
 Scoped sessions are well-suited for focused tasks where you want to give the agent a narrow, explicit view of your codebase.
 
+Example showcasing agent awareness of scope limitations:
 ![Scoped sandboxing](.github/assets/demo-scoped.gif)
-*Using scoped mounts — selecting cwd and selective modes, showing what the agent can and can't see inside the container.*
 
 ### AI CLIs with persistent sessions
 

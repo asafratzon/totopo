@@ -1,6 +1,10 @@
 in_progress:
   base_version: 1.0.6
-  entries: []
+  entries:
+    - rc_version: "1.0.6-rc-1"
+      date: "2026-03-21"
+      changed:
+        - "Updated docs."
 releases:
   - version: 1.0.5
     date: "2026-03-21"
