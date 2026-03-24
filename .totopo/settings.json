@@ -1,4 +1,4 @@
 {
     "runtimeMode": "host-mirror",
-    "selectedTools": ["node", "python", "go", "rust", "java"]
+    "selectedTools": ["node", "python", "java"]
 }

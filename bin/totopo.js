@@ -8,6 +8,13 @@ import { execSync, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { basename, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { run as advanced } from "../dist/commands/advanced.js";
+import { run as dev } from "../dist/commands/dev.js";
+import { run as doctor } from "../dist/commands/doctor.js";
+import { run as menu } from "../dist/commands/menu.js";
+import { run as onboard } from "../dist/commands/onboard.js";
+import { run as stop } from "../dist/commands/stop.js";
+import { run as syncDockerfile } from "../dist/commands/sync-dockerfile.js";
 
 // ─── Guard: inside container ──────────────────────────────────────────────────
 try {
@@ -49,15 +56,6 @@ if (!existsSync(new URL("../dist/commands/sync-dockerfile.js", import.meta.url))
     console.error("");
     process.exit(1);
 }
-
-// ─── Import compiled commands ─────────────────────────────────────────────────
-const { run: syncDockerfile } = await import("../dist/commands/sync-dockerfile.js");
-const { run: doctor } = await import("../dist/commands/doctor.js");
-const { run: onboard } = await import("../dist/commands/onboard.js");
-const { run: menu } = await import("../dist/commands/menu.js");
-const { run: dev } = await import("../dist/commands/dev.js");
-const { run: stop } = await import("../dist/commands/stop.js");
-const { run: advanced } = await import("../dist/commands/advanced.js");
 
 // ─── Onboarding ───────────────────────────────────────────────────────────────
 if (!existsSync(`${repoRoot}/.totopo/Dockerfile`)) {
@@ -110,6 +108,7 @@ while (showMenu) {
         case "advanced": {
             const result = await advanced(packageDir, projectName, repoRoot);
             if (result === "back") showMenu = true;
+            if (result === "rebuild") await dev(packageDir, repoRoot);
             break;
         }
         default:
