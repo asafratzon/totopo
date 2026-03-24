@@ -8,6 +8,9 @@ import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { cancel, confirm, isCancel, log, multiselect, outro, select } from "@clack/prompts";
+import { run as runDoctor } from "./doctor.js";
+import { run as runRebuild } from "./rebuild.js";
+import { run as runSettings } from "./settings.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function stopAndRemoveContainer(name: string) {
@@ -177,12 +180,7 @@ async function resetApiKeys(packageDir: string): Promise<void> {
 }
 
 // ─── Advanced submenu ─────────────────────────────────────────────────────────
-export async function run(packageDir: string, projectName: string, repoRoot: string): Promise<"back" | undefined> {
-    // Dynamic imports to avoid circular deps — same pattern as bin/totopo.js
-    const { run: runSettings } = await import("./settings.js");
-    const { run: runRebuild } = await import("./rebuild.js");
-    const { run: runDoctor } = await import("./doctor.js");
-
+export async function run(packageDir: string, projectName: string, repoRoot: string): Promise<"back" | "rebuild" | undefined> {
     const totopoDir = join(repoRoot, ".totopo");
 
     while (true) {
@@ -211,7 +209,7 @@ export async function run(packageDir: string, projectName: string, repoRoot: str
                 break;
             case "rebuild":
                 await runRebuild(projectName);
-                break;
+                return "rebuild";
             case "clear-memory":
                 await clearAgentMemory(projectName, totopoDir);
                 break;

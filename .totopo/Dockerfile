@@ -73,14 +73,6 @@ RUN echo 'export JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java))))' \
         > /etc/profile.d/java.sh
 
 # ---------------------------------------------------------------------------
-# Layer 7 — Go 1.20.3 (host version, official tarball)
-# ---------------------------------------------------------------------------
-RUN ARCH=$(dpkg --print-architecture) && \
-    curl -fsSL "https://go.dev/dl/go1.20.3.linux-${ARCH}.tar.gz" \
-        | tar -xz -C /usr/local && \
-    echo 'export PATH=/usr/local/go/bin:$PATH' > /etc/profile.d/go.sh
-
-# ---------------------------------------------------------------------------
 # Layer 8 — Git remote block
 # ---------------------------------------------------------------------------
 RUN git config --system protocol.allow never && \
@@ -108,19 +100,12 @@ USER devuser
 WORKDIR /workspace
 
 # ---------------------------------------------------------------------------
-# Layer 11 — Rust 1.93.0 (installed as devuser via rustup)
-# ---------------------------------------------------------------------------
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-        | sh -s -- -y --no-modify-path --default-toolchain 1.93.0 && \
-    /home/devuser/.cargo/bin/rustup component add rustfmt clippy
-
-# ---------------------------------------------------------------------------
 # Layer 13 — Python user tools (uv + poetry via pipx)
 # ---------------------------------------------------------------------------
 RUN pipx install uv && pipx install poetry
 RUN /home/devuser/.local/bin/uv python install 3.12
 
-ENV PATH="/home/devuser/.cargo/bin:/home/devuser/.local/bin:/usr/local/go/bin:${PATH}"
+ENV PATH="/home/devuser/.local/bin:${PATH}"
 RUN echo 'export PS1="\[\033[01;32m\][devcontainer]\[\033[00m\] \[\033[01;34m\]\w\[\033[00m\] \$ "' \
         >> /home/devuser/.bashrc && \
     echo 'echo ""' >> /home/devuser/.bashrc && \
