@@ -7,6 +7,19 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [1.0.7] — 2026-03-24
+
+### Changed
+
+- README.md rewritten to clarify totopo's repo-level install model, scope flow, and one-container-per-repository behavior.
+
+### Fixed
+
+- Advanced > Rebuild now returns a rebuild signal so totopo immediately launches a fresh dev session after removing the project image.
+- Remaining dynamic imports removed from bin/totopo.js and src/core/commands/advanced.ts in favor of static imports.
+
+---
+
 ## [1.0.6] — 2026-03-21
 
 ### Changed

@@ -1,14 +1,20 @@
 in_progress:
-  base_version: 1.0.7
-  entries:
-    - rc_version: "1.0.7-rc-1"
-      date: "2026-03-24"
-      changed:
-        - "README.md rewritten to clarify totopo's repo-level install model, scope flow, and one-container-per-repository behavior."
-      fixed:
-        - "Advanced > Rebuild now returns a rebuild signal so totopo immediately launches a fresh dev session after removing the project image."
-        - "Remaining dynamic imports removed from bin/totopo.js and src/core/commands/advanced.ts in favor of static imports."
+  base_version: 1.0.8
+  entries: []
 releases:
+  - version: 1.0.7
+    date: "2026-03-24"
+    changed:
+      - >-
+        README.md rewritten to clarify totopo's repo-level install model, scope flow, and one-container-per-repository
+        behavior.
+    fixed:
+      - >-
+        Advanced > Rebuild now returns a rebuild signal so totopo immediately launches a fresh dev session after
+        removing the project image.
+      - >-
+        Remaining dynamic imports removed from bin/totopo.js and src/core/commands/advanced.ts in favor of static
+        imports.
   - version: 1.0.6
     date: "2026-03-21"
     changed:
