@@ -5,10 +5,12 @@
 
 import { spawnSync } from "node:child_process";
 import { log } from "@clack/prompts";
+import { toDockerName } from "../lib/docker-name.js";
 
 export async function run(projectName: string): Promise<void> {
-    const containerName = `totopo-managed-${projectName}`;
-    const imageName = `totopo-managed-${projectName}`;
+    const dockerName = toDockerName(projectName);
+    const containerName = dockerName;
+    const imageName = dockerName;
 
     // ─── Stop container if running ────────────────────────────────────────────────
     const inspectResult = spawnSync("docker", ["inspect", "--type", "container", containerName], { encoding: "utf8" });
