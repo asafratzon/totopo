@@ -7,6 +7,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [1.0.8] — 2026-03-25
+
+### Changed
+
+- Selective scope picker now explains the two-level terminal view and how to handle deeper inclusions or exclusions by path.
+
+### Fixed
+
+- Docker image and container names are now derived through a shared helper, so repositories with uppercase names no longer fail Docker builds.
+
+---
+
 ## [1.0.7] — 2026-03-24
 
 ### Changed
