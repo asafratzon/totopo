@@ -8,6 +8,7 @@ import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { cancel, confirm, isCancel, log, multiselect, outro, select } from "@clack/prompts";
+import { toDockerName } from "../lib/docker-name.js";
 import { run as runDoctor } from "./doctor.js";
 import { run as runRebuild } from "./rebuild.js";
 import { run as runSettings } from "./settings.js";
@@ -20,7 +21,7 @@ function stopAndRemoveContainer(name: string) {
 
 // ─── Clear agent memory ───────────────────────────────────────────────────────
 async function clearAgentMemory(projectName: string, totopoDir: string): Promise<void> {
-    const containerName = `totopo-managed-${projectName}`;
+    const containerName = toDockerName(projectName);
 
     // Check if the container is running
     const inspectResult = spawnSync("docker", ["inspect", "--format", "{{.State.Status}}", containerName], {
@@ -86,7 +87,7 @@ async function stopContainers(): Promise<void> {
 
 // ─── Remove images ────────────────────────────────────────────────────────────
 async function removeImages(): Promise<void> {
-    const listResult = spawnSync("docker", ["images", "--filter", "label=totopo.managed=true", "--format", "{{.Repository}}\t{{.ID}}"], {
+    const listResult = spawnSync("docker", ["images", "--filter", "label=totopo.managed=true", "--format", "{{.Repository}}	{{.ID}}"], {
         encoding: "utf8",
     });
     const lines = (listResult.stdout ?? "").trim().split("\n").filter(Boolean);
@@ -97,7 +98,7 @@ async function removeImages(): Promise<void> {
     }
 
     const images = lines.map((line) => {
-        const [repo, id] = line.split("\t");
+        const [repo, id] = line.split("	");
         const workspace = (repo ?? "").replace(/^totopo-managed-/, "");
         return { repo: repo ?? "", id: id ?? "", workspace };
     });
@@ -134,8 +135,9 @@ async function removeImages(): Promise<void> {
 
 // ─── Uninstall ────────────────────────────────────────────────────────────────
 async function uninstall(projectName: string, repoRoot: string): Promise<void> {
-    const containerName = `totopo-managed-${projectName}`;
-    const imageName = `totopo-managed-${projectName}`;
+    const dockerName = toDockerName(projectName);
+    const containerName = dockerName;
+    const imageName = dockerName;
 
     const confirmed = await confirm({
         message: `Remove .totopo/, stop containers, and delete the image for ${projectName}?`,
@@ -218,7 +220,7 @@ export async function run(packageDir: string, projectName: string, repoRoot: str
                 break;
             case "uninstall":
                 await uninstall(projectName, repoRoot);
-                return; // uninstall tears down .totopo — exit entirely
+                return;
             case "doctor":
                 await runDoctor(repoRoot, true);
                 break;

@@ -15,6 +15,7 @@ import { run as menu } from "../dist/commands/menu.js";
 import { run as onboard } from "../dist/commands/onboard.js";
 import { run as stop } from "../dist/commands/stop.js";
 import { run as syncDockerfile } from "../dist/commands/sync-dockerfile.js";
+import { toDockerName } from "../dist/lib/docker-name.js";
 
 // ─── Guard: inside container ──────────────────────────────────────────────────
 try {
@@ -76,20 +77,21 @@ if (!doctorResult.ok) {
 
 // ─── Gather state for menu ────────────────────────────────────────────────────
 const projectName = basename(repoRoot);
+const dockerName = toDockerName(projectName);
 
 const dockerResult = spawnSync("docker", ["ps", "--filter", "name=totopo-managed-", "--format", "{{.Names}}"], {
     encoding: "utf8",
 });
 const activeCount = dockerResult.stdout ? dockerResult.stdout.trim().split("\n").filter(Boolean).length : 0;
 
-const projectContainerResult = spawnSync("docker", ["ps", "--filter", `name=totopo-managed-${projectName}`, "--format", "{{.Names}}"], {
+const projectContainerResult = spawnSync("docker", ["ps", "--filter", `name=${dockerName}`, "--format", "{{.Names}}"], {
     encoding: "utf8",
 });
 const projectRunning = (projectContainerResult.stdout ?? "")
     .trim()
     .split("\n")
     .filter(Boolean)
-    .some((n) => n === `totopo-managed-${projectName}`);
+    .some((n) => n === dockerName);
 
 // ─── Interactive menu loop ────────────────────────────────────────────────────
 let showMenu = true;

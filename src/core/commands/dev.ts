@@ -8,6 +8,7 @@ import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "nod
 import { homedir } from "node:os";
 import { basename, dirname, join, relative } from "node:path";
 import { cancel, confirm, groupMultiselect, isCancel, log, multiselect, note, outro, path, select } from "@clack/prompts";
+import { toDockerName } from "../lib/docker-name.js";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type WorkspaceScope = "repo" | "cwd" | "selective";
@@ -136,7 +137,7 @@ async function promptDeeperPaths(style: "only" | "except", cwd: string): Promise
 
     while (true) {
         const addAnother = await confirm({
-            message: accumulated.length === 0 ? `Add a nested path to ${verb} by path?` : `Add another nested path to ${verb}?`,
+            message: accumulated.length === 0 ? `Add a nested path to ${verb}?` : `Add another nested path to ${verb}?`,
             initialValue: false,
         });
 
@@ -190,16 +191,13 @@ async function promptSelectivePaths(totopoDir: string, cwd: string): Promise<str
     const { dirs, files } = scanCwdDepth2(totopoDir, cwd);
     const dirNames = Object.keys(dirs);
 
-    if (style === "only") {
-        log.info("Space to select · Enter to confirm · Skip entirely with Enter to go straight to path input.");
-    } else {
-        log.info("All items pre-selected · Space to deselect · Enter to confirm · Add deeper exclusions in the next step.");
-    }
+    log.warn("This picker shows only two directory levels. Deeper files/dirs can be selected by path in the next step.");
+    const selectMessage = `Choose paths (Space to toggle · Enter to continue):`;
 
     // ── flat fallback when there are no dirs ──────────────────────────────────
     if (dirNames.length === 0) {
         const flatSelected = await multiselect({
-            message: "Choose paths:",
+            message: selectMessage,
             options: files.map((f) => ({ value: f, label: f })),
             initialValues: style === "except" ? files : [],
             required: false,
@@ -229,7 +227,7 @@ async function promptSelectivePaths(totopoDir: string, cwd: string): Promise<str
     const initialValues = style === "except" ? [...Object.values(dirs).flat(), ...files] : [];
 
     const rawSelected = await groupMultiselect({
-        message: "Choose paths:",
+        message: selectMessage,
         options: groupOptions,
         initialValues,
         required: false,
@@ -577,8 +575,9 @@ function runContainer(
 export async function run(_packageDir: string, repoRoot: string): Promise<void> {
     const cwd = process.cwd();
     const projectName = basename(repoRoot);
-    const containerName = `totopo-managed-${projectName}`;
-    const imageName = `totopo-managed-${projectName}`;
+    const dockerName = toDockerName(projectName);
+    const containerName = dockerName;
+    const imageName = dockerName;
     const totopoDir = join(repoRoot, ".totopo");
 
     // ─── Always prompt scope first ────────────────────────────────────────────────

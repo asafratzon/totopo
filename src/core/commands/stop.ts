@@ -5,9 +5,10 @@
 
 import { spawnSync } from "node:child_process";
 import { cancel, confirm, isCancel, log, outro } from "@clack/prompts";
+import { toDockerName } from "../lib/docker-name.js";
 
 export async function run(projectName: string): Promise<void> {
-    const containerName = `totopo-managed-${projectName}`;
+    const containerName = toDockerName(projectName);
 
     // ─── Check if container exists ────────────────────────────────────────────────
     const inspectResult = spawnSync("docker", ["inspect", "--type", "container", containerName], { encoding: "utf8" });
