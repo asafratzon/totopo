@@ -4,11 +4,9 @@ Tracks current work in progress and upcoming planned items.
 
 ## In Progress
 
-- Code review and release rc-1
+- Release rc-1
 
 ## Backlog
-
-- Cleanup / organization round
 
 - Tests
 

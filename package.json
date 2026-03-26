@@ -1,6 +1,6 @@
 {
     "name": "totopo",
-    "version": "2.0.0-rc-1",
+    "version": "2.0.0-rc-2",
     "description": "Run AI coding agents safely in your local codebase",
     "type": "module",
     "bin": {
@@ -31,16 +31,17 @@
     "scripts": {
         "start": "node bin/totopo.js",
         "build": "tsc -p tsconfig.build.json",
+        "re:build": "rm -rf dist && pnpm build",
         "prepare": "git config core.hooksPath .githooks",
         "typecheck": "tsc --noEmit",
         "lint": "biome check .",
         "format": "biome format --write .",
         "fix:all": "biome check --write .",
-        "check": "pnpm typecheck && pnpm lint && tsx src/releases/check.ts",
-        "generate-changelog": "tsx src/releases/generate-changelog.ts",
-        "rc": "tsx src/releases/rc.ts",
-        "rc:promote": "tsx src/releases/release.ts",
-        "sync-releases": "tsx src/releases/sync-github-releases.ts"
+        "check": "pnpm typecheck && pnpm lint && tsx scripts/check.ts",
+        "generate-changelog": "tsx scripts/generate-changelog.ts",
+        "rc": "tsx scripts/rc.ts",
+        "rc:promote": "tsx scripts/release.ts",
+        "sync-releases": "tsx scripts/sync-github-releases.ts"
     },
     "engines": {
         "node": ">=18"

@@ -1,6 +1,6 @@
 // =========================================================================================================================================
-// src/core/commands/menu.ts — totopo project menu (powered by @clack/prompts)
-// Invoked by bin/totopo.js for a known registered project — returns selected action string.
+// src/commands/menu.ts - totopo project menu (powered by @clack/prompts)
+// Invoked by bin/totopo.js for a known registered project - returns selected action string.
 // =========================================================================================================================================
 
 import { box, cancel, isCancel, select } from "@clack/prompts";
@@ -16,7 +16,7 @@ interface MenuArgs {
 export async function run(args: MenuArgs): Promise<string> {
     const { ctx, activeCount, projectRunning, hasTotopoYaml } = args;
 
-    // ─── Status box ──────────────────────────────────────────────────────────────
+    // --- Status box ----------------------------------------------------------------------------------------------------------------------
     const containersLabel = activeCount === 0 ? "none" : activeCount === 1 ? "1 running" : `${activeCount} running`;
     const containerStatus = projectRunning ? "running" : "stopped";
     box(
@@ -25,7 +25,7 @@ export async function run(args: MenuArgs): Promise<string> {
         { contentAlign: "left", titleAlign: "center", width: "auto", rounded: true },
     );
 
-    // ─── Menu ────────────────────────────────────────────────────────────────────
+    // --- Menu ----------------------------------------------------------------------------------------------------------------------------
     type Option = { value: string; label: string; hint?: string };
     const options: Option[] = [
         { value: "dev", label: "Open session", hint: "start or resume the dev container" },

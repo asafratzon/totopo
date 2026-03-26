@@ -1,5 +1,5 @@
 // =========================================================================================================================================
-// changelog-utils.ts — read/write/query src/releases/changelog.yaml
+// changelog-utils.ts — read/write/query scripts/changelog.yaml
 // =========================================================================================================================================
 
 import { readFileSync, writeFileSync } from "node:fs";

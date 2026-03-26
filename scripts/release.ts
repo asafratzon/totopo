@@ -185,7 +185,7 @@ if (pkgNow.version === baseVersion) {
 // ─── Phase 10: Commit ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 const tag = `v${baseVersion}`;
 const releaseCommitMsg = `chore: release ${tag}`;
-const releaseDirtyCheck = spawnSync("git", ["status", "--porcelain", pkgPath, "CHANGELOG.md", "src/releases/changelog.yaml"], {
+const releaseDirtyCheck = spawnSync("git", ["status", "--porcelain", pkgPath, "CHANGELOG.md", "scripts/changelog.yaml"], {
     encoding: "utf8",
     stdio: "pipe",
 });
@@ -193,7 +193,7 @@ if (releaseDirtyCheck.stdout.trim().length === 0) {
     log.info("Skipping git commit — nothing to commit");
 } else {
     log.step("git commit");
-    execSync(`git add ${pkgPath} CHANGELOG.md src/releases/changelog.yaml`, { stdio: "inherit" });
+    execSync(`git add ${pkgPath} CHANGELOG.md scripts/changelog.yaml`, { stdio: "inherit" });
     execSync(`git commit -m "${releaseCommitMsg}"`, { stdio: "inherit" });
 }
 

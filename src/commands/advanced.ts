@@ -1,6 +1,6 @@
 // =========================================================================================================================================
-// src/core/commands/advanced.ts — Manage totopo menu (global, all projects)
-// Invoked by bin/totopo.js — shown directly when outside a project, or via "Manage totopo →" from the project menu.
+// src/commands/advanced.ts - Manage totopo menu (global, all projects)
+// Invoked by bin/totopo.js - shown directly when outside a project, or via "Manage totopo" from the project menu.
 // =========================================================================================================================================
 
 import { spawnSync } from "node:child_process";
@@ -11,13 +11,13 @@ import { cancel, confirm, isCancel, log, multiselect, outro, select, text } from
 import { listProjects } from "../lib/project-identity.js";
 import { run as runDoctor } from "./doctor.js";
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// --- Helpers -----------------------------------------------------------------------------------------------------------------------------
 function stopAndRemoveContainer(name: string) {
     spawnSync("docker", ["stop", name], { stdio: "inherit" });
     spawnSync("docker", ["rm", name], { stdio: "inherit" });
 }
 
-// ─── Stop containers (multi-select across all projects) ──────────────────────
+// --- Stop containers (multi-select across all projects) ----------------------------------------------------------------------------------
 async function stopContainers(): Promise<void> {
     const listResult = spawnSync("docker", ["ps", "--filter", "name=totopo-", "--format", "{{.Names}}"], {
         encoding: "utf8",
@@ -53,7 +53,7 @@ async function stopContainers(): Promise<void> {
     log.success("Done.");
 }
 
-// ─── Clear agent memory (multi-select across all projects) ───────────────────
+// --- Clear agent memory (multi-select across all projects) -------------------------------------------------------------------------------
 async function clearAgentMemory(): Promise<void> {
     const projects = listProjects().filter((p) => existsSync(join(p.projectDir, "agents")));
 
@@ -107,7 +107,7 @@ async function clearAgentMemory(): Promise<void> {
     }
 }
 
-// ─── Remove images (multi-select across all projects) ────────────────────────
+// --- Remove images (multi-select across all projects) ------------------------------------------------------------------------------------
 async function removeImages(): Promise<void> {
     const listResult = spawnSync("docker", ["images", "--filter", "label=totopo.managed=true", "--format", "{{.Repository}}\t{{.ID}}"], {
         encoding: "utf8",
@@ -153,7 +153,7 @@ async function removeImages(): Promise<void> {
     log.success("Done.");
 }
 
-// ─── Reset API keys ───────────────────────────────────────────────────────────
+// --- Reset API keys ----------------------------------------------------------------------------------------------------------------------
 async function resetApiKeys(packageDir: string): Promise<void> {
     const globalEnvPath = join(homedir(), ".totopo", ".env");
     const confirmed = await confirm({
@@ -168,7 +168,7 @@ async function resetApiKeys(packageDir: string): Promise<void> {
     log.success(`API keys reset. Edit ${globalEnvPath} to add your keys.`);
 }
 
-// ─── Uninstall totopo (global — wipes ~/.totopo/ and all containers/images) ──
+// --- Uninstall totopo (global - wipes ~/.totopo/ and all containers/images) --------------------------------------------------------------
 async function uninstallTotopo(): Promise<void> {
     const confirmed = await text({
         message: 'Type "uninstall-totopo" to confirm full uninstall:',
@@ -210,7 +210,7 @@ async function uninstallTotopo(): Promise<void> {
     outro("totopo uninstalled. Re-run npx totopo to set up again.");
 }
 
-// ─── Manage totopo menu ───────────────────────────────────────────────────────
+// --- Manage totopo menu ------------------------------------------------------------------------------------------------------------------
 export async function run(packageDir: string): Promise<"back" | undefined> {
     while (true) {
         const action = await select({

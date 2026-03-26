@@ -35,6 +35,7 @@ The tradeoff is that only one scope can be active at a time: if you reopen a ses
 ## Requirements
 
 - [Docker](https://www.docker.com/products/docker-desktop/) — used to build and run the dev container
+- [Node.js](https://nodejs.org/) — required to run `npx totopo`
 
 ## Quick Start
 

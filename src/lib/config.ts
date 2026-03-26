@@ -1,7 +1,7 @@
-// =============================================================================
-// src/core/lib/config.ts — per-project totopo settings (persisted to settings.json)
-// In v2, totopoDir is ~/.totopo/projects/<id>/ — callers resolve this via project-identity.ts
-// =============================================================================
+// =========================================================================================================================================
+// src/lib/config.ts - per-project totopo settings (persisted to settings.json)
+// totopoDir is ~/.totopo/projects/<id>/ - callers resolve this via project-identity.ts
+// =========================================================================================================================================
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";

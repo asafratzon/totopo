@@ -1,7 +1,6 @@
-// =============================================================================
-// src/core/commands/settings.ts — Settings menu: switch runtime mode + tool selection
-// In v2, totopoDir is ctx.projectDir (in ~/.totopo/projects/<id>/)
-// =============================================================================
+// =========================================================================================================================================
+// src/commands/settings.ts - Settings menu: switch runtime mode + tool selection
+// =========================================================================================================================================
 
 import { cpSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -18,7 +17,7 @@ export async function run(packageDir: string, ctx: ProjectContext): Promise<"bac
 
     intro("totopo — Settings");
 
-    // ─── Mode selection ──────────────────────────────────────────────────────────
+    // --- Mode selection ------------------------------------------------------------------------------------------------------------------
     const hostMirrorOption =
         current.runtimeMode === "host-mirror"
             ? { value: "host-mirror" as const, label: "Host-mirror  (match host runtimes)", hint: "current" }
@@ -51,7 +50,7 @@ export async function run(packageDir: string, ctx: ProjectContext): Promise<"bac
         writeFileSync(join(ctx.projectDir, "Dockerfile"), dockerfile);
         writeSettings(ctx.projectDir, { runtimeMode: "host-mirror", selectedTools });
     } else {
-        // full mode — restore the unmodified template Dockerfile
+        // Full mode - restore the unmodified template Dockerfile
         cpSync(join(templatesDir, "Dockerfile"), join(ctx.projectDir, "Dockerfile"));
         writeSettings(ctx.projectDir, { runtimeMode: "full", selectedTools: [] });
     }

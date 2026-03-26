@@ -1,7 +1,6 @@
 // =========================================================================================================================================
-// src/core/commands/dev.ts — Start the dev container and connect via docker exec
-// Invoked by bin/totopo.js — do not run directly.
-// In v2, project config lives in ~/.totopo/projects/<id>/ (ctx.projectDir), not in the project repo.
+// src/commands/dev.ts - Start the dev container and connect via docker exec
+// Invoked by bin/totopo.js - do not run directly.
 // =========================================================================================================================================
 
 import { spawnSync } from "node:child_process";
@@ -14,7 +13,7 @@ import type { ProjectContext } from "../lib/project-identity.js";
 // The project config dir is always mounted here inside the container (read-only)
 const TOTOPO_CONTAINER_PATH = "/home/devuser/.totopo";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// --- Types -------------------------------------------------------------------------------------------------------------------------------
 type WorkspaceScope = "repo" | "cwd" | "selective";
 interface ScopeConfig {
     mode: WorkspaceScope;
@@ -22,7 +21,7 @@ interface ScopeConfig {
     selectedPaths: string[]; // relative names; empty for repo/cwd
 }
 
-// ─── Prompt: scope selection ──────────────────────────────────────────────────
+// --- Prompt: scope selection -------------------------------------------------------------------------------------------------------------
 async function promptScope(workspaceDir: string, cwd: string): Promise<ScopeConfig> {
     const cwdIsRepo = cwd === workspaceDir;
 
@@ -77,10 +76,10 @@ async function promptScope(workspaceDir: string, cwd: string): Promise<ScopeConf
     return { mode, hostCwd: cwd, selectedPaths: [] };
 }
 
-// ─── Prompt: selective path selection ─────────────────────────────────────────
+// --- Prompt: selective path selection ----------------------------------------------------------------------------------------------------
 // Recursively expands a selected path into its children when a nested exclusion target is found,
-// until the excluded path itself can be dropped from the list.
-function expandExclusion(paths: string[], excl: string, cwd: string): string[] {
+// Until the excluded path itself can be dropped from the list.
+function expandDirectoryToChildren(paths: string[], excl: string, cwd: string): string[] {
     if (paths.includes(excl)) {
         return paths.filter((p) => p !== excl);
     }
@@ -91,10 +90,11 @@ function expandExclusion(paths: string[], excl: string, cwd: string): string[] {
     }
     const children = readdirSync(join(cwd, ancestor)).map((child) => `${ancestor}/${child}`);
     const withoutAncestor = paths.filter((p) => p !== ancestor);
-    return expandExclusion([...withoutAncestor, ...children], excl, cwd);
+    return expandDirectoryToChildren([...withoutAncestor, ...children], excl, cwd);
 }
 
-function scanCwdDepth2(cwd: string): { dirs: Record<string, string[]>; files: string[] } {
+// Builds a two-level directory structure for the scope picker: dirs mapped to their children, flat files separately
+function buildDirectoryTree(cwd: string): { dirs: Record<string, string[]>; files: string[] } {
     const dirs: Record<string, string[]> = {};
     const files: string[] = [];
 
@@ -103,7 +103,7 @@ function scanCwdDepth2(cwd: string): { dirs: Record<string, string[]>; files: st
         if (statSync(itemPath).isDirectory()) {
             const children = readdirSync(itemPath).map((child) => `${item}/${child}`);
             if (children.length === 0) {
-                files.push(item); // empty dir → treat as flat item
+                files.push(item); // empty dir -> treat as flat item
             } else {
                 dirs[item] = children;
             }
@@ -115,14 +115,15 @@ function scanCwdDepth2(cwd: string): { dirs: Record<string, string[]>; files: st
     return { dirs, files };
 }
 
-function normalizeSelection(selected: string[], dirs: Record<string, string[]>): string[] {
+// Collapses redundant child paths: when all children of a dir are selected, replaces them with the parent dir
+function collapseToMinimalPaths(selected: string[], dirs: Record<string, string[]>): string[] {
     const selectedSet = new Set(selected);
     const result: string[] = [];
 
     for (const [dir, children] of Object.entries(dirs)) {
         const selectedChildren = children.filter((c) => selectedSet.has(c));
         if (selectedChildren.length === children.length) {
-            result.push(dir); // all children selected → mount whole dir efficiently
+            result.push(dir); // all children selected -> mount whole dir efficiently
         } else {
             result.push(...selectedChildren);
         }
@@ -134,7 +135,7 @@ function normalizeSelection(selected: string[], dirs: Record<string, string[]>):
     return result;
 }
 
-async function promptDeeperPaths(style: "only" | "except", cwd: string): Promise<string[]> {
+async function promptAdditionalPaths(style: "only" | "except", cwd: string): Promise<string[]> {
     const verb = style === "only" ? "include" : "exclude";
     const accumulated: string[] = [];
 
@@ -160,7 +161,7 @@ async function promptDeeperPaths(style: "only" | "except", cwd: string): Promise
         if (isCancel(selectedAbs)) break;
 
         const prefix = relative(cwd, (selectedAbs as string).trim());
-        if (!prefix) continue; // selected cwd root — skip
+        if (!prefix) continue; // selected cwd root - skip
 
         accumulated.push(prefix);
         log.success(`Added: ${prefix}`);
@@ -191,13 +192,13 @@ async function promptSelectivePaths(cwd: string): Promise<string[]> {
     }
 
     const style = styleChoice as "only" | "except";
-    const { dirs, files } = scanCwdDepth2(cwd);
+    const { dirs, files } = buildDirectoryTree(cwd);
     const dirNames = Object.keys(dirs);
 
     log.warn("This picker shows only two directory levels. Deeper files/dirs can be selected by path in the next step.");
     const selectMessage = `Choose paths (Space to toggle · Enter to continue):`;
 
-    // ── flat fallback when there are no dirs ──────────────────────────────────
+    // -- flat fallback when there are no dirs ---------------------------------------------------------------------------------------------
     if (dirNames.length === 0) {
         const flatSelected = await multiselect({
             message: selectMessage,
@@ -214,7 +215,7 @@ async function promptSelectivePaths(cwd: string): Promise<string[]> {
         return flatSelected as string[];
     }
 
-    // ── build groupMultiselect options ────────────────────────────────────────
+    // -- build groupMultiselect options ---------------------------------------------------------------------------------------------------
     const groupOptions: Record<string, { value: string; label: string }[]> = {};
     for (const [dir, children] of Object.entries(dirs)) {
         groupOptions[dir] = children.map((child) => ({
@@ -226,7 +227,7 @@ async function promptSelectivePaths(cwd: string): Promise<string[]> {
         groupOptions.Files = files.map((f) => ({ value: f, label: f }));
     }
 
-    // "except" → pre-select all depth-2 children + root files
+    // "except" mode: pre-select all depth-2 children + root files
     const initialValues = style === "except" ? [...Object.values(dirs).flat(), ...files] : [];
 
     const rawSelected = await groupMultiselect({
@@ -242,17 +243,17 @@ async function promptSelectivePaths(cwd: string): Promise<string[]> {
         process.exit(0);
     }
 
-    const selected = normalizeSelection(rawSelected as string[], dirs);
+    const selected = collapseToMinimalPaths(rawSelected as string[], dirs);
 
-    // ── deeper-path text+multiselect loop ─────────────────────────────────────
-    const deeperPaths = await promptDeeperPaths(style, cwd);
+    // -- deeper-path text+multiselect loop ------------------------------------------------------------------------------------------------
+    const deeperPaths = await promptAdditionalPaths(style, cwd);
 
     let result = selected;
     if (style === "only") {
         result = [...new Set([...selected, ...deeperPaths])];
     } else {
         for (const p of deeperPaths) {
-            result = expandExclusion(result, p, cwd);
+            result = expandDirectoryToChildren(result, p, cwd);
         }
     }
 
@@ -262,7 +263,7 @@ async function promptSelectivePaths(cwd: string): Promise<string[]> {
     return result;
 }
 
-// ─── Build agent mount args ───────────────────────────────────────────────────
+// --- Build agent mount args --------------------------------------------------------------------------------------------------------------
 // Creates agents/ subdirectories in the project dir on the host (lazily) and
 // returns volume mount args for all supported agent tools.
 function buildAgentMountArgs(projectDir: string): string[] {
@@ -277,8 +278,8 @@ function buildAgentMountArgs(projectDir: string): string[] {
     return mounts.flatMap(({ host, container }) => ["-v", `${host}:${container}`]);
 }
 
-// ─── Build mount args ─────────────────────────────────────────────────────────
-// In v2, the project config dir is always explicitly mounted — it's never inside the workspace.
+// --- Build mount args --------------------------------------------------------------------------------------------------------------------
+// Project config dir is always explicitly mounted - it's never inside the workspace.
 function buildMountArgs(scope: ScopeConfig, workspaceDir: string, projectDir: string, cwd: string): string[] {
     const agentMounts = buildAgentMountArgs(projectDir);
     const configMount = ["-v", `${projectDir}:${TOTOPO_CONTAINER_PATH}:ro`];
@@ -291,7 +292,7 @@ function buildMountArgs(scope: ScopeConfig, workspaceDir: string, projectDir: st
         return ["-v", `${cwd}:/workspace`, ...configMount, ...agentMounts];
     }
 
-    // selective: validate all paths exist first
+    // Selective: validate all paths exist first
     for (const p of scope.selectedPaths) {
         const hostPath = join(cwd, p);
         if (!existsSync(hostPath)) {
@@ -303,7 +304,7 @@ function buildMountArgs(scope: ScopeConfig, workspaceDir: string, projectDir: st
     return [...scope.selectedPaths.flatMap((p) => ["-v", `${join(cwd, p)}:/workspace/${p}`]), ...configMount, ...agentMounts];
 }
 
-// ─── Build scope env args ─────────────────────────────────────────────────────
+// --- Build scope env args ----------------------------------------------------------------------------------------------------------------
 function buildScopeEnvArgs(scope: ScopeConfig): string[] {
     return [
         "-e",
@@ -315,7 +316,7 @@ function buildScopeEnvArgs(scope: ScopeConfig): string[] {
     ];
 }
 
-// ─── Build scope label args ───────────────────────────────────────────────────
+// --- Build scope label args --------------------------------------------------------------------------------------------------------------
 function buildScopeLabelArgs(scope: ScopeConfig): string[] {
     return [
         "--label",
@@ -327,7 +328,7 @@ function buildScopeLabelArgs(scope: ScopeConfig): string[] {
     ];
 }
 
-// ─── Read container scope label ───────────────────────────────────────────────
+// --- Read container scope label ----------------------------------------------------------------------------------------------------------
 function readContainerScopeLabel(name: string): ScopeConfig | null {
     const result = spawnSync(
         "docker",
@@ -353,13 +354,13 @@ function readContainerScopeLabel(name: string): ScopeConfig | null {
     try {
         selectedPaths = JSON.parse(pathsJson);
     } catch {
-        // leave empty
+        // Leave empty on parse failure
     }
 
     return { mode: mode as WorkspaceScope, hostCwd, selectedPaths };
 }
 
-// ─── Scope comparison ─────────────────────────────────────────────────────────
+// --- Scope comparison --------------------------------------------------------------------------------------------------------------------
 // null existing scope (pre-feature container) is treated as repo mode.
 function scopesMatch(selected: ScopeConfig, existing: ScopeConfig | null, workspaceDir: string): boolean {
     const eff = existing ?? { mode: "repo" as WorkspaceScope, hostCwd: workspaceDir, selectedPaths: [] };
@@ -372,15 +373,16 @@ function scopesMatch(selected: ScopeConfig, existing: ScopeConfig | null, worksp
     return true;
 }
 
-// ─── Build agent context documents ────────────────────────────────────────────
+// --- Build agent context documents -------------------------------------------------------------------------------------------------------
 interface AgentContextDocs {
-    claude: string; // → agents/claude/CLAUDE.md
-    opencode: string; // → agents/opencode/config/AGENTS.md
-    codex: string; // → agents/codex/AGENTS.md
+    claude: string; // -> agents/claude/CLAUDE.md
+    opencode: string; // -> agents/opencode/config/AGENTS.md
+    codex: string; // -> agents/codex/AGENTS.md
 }
 
+// Assembles the agent context markdown injected into each supported agent's config dir at session start
 function buildAgentContextDocs(scope: ScopeConfig): AgentContextDocs {
-    // ── Scope section ──────────────────────────────────────────────────────────
+    // -- Scope section --------------------------------------------------------------------------------------------------------------------
     let scopeSection: string;
     if (scope.mode === "repo") {
         scopeSection = `## Workspace scope: repo
@@ -397,7 +399,7 @@ Workspace is scoped to one directory (\`${scope.hostCwd}\`). Files outside it ar
 Workspace is selectively scoped. Only the following paths are mounted:\n\n${pathList}`;
     }
 
-    // ── Git section ────────────────────────────────────────────────────────────
+    // -- Git section ----------------------------------------------------------------------------------------------------------------------
     let gitSection: string;
     if (scope.mode === "repo") {
         gitSection = `## Git availability
@@ -415,7 +417,7 @@ Remote access is also **blocked container-wide** by design (\`protocol.allow = n
 If git operations are needed, ask the user to run them on the host.`;
     }
 
-    // ── Selective-only warning ─────────────────────────────────────────────────
+    // -- Selective-only warning -----------------------------------------------------------------------------------------------------------
     const selectiveWarning =
         scope.mode === "selective"
             ? `\n\n## Selective scope: file creation warning
@@ -428,14 +430,14 @@ If the user asks you to create or modify a file at such a location:
 3. Suggest the user run the command on the host instead, or confirm they want the file only inside the container (understanding it will be lost on rebuild).`
             : "";
 
-    // ── Responsibilities section ───────────────────────────────────────────────
+    // -- Responsibilities section ---------------------------------------------------------------------------------------------------------
     const responsibilitiesSection = `## Your responsibilities at session start
 
 At the start of every session:
 - Briefly surface your current workspace scope and its limitations to the user.
 - Tell the user what you cannot access in this session (files, git, remotes).`;
 
-    // ── Assemble per-tool — only the self-referencing path differs ─────────────
+    // -- Assemble per-tool - only the self-referencing path differs -----------------------------------------------------------------------
     function build(toolPath: string): string {
         const constraintsSection = `## Constraints
 
@@ -464,7 +466,7 @@ At the start of every session:
     };
 }
 
-// ─── Inject agent context ─────────────────────────────────────────────────────
+// --- Inject agent context ----------------------------------------------------------------------------------------------------------------
 function injectAgentContext(projectDir: string, docs: AgentContextDocs): void {
     const a = join(projectDir, "agents");
 
@@ -480,7 +482,7 @@ function injectAgentContext(projectDir: string, docs: AgentContextDocs): void {
     }
 }
 
-// ─── Run post-start ───────────────────────────────────────────────────────────
+// --- Run post-start ----------------------------------------------------------------------------------------------------------------------
 function runPostStart(containerName: string): void {
     log.step("Running post-start checks...");
     const postStart = spawnSync("docker", ["exec", containerName, "node", `${TOTOPO_CONTAINER_PATH}/post-start.mjs`], {
@@ -492,13 +494,13 @@ function runPostStart(containerName: string): void {
     }
 }
 
-// ─── Remove container ─────────────────────────────────────────────────────────
+// --- Remove container --------------------------------------------------------------------------------------------------------------------
 function removeContainer(name: string): void {
     spawnSync("docker", ["stop", name], { stdio: "pipe" });
     spawnSync("docker", ["rm", name], { stdio: "pipe" });
 }
 
-// ─── Ensure global env file exists ───────────────────────────────────────────
+// --- Ensure global env file exists -------------------------------------------------------------------------------------------------------
 function ensureGlobalEnvFile(): string {
     const globalTotopoDir = join(homedir(), ".totopo");
     const envFile = join(globalTotopoDir, ".env");
@@ -509,7 +511,7 @@ function ensureGlobalEnvFile(): string {
     return envFile;
 }
 
-// ─── Run container ────────────────────────────────────────────────────────────
+// --- Run container -----------------------------------------------------------------------------------------------------------------------
 function runContainer(
     scope: ScopeConfig,
     containerName: string,
@@ -554,10 +556,10 @@ export async function run(_packageDir: string, ctx: ProjectContext): Promise<voi
     const imageName = ctx.meta.containerName;
     const projectDir = ctx.projectDir;
 
-    // ─── Always prompt scope first ────────────────────────────────────────────────
+    // --- Always prompt scope first -------------------------------------------------------------------------------------------------------
     const scope = await promptScope(workspaceDir, cwd);
 
-    // ─── Inspect container state ──────────────────────────────────────────────────
+    // --- Inspect container state ---------------------------------------------------------------------------------------------------------
     const inspect = spawnSync("docker", ["inspect", "--format", "{{.State.Status}}", containerName], {
         encoding: "utf8",
         stdio: "pipe",
@@ -566,7 +568,7 @@ export async function run(_packageDir: string, ctx: ProjectContext): Promise<voi
     const containerStatus = inspect.status === 0 ? inspect.stdout.trim() : null;
 
     if (containerStatus === null) {
-        // ─── No container — build image and run ───────────────────────────────────
+        // --- No container - build image and run ------------------------------------------------------------------------------------------
         log.step("Building container image...");
         const build = spawnSync(
             "docker",
@@ -584,7 +586,7 @@ export async function run(_packageDir: string, ctx: ProjectContext): Promise<voi
         runContainer(scope, containerName, imageName, workspaceDir, projectDir, cwd);
         runPostStart(containerName);
     } else if (containerStatus === "exited") {
-        // ─── Container stopped — resume or recreate based on scope ────────────────
+        // --- Container stopped - resume or recreate based on scope -----------------------------------------------------------------------
         const existingScope = readContainerScopeLabel(containerName);
 
         if (scopesMatch(scope, existingScope, workspaceDir)) {
@@ -606,7 +608,7 @@ export async function run(_packageDir: string, ctx: ProjectContext): Promise<voi
             runPostStart(containerName);
         }
     } else {
-        // ─── Container running — connect directly or recreate based on scope ──────
+        // --- Container running - connect directly or recreate based on scope -------------------------------------------------------------
         const existingScope = readContainerScopeLabel(containerName);
 
         if (!scopesMatch(scope, existingScope, workspaceDir)) {
@@ -617,14 +619,14 @@ export async function run(_packageDir: string, ctx: ProjectContext): Promise<voi
             runContainer(scope, containerName, imageName, workspaceDir, projectDir, cwd);
             runPostStart(containerName);
         } else {
-            // Same scope and container already running — refresh context in place.
+            // Same scope and container already running - refresh context in place.
             log.step("Refreshing agent context...");
             injectAgentContext(projectDir, buildAgentContextDocs(scope));
         }
-        // fall through to connect
+        // Fall through to connect
     }
 
-    // ─── Connect ──────────────────────────────────────────────────────────────────
+    // --- Connect -------------------------------------------------------------------------------------------------------------------------
     const exec = spawnSync("docker", ["exec", "-it", "-w", "/workspace", containerName, "bash", "--login"], {
         stdio: "inherit",
     });

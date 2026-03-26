@@ -1,7 +1,7 @@
-// =============================================================================
-// src/core/lib/project-identity.ts — Project identity, registration, and lookup
+// =========================================================================================================================================
+// src/lib/project-identity.ts - Project identity, registration, and lookup
 // Maps project root paths to stable IDs stored in ~/.totopo/projects/
-// =============================================================================
+// =========================================================================================================================================
 
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -28,7 +28,7 @@ export function hashProjectPath(absolutePath: string): string {
 }
 
 /** First 8 characters of the hash — used in container/image names */
-function shortHash(id: string): string {
+function truncateHash(id: string): string {
     return id.slice(0, 8);
 }
 
@@ -45,7 +45,7 @@ function slugifyName(name: string): string {
 
 /** Derive a human-readable container/image name from project ID and root directory name */
 export function deriveContainerName(id: string, projectRoot: string): string {
-    return `totopo-${shortHash(id)}-${slugifyName(basename(projectRoot))}`;
+    return `totopo-${truncateHash(id)}-${slugifyName(basename(projectRoot))}`;
 }
 
 /** Base directory for all project configs — ~/.totopo/projects/ */
@@ -131,7 +131,7 @@ export function resolveProject(fromPath: string): ProjectContext | null {
     const projects = listProjects();
     if (projects.length === 0) return null;
 
-    // Sort by path length descending — deepest root wins
+    // Sort by path length descending - deepest root wins
     const sorted = [...projects].sort((a, b) => b.meta.projectRoot.length - a.meta.projectRoot.length);
 
     let current = fromPath;

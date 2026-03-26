@@ -1,13 +1,13 @@
 // =========================================================================================================================================
-// src/core/commands/stop.ts — Stop and remove THIS project's dev container
-// Invoked by bin/totopo.js — do not run directly.
+// src/commands/stop.ts - Stop and remove THIS project's dev container
+// Invoked by bin/totopo.js - do not run directly.
 // =========================================================================================================================================
 
 import { spawnSync } from "node:child_process";
 import { cancel, confirm, isCancel, log, outro } from "@clack/prompts";
 
 export async function run(containerName: string): Promise<void> {
-    // ─── Check if container exists ────────────────────────────────────────────────
+    // --- Check if container exists -------------------------------------------------------------------------------------------------------
     const inspectResult = spawnSync("docker", ["inspect", "--type", "container", containerName], { encoding: "utf8" });
 
     if (inspectResult.status !== 0) {
@@ -15,7 +15,7 @@ export async function run(containerName: string): Promise<void> {
         return;
     }
 
-    // ─── Confirm ─────────────────────────────────────────────────────────────────
+    // --- Confirm -------------------------------------------------------------------------------------------------------------------------
     const confirmed = await confirm({ message: `Stop ${containerName}?` });
 
     if (isCancel(confirmed) || !confirmed) {
@@ -23,7 +23,7 @@ export async function run(containerName: string): Promise<void> {
         return;
     }
 
-    // ─── Stop and remove ─────────────────────────────────────────────────────────
+    // --- Stop and remove -----------------------------------------------------------------------------------------------------------------
     log.step(`Stopping ${containerName}...`);
     spawnSync("docker", ["stop", containerName], { stdio: "inherit" });
     spawnSync("docker", ["rm", containerName], { stdio: "inherit" });

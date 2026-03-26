@@ -6,7 +6,7 @@
         "types": ["node"],
 
         "outDir": "dist",
-        "rootDir": "src/core",
+        "rootDir": "src",
 
         "noUncheckedIndexedAccess": true,
         "exactOptionalPropertyTypes": true,
@@ -18,5 +18,5 @@
         "moduleDetection": "force",
         "skipLibCheck": true
     },
-    "include": ["src/core/**/*.ts"]
+    "include": ["src/**/*.ts"]
 }

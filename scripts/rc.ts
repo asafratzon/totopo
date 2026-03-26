@@ -7,7 +7,7 @@
 // tags to GitHub (only after npm publish succeeds), and creates a GitHub
 // pre-release via gh CLI.
 //
-// Changelog notes must be added to src/releases/changelog.yaml BEFORE
+// Changelog notes must be added to scripts/changelog.yaml BEFORE
 // running pnpm rc. The script hard-blocks if in_progress.entries is empty.
 //
 // Version alignment rules:
@@ -55,7 +55,7 @@ try {
 }
 if (changelog.in_progress.entries.length === 0) {
     log.error(`No changelog entries found for ${changelog.in_progress.base_version}.`);
-    log.message("Add entries to src/releases/changelog.yaml under in_progress.entries, then re-run pnpm rc.");
+    log.message("Add entries to scripts/changelog.yaml under in_progress.entries, then re-run pnpm rc.");
     process.exit(1);
 }
 log.success(`changelog.yaml has ${changelog.in_progress.entries.length} entry/entries for ${changelog.in_progress.base_version}`);
@@ -139,7 +139,7 @@ const hasEntryForRc = changelog.in_progress.entries.some((e) => e.rc_version ===
 if (!hasEntryForRc) {
     log.error(`No changelog entry found for ${nextVersion}.`);
     log.message(
-        `Add an entry to src/releases/changelog.yaml under in_progress.entries:\n\n` +
+        `Add an entry to scripts/changelog.yaml under in_progress.entries:\n\n` +
             `  - rc_version: "${nextVersion}"\n` +
             `    date: "${new Date().toISOString().slice(0, 10)}"\n` +
             `    fixed:\n` +
@@ -183,7 +183,7 @@ if (isCancel(publishOk) || !publishOk) {
 
 // ─── Phase 7: Commit ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 const commitMsg = `chore: rc ${tag}`;
-const rcDirtyCheck = spawnSync("git", ["status", "--porcelain", pkgPath, "src/releases/changelog.yaml"], {
+const rcDirtyCheck = spawnSync("git", ["status", "--porcelain", pkgPath, "scripts/changelog.yaml"], {
     encoding: "utf8",
     stdio: "pipe",
 });
@@ -191,7 +191,7 @@ if (rcDirtyCheck.stdout.trim().length === 0) {
     log.info("Skipping git commit — nothing to commit");
 } else {
     log.step("git commit");
-    execSync(`git add ${pkgPath} src/releases/changelog.yaml`, { stdio: "inherit" });
+    execSync(`git add ${pkgPath} scripts/changelog.yaml`, { stdio: "inherit" });
     execSync(`git commit -m "${commitMsg}"`, { stdio: "inherit" });
 }
 

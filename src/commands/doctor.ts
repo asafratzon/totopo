@@ -1,8 +1,8 @@
 // =========================================================================================================================================
-// src/core/commands/doctor.ts — Host readiness check for totopo
+// src/commands/doctor.ts - Host readiness check for totopo
 // Runs silently on success; exits non-zero on failure.
 // Pass verbose=true for a full report.
-// projectDir: ~/.totopo/projects/<id>/ — pass null to skip the Dockerfile check (e.g. from Manage totopo).
+// Pass null for projectDir to skip the Dockerfile check (e.g. from Manage totopo).
 // =========================================================================================================================================
 
 import { spawnSync } from "node:child_process";
@@ -34,20 +34,20 @@ export async function run(projectDir: string | null, verbose: boolean): Promise<
 
     if (verbose) console.log("");
 
-    // ─── Docker installed ────────────────────────────────────────────────────────
+    // --- Docker installed ----------------------------------------------------------------------------------------------------------------
     check("Docker installed", commandExists("docker"), commandExists("docker") ? undefined : "'docker' not found in PATH");
 
-    // ─── Docker running ──────────────────────────────────────────────────────────
+    // --- Docker running ------------------------------------------------------------------------------------------------------------------
     const dockerInfo = spawnSync("docker", ["info"], { encoding: "utf8", stdio: "pipe" });
     check("Docker running", dockerInfo.status === 0, dockerInfo.status === 0 ? undefined : "Docker daemon not responding");
 
-    // ─── Project Dockerfile present (only when projectDir is provided) ────────────
+    // --- Project Dockerfile present (only when projectDir is provided) -------------------------------------------------------------------
     if (projectDir !== null) {
         const configOk = existsSync(join(projectDir, "Dockerfile"));
         check("Dockerfile present", configOk, configOk ? undefined : `missing Dockerfile in ${projectDir}`);
     }
 
-    // ─── Report ──────────────────────────────────────────────────────────────────
+    // --- Report --------------------------------------------------------------------------------------------------------------------------
     if (errors.length > 0) {
         if (verbose) {
             console.log("");

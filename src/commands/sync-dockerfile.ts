@@ -1,8 +1,8 @@
-// =============================================================================
-// src/core/commands/sync-dockerfile.ts — silent pre-flight: re-detect host runtimes and
+// =========================================================================================================================================
+// src/commands/sync-dockerfile.ts - Silent pre-flight: re-detect host runtimes and
 // regenerate ~/.totopo/projects/<id>/Dockerfile if stale (host-mirror mode only).
 // Invoked by bin/totopo.js on every invocation after onboarding.
-// =============================================================================
+// =========================================================================================================================================
 
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
