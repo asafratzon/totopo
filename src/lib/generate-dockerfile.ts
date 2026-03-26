@@ -1,6 +1,6 @@
-// =============================================================================
-// src/core/generate-dockerfile.ts — generate .totopo/Dockerfile content
-// =============================================================================
+// =========================================================================================================================================
+// src/lib/generate-dockerfile.ts - generate ~/.totopo/projects/<id>/Dockerfile
+// =========================================================================================================================================
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -20,15 +20,16 @@ export function generateDockerfile(
     return buildHostMirrorDockerfile(selectedTools ?? [], hostRuntimes ?? {});
 }
 
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------------------------
 // host-mirror Dockerfile generator
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------------------------
 // NOTE: String.raw`` is used throughout to preserve backslash characters
 // verbatim (Dockerfile line continuations, PS1 escape sequences, etc.).
 // Shell variable references like ${ARCH} use the DOLLAR trick to avoid
 // being interpreted as TypeScript template interpolations.
-// ---------------------------------------------------------------------------
+// -----------------------------------------------------------------------------------------------------------------------------------------
 
+// Generates a multi-layer Dockerfile pinned to host runtime versions; layers are conditionally included per selectedTools
 function buildHostMirrorDockerfile(selectedTools: string[], host: HostRuntimes): string {
     const hasJava = selectedTools.includes("java");
     const hasGo = selectedTools.includes("go");
@@ -46,7 +47,7 @@ function buildHostMirrorDockerfile(selectedTools: string[], host: HostRuntimes):
 
     const sections: string[] = [];
 
-    // ── Header ──────────────────────────────────────────────────────────────
+    // -- Header ---------------------------------------------------------------------------------------------------------------------------
     sections.push(
         `# =============================================================================
 # Secure AI Dev Container — host-mirror mode
@@ -59,7 +60,7 @@ FROM debian:bookworm-slim
 LABEL totopo.managed=true`,
     );
 
-    // ── Layer 1 — System packages ────────────────────────────────────────────
+    // -- Layer 1 - System packages --------------------------------------------------------------------------------------------------------
     let layer1 = String.raw`# ---------------------------------------------------------------------------
 # Layer 1 — System packages
 # ---------------------------------------------------------------------------
@@ -88,7 +89,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
     sections.push(layer1);
 
-    // ── Layer 2 — fd ────────────────────────────────────────────────────────
+    // -- Layer 2 - fd ---------------------------------------------------------------------------------------------------------------------
     sections.push(
         String.raw`# ---------------------------------------------------------------------------
 # Layer 2 — fd (not available as fd-find in bookworm; install from GitHub)
@@ -100,7 +101,7 @@ RUN ARCH=$(dpkg --print-architecture) && \
         -o /tmp/fd.deb && dpkg -i /tmp/fd.deb && rm /tmp/fd.deb`,
     );
 
-    // ── Layer 3 — yq ────────────────────────────────────────────────────────
+    // -- Layer 3 - yq ---------------------------------------------------------------------------------------------------------------------
     sections.push(
         String.raw`# ---------------------------------------------------------------------------
 # Layer 3 — yq (not in apt)
@@ -110,7 +111,7 @@ RUN ARCH=$(dpkg --print-architecture) && \
         -o /usr/local/bin/yq && chmod +x /usr/local/bin/yq`,
     );
 
-    // ── Layer 4 — GitHub CLI ────────────────────────────────────────────────
+    // -- Layer 4 - GitHub CLI -------------------------------------------------------------------------------------------------------------
     sections.push(
         String.raw`# ---------------------------------------------------------------------------
 # Layer 4 — GitHub CLI
@@ -123,7 +124,7 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     apt-get update && apt-get install -y gh && rm -rf /var/lib/apt/lists/*`,
     );
 
-    // ── Layer 5 — Node.js ───────────────────────────────────────────────────
+    // -- Layer 5 - Node.js ----------------------------------------------------------------------------------------------------------------
     sections.push(
         String.raw`# ---------------------------------------------------------------------------
 # Layer 5 — Node.js (via NodeSource — always included for AI tools)
@@ -132,7 +133,7 @@ RUN curl -fsSL https://deb.nodesource.com/${nodeChannel} | bash - && \
     apt-get install -y nodejs && rm -rf /var/lib/apt/lists/*`,
     );
 
-    // ── Layer 6 — Java (conditional) ────────────────────────────────────────
+    // -- Layer 6 - Java (conditional) -----------------------------------------------------------------------------------------------------
     if (hasJava) {
         sections.push(
             String.raw`# ---------------------------------------------------------------------------
@@ -149,7 +150,7 @@ RUN echo 'export JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java))))' \
         );
     }
 
-    // ── Layer 7 — Go (conditional) ──────────────────────────────────────────
+    // -- Layer 7 - Go (conditional) -------------------------------------------------------------------------------------------------------
     if (hasGo) {
         if (host.go) {
             const goVersion = host.go;
@@ -177,7 +178,7 @@ RUN ARCH=$(dpkg --print-architecture) && \
         }
     }
 
-    // ── Layer 8 — Git remote block ──────────────────────────────────────────
+    // -- Layer 8 - Git remote block -------------------------------------------------------------------------------------------------------
     sections.push(
         String.raw`# ---------------------------------------------------------------------------
 # Layer 8 — Git remote block
@@ -186,7 +187,7 @@ RUN git config --system protocol.allow never && \
     git config --system protocol.file.allow always`,
     );
 
-    // ── Layer 9 — Global npm tools ──────────────────────────────────────────
+    // -- Layer 9 - Global npm tools -------------------------------------------------------------------------------------------------------
     sections.push(
         String.raw`# ---------------------------------------------------------------------------
 # Layer 9 — Global npm tools
@@ -199,7 +200,7 @@ RUN npm install -g \
     && npm cache clean --force`,
     );
 
-    // ── Layer 10 — Non-root user ─────────────────────────────────────────────
+    // -- Layer 10 - Non-root user ---------------------------------------------------------------------------------------------------------
     sections.push(
         String.raw`# ---------------------------------------------------------------------------
 # Layer 10 — Non-root user
@@ -213,7 +214,7 @@ USER devuser
 WORKDIR /workspace`,
     );
 
-    // ── Layer 11 — Rust (conditional, installed as devuser) ─────────────────
+    // -- Layer 11 - Rust (conditional, installed as devuser) ------------------------------------------------------------------------------
     if (hasRust) {
         sections.push(
             String.raw`# ---------------------------------------------------------------------------
@@ -225,7 +226,7 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
         );
     }
 
-    // ── Layer 12 — Bun (conditional, installed as devuser) ──────────────────
+    // -- Layer 12 - Bun (conditional, installed as devuser) -------------------------------------------------------------------------------
     if (hasBun) {
         if (host.bun) {
             const bunVersion = host.bun;
@@ -246,7 +247,7 @@ RUN curl -fsSL https://bun.sh/install | bash`,
         }
     }
 
-    // ── Layer 13 — Python user tools (conditional, installed as devuser) ────
+    // -- Layer 13 - Python user tools (conditional, installed as devuser) -----------------------------------------------------------------
     if (hasPython) {
         let pythonLayer = `# ---------------------------------------------------------------------------
 # Layer 13 — Python user tools (uv + poetry via pipx)
@@ -260,13 +261,13 @@ RUN pipx install uv && pipx install poetry`;
         sections.push(pythonLayer);
     }
 
-    // ── Layer 14 — PATH + shell experience ──────────────────────────────────
+    // -- Layer 14 - PATH + shell experience -----------------------------------------------------------------------------------------------
     const pathComponents: string[] = [];
     if (hasRust) pathComponents.push("/home/devuser/.cargo/bin");
     if (hasBun) pathComponents.push("/home/devuser/.bun/bin");
     pathComponents.push("/home/devuser/.local/bin");
     if (hasGo) pathComponents.push("/usr/local/go/bin");
-    // Append existing PATH — use D trick so ${PATH} is literal in the Dockerfile
+    // Append existing PATH - use D trick so ${PATH} is literal in the Dockerfile
     const envPathLine = `ENV PATH="${pathComponents.join(":")}:${D}{PATH}"`;
 
     sections.push(

@@ -1,6 +1,31 @@
 in_progress:
   base_version: 2.0.0
   entries:
+    - rc_version: "2.0.0-rc-2"
+      date: "2026-03-26"
+      changed:
+        - >-
+          Source restructured — src/releases/ moved to scripts/ (root level); src/core/commands/ flattened to
+          src/commands/; src/core/lib/ flattened to src/lib/. src/core/ deleted entirely.
+        - >-
+          Function renames for clarity — scanCwdDepth2 -> buildDirectoryTree, expandExclusion ->
+          expandDirectoryToChildren, normalizeSelection -> collapseToMinimalPaths, promptDeeperPaths ->
+          promptAdditionalPaths, tildefy -> toTildePath, shortHash -> truncateHash, dim -> dimText.
+        - >-
+          Pre-commit checks extended — pnpm check now auto-fixes divider comment lines to 140 chars (ASCII only,
+          fails for review after fixing) and flags non-ASCII special characters in comments (no auto-fix).
+        - >-
+          AGENTS.md rewritten at repo root — replaces docs/AGENTS.md with a complete project reference covering key
+          concepts, full file structure, global config layout, commands, workflow notes, and agent rules.
+        - >-
+          README improvements — Node.js added to Requirements; How totopo Works section rewritten to lead with the
+          project concept; demo GIF placeholders commented out pending re-recording.
+        - >-
+          Back delay removed — the 500 ms sleep after selecting Back in the Manage totopo menu is removed; the delay
+          after Doctor is kept.
+        - >-
+          pnpm rebuild script added — shorthand for rm -rf dist && tsc -p tsconfig.build.json; useful after
+          structural or rename changes.
     - rc_version: "2.0.0-rc-1"
       date: "2026-03-25"
       added:

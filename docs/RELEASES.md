@@ -10,7 +10,7 @@ Follows [Semantic Versioning](https://semver.org/):
 
 ## Changelog
 
-`src/releases/changelog.yaml` is the **source of truth** for all release notes.
+`scripts/changelog.yaml` is the **source of truth** for all release notes.
 `CHANGELOG.md` is a **generated artifact** — never edit it by hand.
 
 To regenerate manually:
@@ -54,7 +54,7 @@ Two tags are maintained:
 
 ### 1. Add changelog notes
 
-Before running `pnpm rc`, add entries to `src/releases/changelog.yaml` under `in_progress.entries`:
+Before running `pnpm rc`, add entries to `scripts/changelog.yaml` under `in_progress.entries`:
 
 ```yaml
 in_progress:
@@ -74,7 +74,7 @@ in_progress:
 pnpm rc
 ```
 
-Auto-increments the rc version based on registry state. Commits `package.json` and `src/releases/changelog.yaml`, tags, and publishes as `rc`. Repeat until confirmed working.
+Auto-increments the rc version based on registry state. Commits `package.json` and `scripts/changelog.yaml`, tags, and publishes as `rc`. Repeat until confirmed working.
 
 ### 3. Promote to latest
 
@@ -97,7 +97,7 @@ pnpm sync-releases
 - [ ] All Phase tasks for this version checked off in `docs/ROADMAP.md`
 - [ ] `pnpm typecheck` passes
 - [ ] `pnpm lint` passes
-- [ ] `pnpm build` succeeds (compiles `src/core/` → `dist/`)
+- [ ] `pnpm build` succeeds (compiles `src/` → `dist/`)
 - [ ] `pnpm pack --dry-run` inspected — only `bin/`, `dist/`, and `templates/` in tarball
 - [ ] `pnpm rc` — add changelog notes, publish, test (`npx totopo@rc`)
 - [ ] `pnpm rc:promote` — squashes notes, regenerates CHANGELOG.md, promotes to latest

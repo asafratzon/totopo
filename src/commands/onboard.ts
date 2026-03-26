@@ -1,5 +1,5 @@
 // =========================================================================================================================================
-// src/core/commands/onboard.ts — First-time project setup for totopo v2
+// src/commands/onboard.ts - First-time project setup
 // Invoked by bin/totopo.js when no registered project is found in ~/.totopo/projects/
 // Returns the registered ProjectContext on success, or null if cancelled.
 // =========================================================================================================================================
@@ -76,33 +76,33 @@ function tryGetGitRemote(repoRoot: string): string | undefined {
 // Returns the registered ProjectContext on success, null if cancelled.
 export async function run(packageDir: string, cwd: string): Promise<ProjectContext | null> {
     const templatesDir = join(packageDir, "templates");
-    const tildefy = (p: string) => (p.startsWith(homedir()) ? p.replace(homedir(), "~") : p);
+    const toTildePath = (p: string) => (p.startsWith(homedir()) ? p.replace(homedir(), "~") : p);
 
-    // ─── Detect context ──────────────────────────────────────────────────────────
+    // --- Detect context ------------------------------------------------------------------------------------------------------------------
     const gitRoot = tryGetGitRoot(cwd);
     const searchRoot = gitRoot ?? cwd;
     const totopoYaml = readTotopoYaml(searchRoot);
     const hasAnchor = totopoYaml !== null;
 
-    // ─── Intro ───────────────────────────────────────────────────────────────────
+    // --- Intro ---------------------------------------------------------------------------------------------------------------------------
     process.stdout.write("\n");
     intro("totopo · new project");
     process.stdout.write("\n");
 
-    // ─── totopo.yaml found: show welcome message ──────────────────────────────────
+    // --- totopo.yaml found: show welcome message -----------------------------------------------------------------------------------------
     if (hasAnchor && (totopoYaml.name ?? totopoYaml.description)) {
         const parts = [totopoYaml.name ? `Welcome to ${totopoYaml.name}.` : "", totopoYaml.description ?? ""].filter(Boolean);
         log.info(parts.join(" "));
         process.stdout.write("\n");
     }
 
-    // ─── Confirm / choose project root ───────────────────────────────────────────
+    // --- Confirm / choose project root ---------------------------------------------------------------------------------------------------
     let projectRoot: string;
 
     if (hasAnchor) {
-        // totopo.yaml anchors the root — confirm and proceed
+        // Anchor file found - project root confirmed, no walk-up ambiguity
         projectRoot = searchRoot;
-        const ok = await confirm({ message: `Set up totopo for: ${tildefy(projectRoot)}?` });
+        const ok = await confirm({ message: `Set up totopo for: ${toTildePath(projectRoot)}?` });
         if (isCancel(ok) || !ok) {
             cancel("Setup cancelled.");
             return null;
@@ -112,10 +112,10 @@ export async function run(packageDir: string, cwd: string): Promise<ProjectConte
         const suggestedRoot = gitRoot ?? cwd;
         type RootOption = { value: string; label: string; hint?: string };
         const options: RootOption[] = [
-            { value: suggestedRoot, label: tildefy(suggestedRoot), hint: gitRoot ? "git root" : "current directory" },
+            { value: suggestedRoot, label: toTildePath(suggestedRoot), hint: gitRoot ? "git root" : "current directory" },
         ];
         if (gitRoot !== null && gitRoot !== cwd) {
-            options.push({ value: cwd, label: tildefy(cwd), hint: "current directory" });
+            options.push({ value: cwd, label: toTildePath(cwd), hint: "current directory" });
         }
         options.push({ value: "__custom__", label: "Enter a different path…" });
 
@@ -147,19 +147,19 @@ export async function run(packageDir: string, cwd: string): Promise<ProjectConte
         }
     }
 
-    // ─── Validate: not inside an existing registered project ──────────────────────
+    // --- Validate: not inside an existing registered project -----------------------------------------------------------------------------
     const conflict = findConflictingProject(projectRoot);
     if (conflict) {
         log.error(
-            `"${tildefy(projectRoot)}" is already inside a registered totopo project:\n` +
-                `  ${tildefy(conflict.meta.projectRoot)}\n\n` +
+            `"${toTildePath(projectRoot)}" is already inside a registered totopo project:\n` +
+                `  ${toTildePath(conflict.meta.projectRoot)}\n\n` +
                 `  Run \`npx totopo\` from that directory instead.`,
         );
         cancel("Setup cancelled.");
         return null;
     }
 
-    // ─── Non-git warning ─────────────────────────────────────────────────────────
+    // --- Non-git warning -----------------------------------------------------------------------------------------------------------------
     const projectGitRoot = tryGetGitRoot(projectRoot);
     const isNonGit = projectGitRoot === null;
 
@@ -172,7 +172,7 @@ export async function run(packageDir: string, cwd: string): Promise<ProjectConte
         }
     }
 
-    // ─── Runtime mode ────────────────────────────────────────────────────────────
+    // --- Runtime mode --------------------------------------------------------------------------------------------------------------------
     const modeChoice = await select({
         message: "Runtime mode:",
         options: [
@@ -189,13 +189,13 @@ export async function run(packageDir: string, cwd: string): Promise<ProjectConte
     const mode = modeChoice as RuntimeMode;
     let selectedTools: string[] = [];
 
-    // ─── Tool selection (host-mirror only) ────────────────────────────────────────
+    // --- Tool selection (host-mirror only) -----------------------------------------------------------------------------------------------
     if (mode === "host-mirror") {
         const hostRuntimes = detectHostRuntimes();
         selectedTools = await selectTools(hostRuntimes);
     }
 
-    // ─── Shared or local? ────────────────────────────────────────────────────────
+    // --- Shared or local? ----------------------------------------------------------------------------------------------------------------
     const scopeChoice = await select({
         message: "Share setup with other contributors?",
         options: [
@@ -211,18 +211,18 @@ export async function run(packageDir: string, cwd: string): Promise<ProjectConte
 
     const commitScope = scopeChoice as "shared" | "local";
 
-    // ─── Create global .env if needed ────────────────────────────────────────────
+    // --- Create global .env if needed ----------------------------------------------------------------------------------------------------
     const globalTotopoDir = join(homedir(), ".totopo");
     const globalEnvPath = join(globalTotopoDir, ".env");
     mkdirSync(globalTotopoDir, { recursive: true });
     if (existsSync(globalEnvPath)) {
-        log.info(`${tildefy(globalEnvPath)} already exists — leaving it untouched`);
+        log.info(`${toTildePath(globalEnvPath)} already exists — leaving it untouched`);
     } else {
         cpSync(join(templatesDir, "env"), globalEnvPath);
-        log.success(`Created ${tildefy(globalEnvPath)}`);
+        log.success(`Created ${toTildePath(globalEnvPath)}`);
     }
 
-    // ─── Register project in ~/.totopo/projects/<id>/ ──────────────────────────────
+    // --- Register project in ~/.totopo/projects/<id>/ ------------------------------------------------------------------------------------
     const gitRemoteUrl = projectGitRoot !== null ? tryGetGitRemote(projectGitRoot) : undefined;
     const ctx = registerProject(projectRoot, gitRemoteUrl);
 
@@ -231,7 +231,7 @@ export async function run(packageDir: string, cwd: string): Promise<ProjectConte
         ctx.meta.nonGitWarningAcknowledged = true;
     }
 
-    // ─── Generate Dockerfile → ~/.totopo/projects/<id>/Dockerfile ─────────────────
+    // --- Generate Dockerfile -> ~/.totopo/projects/<id>/Dockerfile ------------------------------------------------------------------------
     if (mode === "host-mirror") {
         const hostRuntimes = detectHostRuntimes();
         const dockerfile = generateDockerfile("host-mirror", templatesDir, selectedTools, hostRuntimes);
@@ -240,14 +240,14 @@ export async function run(packageDir: string, cwd: string): Promise<ProjectConte
         cpSync(join(templatesDir, "Dockerfile"), join(ctx.projectDir, "Dockerfile"));
     }
 
-    // ─── Copy post-start.mjs → ~/.totopo/projects/<id>/post-start.mjs ─────────────
+    // --- Copy post-start.mjs -> ~/.totopo/projects/<id>/post-start.mjs --------------------------------------------------------------------
     cpSync(join(templatesDir, "post-start.mjs"), join(ctx.projectDir, "post-start.mjs"));
-    log.success(`Config written to ${tildefy(ctx.projectDir)}`);
+    log.success(`Config written to ${toTildePath(ctx.projectDir)}`);
 
-    // ─── Write settings ───────────────────────────────────────────────────────────
+    // --- Write settings ------------------------------------------------------------------------------------------------------------------
     writeSettings(ctx.projectDir, { runtimeMode: mode, selectedTools });
 
-    // ─── Create totopo.yaml (shared mode only) ────────────────────────────────────
+    // --- Create totopo.yaml (shared mode only) -------------------------------------------------------------------------------------------
     if (commitScope === "shared") {
         const totopoYamlPath = join(projectRoot, "totopo.yaml");
         if (!existsSync(totopoYamlPath)) {
@@ -270,23 +270,23 @@ export async function run(packageDir: string, cwd: string): Promise<ProjectConte
             }
 
             writeFileSync(totopoYamlPath, buildTotopoYaml(nameStr, descStr));
-            log.success(`Created ${tildefy(totopoYamlPath)}`);
+            log.success(`Created ${toTildePath(totopoYamlPath)}`);
         }
     }
 
-    log.info(`Optionally add API keys to ${tildefy(globalEnvPath)} — they are injected into every totopo container at runtime.`);
+    log.info(`Optionally add API keys to ${toTildePath(globalEnvPath)} — they are injected into every totopo container at runtime.`);
     outro("Setup complete.");
     return ctx;
 }
 
-// ─── Add project anchor (for projects onboarded as local-only) ────────────────
+// --- Add project anchor (for projects onboarded as local-only) ---------------------------------------------------------------------------
 // Creates totopo.yaml at the project root, prompting for optional name/description.
 export async function addProjectAnchor(ctx: ProjectContext): Promise<void> {
-    const tildefy = (p: string) => (p.startsWith(homedir()) ? p.replace(homedir(), "~") : p);
+    const toTildePath = (p: string) => (p.startsWith(homedir()) ? p.replace(homedir(), "~") : p);
     const totopoYamlPath = join(ctx.meta.projectRoot, "totopo.yaml");
 
     if (existsSync(totopoYamlPath)) {
-        log.info(`${tildefy(totopoYamlPath)} already exists.`);
+        log.info(`${toTildePath(totopoYamlPath)} already exists.`);
         return;
     }
 
@@ -309,5 +309,5 @@ export async function addProjectAnchor(ctx: ProjectContext): Promise<void> {
     }
 
     writeFileSync(totopoYamlPath, buildTotopoYaml(nameStr, descStr));
-    log.success(`Created ${tildefy(totopoYamlPath)}`);
+    log.success(`Created ${toTildePath(totopoYamlPath)}`);
 }
