@@ -4,8 +4,6 @@ Tracks current work in progress and upcoming planned items.
 
 ## In Progress
 
-- Release rc-1
-
 ## Backlog
 
 - Tests
