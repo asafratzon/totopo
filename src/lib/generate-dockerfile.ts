@@ -278,7 +278,7 @@ RUN pipx install uv && pipx install poetry`;
     echo 'echo ""' >> /home/devuser/.bashrc && \
     echo "echo \"  Run 'opencode', 'claude', or 'codex' to start an agent.\"" >> /home/devuser/.bashrc && \
     echo 'echo ""' >> /home/devuser/.bashrc && \
-    echo 'alias status="node /workspace/.totopo/post-start.mjs"' >> /home/devuser/.bashrc
+    echo 'alias status="node /home/devuser/.totopo/post-start.mjs"' >> /home/devuser/.bashrc
 
 CMD ["/bin/bash"]`,
     );
