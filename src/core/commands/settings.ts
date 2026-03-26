@@ -1,6 +1,6 @@
 // =============================================================================
 // src/core/commands/settings.ts — Settings menu: switch runtime mode + tool selection
-// Invoked by bin/totopo.js when action === "settings".
+// In v2, totopoDir is ctx.projectDir (in ~/.totopo/projects/<id>/)
 // =============================================================================
 
 import { cpSync, writeFileSync } from "node:fs";
@@ -9,12 +9,12 @@ import { cancel, intro, isCancel, log, outro, select } from "@clack/prompts";
 import { type RuntimeMode, readSettings, writeSettings } from "../lib/config.js";
 import { detectHostRuntimes } from "../lib/detect-host.js";
 import { generateDockerfile } from "../lib/generate-dockerfile.js";
+import type { ProjectContext } from "../lib/project-identity.js";
 import { selectTools } from "../lib/select-tools.js";
 
-export async function run(packageDir: string, repoRoot: string): Promise<"back" | undefined> {
-    const totopoDir = join(repoRoot, ".totopo");
+export async function run(packageDir: string, ctx: ProjectContext): Promise<"back" | undefined> {
     const templatesDir = join(packageDir, "templates");
-    const current = readSettings(totopoDir);
+    const current = readSettings(ctx.projectDir);
 
     intro("totopo — Settings");
 
@@ -48,12 +48,12 @@ export async function run(packageDir: string, repoRoot: string): Promise<"back" 
         const hostRuntimes = detectHostRuntimes();
         const selectedTools = await selectTools(hostRuntimes);
         const dockerfile = generateDockerfile("host-mirror", templatesDir, selectedTools, hostRuntimes);
-        writeFileSync(join(totopoDir, "Dockerfile"), dockerfile);
-        writeSettings(totopoDir, { runtimeMode: "host-mirror", selectedTools });
+        writeFileSync(join(ctx.projectDir, "Dockerfile"), dockerfile);
+        writeSettings(ctx.projectDir, { runtimeMode: "host-mirror", selectedTools });
     } else {
         // full mode — restore the unmodified template Dockerfile
-        cpSync(join(templatesDir, "Dockerfile"), join(totopoDir, "Dockerfile"));
-        writeSettings(totopoDir, { runtimeMode: "full", selectedTools: [] });
+        cpSync(join(templatesDir, "Dockerfile"), join(ctx.projectDir, "Dockerfile"));
+        writeSettings(ctx.projectDir, { runtimeMode: "full", selectedTools: [] });
     }
 
     log.info("Stop and restart your session to rebuild the container.");

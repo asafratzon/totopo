@@ -1,6 +1,55 @@
 in_progress:
-  base_version: 1.0.9
-  entries: []
+  base_version: 2.0.0
+  entries:
+    - rc_version: "2.0.0-rc-1"
+      date: "2026-03-25"
+      added:
+        - >-
+          Global config — all project config and runtime state moved from .totopo/ in the project directory to
+          ~/.totopo/projects/<id>/ on the host machine. Nothing is written to the project directory by default.
+        - >-
+          Project identity — each project is identified by a SHA-256 hash of its absolute root path, stored as
+          ~/.totopo/projects/<id>/. Walk-up resolution from CWD finds the correct project automatically.
+        - >-
+          Container naming v2 — containers and images are now named totopo-<8-char-hash>-<slug> (e.g.
+          totopo-a3f9c812-my-app), guaranteeing uniqueness across projects while keeping docker ps output readable.
+        - >-
+          totopo.yaml anchor file — replaces totopo.json. YAML format with a rich comment block explaining purpose and
+          field usage. Parsed via js-yaml. Contains optional name and description fields for onboarding welcome messages.
+        - >-
+          Manage totopo menu — global menu always accessible from the project menu or when running outside any project.
+          Actions: Stop containers, Clear agent memory, Remove images, Reset API keys, Doctor, Uninstall totopo. All
+          multi-select actions work across all registered projects.
+        - >-
+          Uninstall totopo — new action in Manage totopo that stops all containers, removes all images, and deletes
+          ~/.totopo/ entirely. Requires typing "uninstall-totopo" to confirm.
+        - >-
+          Add project anchor — new project menu action for projects onboarded as local-only. Creates totopo.yaml at the
+          project root with optional name/description. Menu item disappears immediately after creation.
+        - >-
+          Non-git project support — git is no longer a hard requirement. Onboarding proceeds with a one-time warning
+          when no version control is detected; acknowledgement is stored in meta.json.
+      changed:
+        - >-
+          Onboarding rewritten — new flow: detect git root / totopo.yaml context, confirm project root, conflict guard,
+          non-git warning, runtime mode and tool selection, shared/local scope choice, then write all config to
+          ~/.totopo/projects/<id>/.
+        - >-
+          Project menu restructured — Open session, Rebuild container, Stop container, Runtime mode, Add project anchor
+          (conditional), Manage totopo →. Settings renamed to Runtime mode.
+        - >-
+          Doctor accepts null projectDir — passing null skips the Dockerfile existence check, allowing Doctor to run
+          from the global Manage totopo menu outside any project context.
+        - >-
+          strip-json-comments removed — replaced by js-yaml for totopo.yaml parsing. jsonc.ts deleted.
+        - >-
+          docker-name.ts deleted — container naming logic absorbed into project-identity.ts.
+        - >-
+          templates/README.md deleted — no longer auto-copied to projects in v2 (nothing is written to the project).
+        - >-
+          README rewritten for v2 — project concept introduced with menu walkthrough, config location updated to
+          ~/.totopo/, git removed from requirements, new What gets installed section, Shared onboarding and Limitations
+          sections added.
 releases:
   - version: 1.0.8
     date: "2026-03-25"

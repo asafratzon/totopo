@@ -5,11 +5,8 @@
 
 import { spawnSync } from "node:child_process";
 import { cancel, confirm, isCancel, log, outro } from "@clack/prompts";
-import { toDockerName } from "../lib/docker-name.js";
 
-export async function run(projectName: string): Promise<void> {
-    const containerName = toDockerName(projectName);
-
+export async function run(containerName: string): Promise<void> {
     // ─── Check if container exists ────────────────────────────────────────────────
     const inspectResult = spawnSync("docker", ["inspect", "--type", "container", containerName], { encoding: "utf8" });
 

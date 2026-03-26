@@ -1,17 +1,15 @@
 // =========================================================================================================================================
-// src/core/commands/advanced.ts — Advanced submenu
-// Invoked by bin/totopo.js — do not run directly.
+// src/core/commands/advanced.ts — Manage totopo menu (global, all projects)
+// Invoked by bin/totopo.js — shown directly when outside a project, or via "Manage totopo →" from the project menu.
 // =========================================================================================================================================
 
 import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { cancel, confirm, isCancel, log, multiselect, outro, select } from "@clack/prompts";
-import { toDockerName } from "../lib/docker-name.js";
+import { cancel, confirm, isCancel, log, multiselect, outro, select, text } from "@clack/prompts";
+import { listProjects } from "../lib/project-identity.js";
 import { run as runDoctor } from "./doctor.js";
-import { run as runRebuild } from "./rebuild.js";
-import { run as runSettings } from "./settings.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function stopAndRemoveContainer(name: string) {
@@ -19,39 +17,9 @@ function stopAndRemoveContainer(name: string) {
     spawnSync("docker", ["rm", name], { stdio: "inherit" });
 }
 
-// ─── Clear agent memory ───────────────────────────────────────────────────────
-async function clearAgentMemory(projectName: string, totopoDir: string): Promise<void> {
-    const containerName = toDockerName(projectName);
-
-    // Check if the container is running
-    const inspectResult = spawnSync("docker", ["inspect", "--format", "{{.State.Status}}", containerName], {
-        encoding: "utf8",
-        stdio: "pipe",
-    });
-    const isRunning = inspectResult.status === 0 && inspectResult.stdout.trim() === "running";
-
-    if (isRunning) {
-        const confirmed = await confirm({
-            message: `The dev container for ${projectName} is running. It must be stopped to clear agent memory. Continue?`,
-        });
-        if (isCancel(confirmed) || !confirmed) {
-            cancel("Cancelled.");
-            return;
-        }
-        log.step(`Stopping ${containerName}...`);
-        stopAndRemoveContainer(containerName);
-    }
-
-    const agentsDir = join(totopoDir, "agents");
-    if (existsSync(agentsDir)) {
-        rmSync(agentsDir, { recursive: true, force: true });
-    }
-    log.success("Agent memory cleared. Context will be regenerated on next session start.");
-}
-
-// ─── Stop containers ──────────────────────────────────────────────────────────
+// ─── Stop containers (multi-select across all projects) ──────────────────────
 async function stopContainers(): Promise<void> {
-    const listResult = spawnSync("docker", ["ps", "--filter", "name=totopo-managed-", "--format", "{{.Names}}"], {
+    const listResult = spawnSync("docker", ["ps", "--filter", "name=totopo-", "--format", "{{.Names}}"], {
         encoding: "utf8",
     });
     const running = (listResult.stdout ?? "").trim().split("\n").filter(Boolean);
@@ -64,7 +32,7 @@ async function stopContainers(): Promise<void> {
     let toStop: string[];
     if (running.length === 1) {
         toStop = running;
-        log.info(`Stopping ${running[0]}...`);
+        log.info(`Stopping ${running[0] ?? ""}...`);
     } else {
         const selected = await multiselect({
             message: "Select containers to stop:",
@@ -85,9 +53,63 @@ async function stopContainers(): Promise<void> {
     log.success("Done.");
 }
 
-// ─── Remove images ────────────────────────────────────────────────────────────
+// ─── Clear agent memory (multi-select across all projects) ───────────────────
+async function clearAgentMemory(): Promise<void> {
+    const projects = listProjects().filter((p) => existsSync(join(p.projectDir, "agents")));
+
+    if (projects.length === 0) {
+        log.info("No agent memory found.");
+        return;
+    }
+
+    let toClear: string[]; // project IDs
+    if (projects.length === 1) {
+        const p = projects[0];
+        if (p === undefined) return;
+        toClear = [p.id];
+        log.info(`Clearing agent memory for ${p.meta.displayName}...`);
+    } else {
+        const selected = await multiselect({
+            message: "Select projects to clear agent memory for:",
+            options: projects.map((p) => ({ value: p.id, label: p.meta.displayName, hint: p.meta.projectRoot })),
+            required: false,
+        });
+        if (isCancel(selected)) {
+            cancel();
+            return;
+        }
+        toClear = selected as string[];
+    }
+
+    for (const id of toClear) {
+        const p = projects.find((x) => x.id === id);
+        if (!p) continue;
+
+        // Stop the container first if running
+        const inspectResult = spawnSync("docker", ["inspect", "--format", "{{.State.Status}}", p.meta.containerName], {
+            encoding: "utf8",
+            stdio: "pipe",
+        });
+        const isRunning = inspectResult.status === 0 && inspectResult.stdout.trim() === "running";
+
+        if (isRunning) {
+            const confirmed = await confirm({
+                message: `Container for ${p.meta.displayName} is running. Stop it to clear memory?`,
+            });
+            if (isCancel(confirmed) || !confirmed) continue;
+            log.step(`Stopping ${p.meta.containerName}...`);
+            stopAndRemoveContainer(p.meta.containerName);
+        }
+
+        const agentsDir = join(p.projectDir, "agents");
+        rmSync(agentsDir, { recursive: true, force: true });
+        log.success(`Cleared agent memory for ${p.meta.displayName}.`);
+    }
+}
+
+// ─── Remove images (multi-select across all projects) ────────────────────────
 async function removeImages(): Promise<void> {
-    const listResult = spawnSync("docker", ["images", "--filter", "label=totopo.managed=true", "--format", "{{.Repository}}	{{.ID}}"], {
+    const listResult = spawnSync("docker", ["images", "--filter", "label=totopo.managed=true", "--format", "{{.Repository}}\t{{.ID}}"], {
         encoding: "utf8",
     });
     const lines = (listResult.stdout ?? "").trim().split("\n").filter(Boolean);
@@ -98,17 +120,15 @@ async function removeImages(): Promise<void> {
     }
 
     const images = lines.map((line) => {
-        const [repo, id] = line.split("	");
-        const workspace = (repo ?? "").replace(/^totopo-managed-/, "");
-        return { repo: repo ?? "", id: id ?? "", workspace };
+        const parts = line.split("\t");
+        const repo = parts[0] ?? "";
+        const id = parts[1] ?? "";
+        return { repo, id };
     });
 
     const selected = await multiselect({
         message: "Select images to remove:",
-        options: images.map((img) => ({
-            value: img.repo,
-            label: `${img.workspace}  (${img.repo})`,
-        })),
+        options: images.map((img) => ({ value: img.repo, label: img.repo, hint: img.id.slice(0, 12) })),
         required: false,
     });
 
@@ -133,39 +153,6 @@ async function removeImages(): Promise<void> {
     log.success("Done.");
 }
 
-// ─── Uninstall ────────────────────────────────────────────────────────────────
-async function uninstall(projectName: string, repoRoot: string): Promise<void> {
-    const dockerName = toDockerName(projectName);
-    const containerName = dockerName;
-    const imageName = dockerName;
-
-    const confirmed = await confirm({
-        message: `Remove .totopo/, stop containers, and delete the image for ${projectName}?`,
-    });
-
-    if (isCancel(confirmed) || !confirmed) {
-        cancel();
-        return;
-    }
-
-    const inspectResult = spawnSync("docker", ["inspect", "--type", "container", containerName], { encoding: "utf8" });
-    if (inspectResult.status === 0) {
-        log.step(`Stopping container ${containerName}...`);
-        stopAndRemoveContainer(containerName);
-    }
-
-    const imageResult = spawnSync("docker", ["images", "-q", imageName], { encoding: "utf8" });
-    if ((imageResult.stdout ?? "").trim().length > 0) {
-        log.step(`Removing image ${imageName}...`);
-        spawnSync("docker", ["rmi", imageName], { stdio: "inherit" });
-    }
-
-    log.step("Removing .totopo/...");
-    rmSync(join(repoRoot, ".totopo"), { recursive: true, force: true });
-
-    outro("Uninstalled. Re-run npx totopo to set up again.");
-}
-
 // ─── Reset API keys ───────────────────────────────────────────────────────────
 async function resetApiKeys(packageDir: string): Promise<void> {
     const globalEnvPath = join(homedir(), ".totopo", ".env");
@@ -181,22 +168,60 @@ async function resetApiKeys(packageDir: string): Promise<void> {
     log.success(`API keys reset. Edit ${globalEnvPath} to add your keys.`);
 }
 
-// ─── Advanced submenu ─────────────────────────────────────────────────────────
-export async function run(packageDir: string, projectName: string, repoRoot: string): Promise<"back" | "rebuild" | undefined> {
-    const totopoDir = join(repoRoot, ".totopo");
+// ─── Uninstall totopo (global — wipes ~/.totopo/ and all containers/images) ──
+async function uninstallTotopo(): Promise<void> {
+    const confirmed = await text({
+        message: 'Type "uninstall-totopo" to confirm full uninstall:',
+        validate: (v) => ((v ?? "").trim() !== "uninstall-totopo" ? 'Type exactly "uninstall-totopo" to confirm' : undefined),
+    });
 
+    if (isCancel(confirmed) || (confirmed as string).trim() !== "uninstall-totopo") {
+        cancel("Uninstall cancelled.");
+        return;
+    }
+
+    // Stop and remove all totopo containers
+    const psResult = spawnSync("docker", ["ps", "-a", "--filter", "name=totopo-", "--format", "{{.Names}}"], {
+        encoding: "utf8",
+    });
+    const containers = (psResult.stdout ?? "").trim().split("\n").filter(Boolean);
+    for (const c of containers) {
+        log.step(`Stopping and removing container ${c}...`);
+        stopAndRemoveContainer(c);
+    }
+
+    // Remove all totopo images
+    const imagesResult = spawnSync("docker", ["images", "--filter", "label=totopo.managed=true", "--format", "{{.Repository}}"], {
+        encoding: "utf8",
+    });
+    const imgs = (imagesResult.stdout ?? "").trim().split("\n").filter(Boolean);
+    for (const img of imgs) {
+        log.step(`Removing image ${img}...`);
+        spawnSync("docker", ["rmi", img], { stdio: "inherit" });
+    }
+
+    // Delete ~/.totopo/
+    const globalTotopoDir = join(homedir(), ".totopo");
+    if (existsSync(globalTotopoDir)) {
+        log.step("Deleting ~/.totopo/...");
+        rmSync(globalTotopoDir, { recursive: true, force: true });
+    }
+
+    outro("totopo uninstalled. Re-run npx totopo to set up again.");
+}
+
+// ─── Manage totopo menu ───────────────────────────────────────────────────────
+export async function run(packageDir: string): Promise<"back" | undefined> {
     while (true) {
         const action = await select({
-            message: "Advanced:",
+            message: "Manage totopo:",
             options: [
-                { value: "runtime-mode", label: "Runtime mode", hint: "switch between host-mirror and full" },
-                { value: "rebuild", label: "Rebuild container", hint: "force a fresh image build for this project" },
-                { value: "clear-memory", label: "Clear agent memory", hint: "wipe conversation history for this project" },
-                { value: "uninstall", label: "Uninstall from this project", hint: "removes .totopo/ and deletes the container and image" },
-                { value: "stop-containers", label: "Stop containers", hint: "all projects" },
-                { value: "remove-images", label: "Remove images", hint: "all projects" },
-                { value: "reset-keys", label: "Reset API keys", hint: "overwrites ~/.totopo/.env — affects all projects" },
-                { value: "doctor", label: "Doctor", hint: "check Docker and container health" },
+                { value: "stop-containers", label: "Stop containers", hint: "pick running containers" },
+                { value: "clear-memory", label: "Clear agent memory", hint: "pick projects to clear" },
+                { value: "remove-images", label: "Remove images", hint: "pick images to remove" },
+                { value: "reset-keys", label: "Reset API keys", hint: "overwrites ~/.totopo/.env" },
+                { value: "doctor", label: "Doctor", hint: "check Docker health" },
+                { value: "uninstall", label: "Uninstall totopo", hint: "wipe ~/.totopo/ and all containers/images" },
                 { value: "back", label: "← Back" },
             ],
         });
@@ -206,30 +231,29 @@ export async function run(packageDir: string, projectName: string, repoRoot: str
         }
 
         switch (action) {
-            case "runtime-mode":
-                await runSettings(packageDir, repoRoot);
-                break;
-            case "rebuild":
-                await runRebuild(projectName);
-                return "rebuild";
-            case "clear-memory":
-                await clearAgentMemory(projectName, totopoDir);
-                break;
-            case "reset-keys":
-                await resetApiKeys(packageDir);
-                break;
-            case "uninstall":
-                await uninstall(projectName, repoRoot);
-                return;
-            case "doctor":
-                await runDoctor(repoRoot, true);
-                break;
             case "stop-containers":
                 await stopContainers();
+                break;
+            case "clear-memory":
+                await clearAgentMemory();
                 break;
             case "remove-images":
                 await removeImages();
                 break;
+            case "reset-keys":
+                await resetApiKeys(packageDir);
+                break;
+            case "doctor":
+                await runDoctor(null, true);
+                await sleep(500);
+                break;
+            case "uninstall":
+                await uninstallTotopo();
+                return undefined;
         }
     }
+}
+
+function sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
 }

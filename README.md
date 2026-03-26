@@ -10,7 +10,7 @@ A simple CLI to use AI coding agents safely in your local codebase.
 
 ## Why totopo?
 
-Here's the thing about AI agents: they're probabilistic. They occasionally misinterpret instructions, take unexpected shortcuts, or simply get it wrong. Most of the time they're fine. But "most of the time" isn't a great argument for giving them unrestricted access to your machine, your credentials, and your remote repositories.
+Here's the thing about AI agents: they're probabilistic. They occasionally misinterpret instructions or simply get it wrong. Most of the time they're fine. But "most of the time" isn't a great argument for giving them unrestricted access to your machine, your credentials, and your remote repositories.
 
 totopo draws a simple boundary: agents get a full, capable environment to work in — they just can't touch anything outside the project, and they can't reach your remote. That's it. No domain whitelisting, no paranoia, no compromise on what the agent can actually do. Just a reasonable containment for non-deterministic tools.
 
@@ -18,21 +18,23 @@ Note: no sandbox substitutes for good judgment. Consider keeping any sensitive s
 
 ## How totopo Works
 
-- Unified, simple DX: run `npx totopo` from anywhere inside a local git repo.
-- Installed once per git repository in a `.totopo/` directory at the repo root.
-- Manages one Docker container per repository.
+totopo organises work around **projects** — any local directory you register with totopo. The first time you run `npx totopo` in a directory, it walks you through a short setup. Every subsequent run, from anywhere inside that directory tree, totopo resolves the project automatically and shows the project menu:
 
-To start a development session, run `npx totopo`, choose `Open session` and confirm the desired scope: the full repo, the current directory, or selected files and folders.
+- **Open session** — choose a scope and jump into an AI coding session
+- **Stop container** — stop the running container
+- **Runtime Mode** — adjust runtime mode and installed tools
+- **Rebuild container** — rebuild the docker image (upon changing runtime mode)
+
+All config lives in `~/.totopo/` — nothing is written to your project by default.
 
 ### Concurrent Sessions
-totopo uses one container per repository (not per session). This keeps resource usage bounded and makes reconnections fast - you can open as many sessions as you need — they all share the same running container.
+totopo uses one Docker container per project, not one per session. You can open as many terminal sessions as you need — they all connect to the same container, keeping resource usage bounded and reconnections fast.
 
 The tradeoff is that only one scope can be active at a time: if you reopen a session with a different scope, totopo recreates the container to match the new mounts, which would terminate any active sessions connected to the previous container.
 
 ## Requirements
 
-- [Docker](https://www.docker.com/products/docker-desktop/) - used to build and run the dev container
-- [git](https://git-scm.com/) - safeguard to ensure agents only run in projects with version control in place
+- [Docker](https://www.docker.com/products/docker-desktop/) — used to build and run the dev container
 
 ## Quick Start
 
@@ -41,11 +43,11 @@ cd your-project
 npx totopo
 ```
 
-First-time setup — running `npx totopo` in a fresh repo, selecting a runtime mode, and waiting for the Docker image to build for the first time:
-![First-time setup](.github/assets/demo-onboarding.gif)
+<!--First-time setup — running `npx totopo` in a fresh repo, selecting a runtime mode, and waiting for the Docker image to build for the first time:-->
+<!-- ![First-time setup](.github/assets/demo-onboarding.gif) -->
 
-Opening a session when totopo is already initialized is quick. The agent is aware of its scope and sandbox constraints:
-![Quick start](.github/assets/demo-quickstart.gif)
+<!--Opening a session when totopo is already initialized is quick. The agent is aware of its scope and sandbox constraints:-->
+<!-- ![Quick start](.github/assets/demo-quickstart.gif) -->
 
 ## Core features at a glance
 
@@ -75,9 +77,9 @@ Remote git operations are blocked inside the container. Push from your host term
 
 ### Session scope
 
-When you open a session, totopo asks what part of the repository to mount into the container:
+When you open a session, totopo asks what part of the project to mount into the container:
 
-- `Repo root` — the full repository
+- `Repo root` — the full project directory
 - `Current directory` — only the current directory
 - `Selective` — specific files and folders chosen interactively
 
@@ -87,14 +89,14 @@ The selected scope is stored on the container and checked on every later `Open s
 - If the requested scope is different, totopo recreates the container so the mounted paths match the new scope.
 - Parallel terminals on the same scope are fine. totopo connects with `docker exec`, so any concurrency limits are just the normal limits of sharing one running container.
 
-This is an intentional tradeoff: you get predictable resource usage and quick reconnects, but only one active mounted view per repository at a time.
+This is an intentional tradeoff: you get predictable resource usage and quick reconnects, but only one active mounted view per project at a time.
 
 In `Current directory` and `Selective` scopes, `.git` is intentionally not mounted. Mounting `.git` would expose the full commit history of every repository file, including files outside the mounted paths, which defeats the point of scoped access. As a result, git is unavailable inside those scoped sessions and the agent operates without repository history. The agent is instructed to surface these limitations at session start.
 
 Scoped sessions are well-suited for focused tasks where you want to give the agent a narrow, explicit view of your codebase.
 
-Example showcasing agent awareness of selective scope limitations:
-![Scoped access](.github/assets/demo-scoped.gif)
+<!-- Example showcasing agent awareness of selective scope limitations:-->
+<!-- ![Scoped access](.github/assets/demo-scoped.gif) -->
 
 ### AI CLIs with persistent sessions
 
@@ -106,7 +108,7 @@ claude      # Claude Code (Anthropic)
 codex       # Codex (OpenAI)
 ```
 
-Agent session data is isolated per repository, so agents do not bleed context between projects. To clear memory, run `npx totopo` and navigate to `Advanced > Clear agent memory`. This stops the container if running and removes the `.totopo/agents/` directory.
+Agent session data is isolated per project, so agents do not bleed context between projects. To clear memory, run `npx totopo` and navigate to `Manage totopo > Clear agent memory` and select a project. This stops the container if running and removes the agents directory.
 
 ### Dev container runtime
 
@@ -117,26 +119,50 @@ Choose between two modes:
 
 Either way, basic dev tools and all three AI CLIs are always included.
 
-## What gets created in your project
+## What gets installed
+
+All totopo config lives in `~/.totopo/` on your machine — nothing is written to your project directory unless you opt in.
 
 ```text
-your-project/
-└── .totopo/
-    ├── Dockerfile        # container image definition
-    ├── post-start.mjs    # security checks + readiness summary on every start
-    ├── settings.json     # runtime mode + selected tools (committed with project)
-    ├── README.md         # .totopo reference
-    └── agents/           # agent session data — gitignored, created on first session start
-        ├── claude/       # mounted as ~/.claude/
-        ├── opencode/     # mounted as ~/.config/opencode/ + ~/.local/share/opencode/
-        └── codex/        # mounted as ~/.codex/
-
-~/.totopo/.env            # API keys — global, outside all repos, never mounted into container
+~/.totopo/
+├── .env                        # API keys — global, never mounted into container
+└── projects/
+    └── <id>/                   # stable hash of the project root path
+        ├── meta.json           # project root, display name, container name
+        ├── settings.json       # runtime mode + selected tools
+        ├── Dockerfile          # container image definition
+        ├── post-start.mjs      # security checks + readiness summary on every start
+        └── agents/             # agent session data — created on first session start
+            ├── claude/         # mounted as ~/.claude/
+            ├── opencode/       # mounted as ~/.config/opencode/ + ~/.local/share/opencode/
+            └── codex/          # mounted as ~/.codex/
 ```
 
-totopo is initialized at the repository root, and `.totopo/` lives there regardless of which directory you later open a session from. Agent session history and conversation data are persisted in `.totopo/agents/` across container rebuilds and restarts. This directory is gitignored so session data stays local to your machine.
+Agent session history and conversation data are persisted in the `agents/` directory across container rebuilds and restarts.
+
+### Shared onboarding (optional)
+
+If you want contributors to get a one-click setup experience, add a `totopo.yaml` file at your project root:
+
+```yaml
+# totopo.yaml — project anchor
+#
+# name        — shown as: "Welcome to <name>."
+# description — shown as: "<description>"
+
+name: my-project
+description: Our AI coding sandbox. Ask @alice for the API keys.
+```
+
+When a new contributor runs `npx totopo`, totopo reads this file to anchor the project root and displays the welcome message before prompting for setup. Without it, totopo will find the git root and suggest it as the project root, so `totopo.yaml` is purely optional.
+
+To add a project anchor to an existing local-only totopo project, run `npx totopo` and select `Add project anchor` from the project menu.
 
 ## Limitations
+
+**Rename or move** — moving the project directory breaks identity since totopo uses the absolute path as the project key. Re-run `npx totopo` in the new location to onboard again. Orphaned configs can be cleaned up via `Manage totopo`.
+
+**Single machine** — `~/.totopo/` is local. Switching to a new machine requires re-onboarding each project.
 
 **Audio / microphone** — the image includes `sox` (required by Claude Code for voice mode), but audio passthrough from the host depends on your OS. macOS, Linux, and Windows each require different device configuration. If you need voice mode, set up audio passthrough manually for your platform.
 
