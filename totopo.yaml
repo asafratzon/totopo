@@ -1,0 +1,12 @@
+# totopo.yaml — project anchor
+#
+# Place this file at your project root to enable one-click onboarding for contributors.
+# When a new contributor runs `npx totopo`, totopo reads this file to anchor the project
+# root and display a welcome message before prompting for setup.
+#
+# name        — shown as: "Welcome to <name>."
+# description — shown as: "<description>"
+#
+# Both fields are optional. Omit either to skip it.
+name: totopo
+description: Run AI coding agents safely in your local codebase

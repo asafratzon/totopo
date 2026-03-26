@@ -2,10 +2,12 @@
 // src/core/commands/doctor.ts — Host readiness check for totopo
 // Runs silently on success; exits non-zero on failure.
 // Pass verbose=true for a full report.
+// projectDir: ~/.totopo/projects/<id>/ — pass null to skip the Dockerfile check (e.g. from Manage totopo).
 // =========================================================================================================================================
 
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { log, outro } from "@clack/prompts";
 
 // Returns true if the given CLI tool is resolvable in the system PATH
@@ -17,10 +19,10 @@ function commandExists(cmd: string): boolean {
     return r.status === 0;
 }
 
-export async function run(repoRoot: string, verbose: boolean): Promise<{ ok: boolean }> {
+export async function run(projectDir: string | null, verbose: boolean): Promise<{ ok: boolean }> {
     const errors: string[] = [];
 
-    // Logs the result of a single health check; accumulates failures into the errors array for the final report
+    // Logs the result of a single health check; accumulates failures into the errors array
     function check(label: string, ok: boolean, detail?: string): void {
         if (ok) {
             if (verbose) log.success(`${label}${detail ? `  \x1b[2m${detail}\x1b[0m` : ""}`);
@@ -32,21 +34,20 @@ export async function run(repoRoot: string, verbose: boolean): Promise<{ ok: boo
 
     if (verbose) console.log("");
 
-    // ─── Docker installed ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+    // ─── Docker installed ────────────────────────────────────────────────────────
     check("Docker installed", commandExists("docker"), commandExists("docker") ? undefined : "'docker' not found in PATH");
 
-    // ─── Docker running ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-    const dockerInfo = spawnSync("docker", ["info"], {
-        encoding: "utf8",
-        stdio: "pipe",
-    });
+    // ─── Docker running ──────────────────────────────────────────────────────────
+    const dockerInfo = spawnSync("docker", ["info"], { encoding: "utf8", stdio: "pipe" });
     check("Docker running", dockerInfo.status === 0, dockerInfo.status === 0 ? undefined : "Docker daemon not responding");
 
-    // ─── .totopo/ config present ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
-    const configOk = existsSync(`${repoRoot}/.totopo/Dockerfile`);
-    check(".totopo/ config present", configOk, configOk ? undefined : "missing .totopo/Dockerfile");
+    // ─── Project Dockerfile present (only when projectDir is provided) ────────────
+    if (projectDir !== null) {
+        const configOk = existsSync(join(projectDir, "Dockerfile"));
+        check("Dockerfile present", configOk, configOk ? undefined : `missing Dockerfile in ${projectDir}`);
+    }
 
-    // ─── Report ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+    // ─── Report ──────────────────────────────────────────────────────────────────
     if (errors.length > 0) {
         if (verbose) {
             console.log("");
