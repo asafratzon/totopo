@@ -1,6 +1,13 @@
 in_progress:
   base_version: 2.0.0
   entries:
+    - rc_version: "2.0.0-rc-3"
+      date: "2026-03-26"
+      fixed:
+        - >-
+          status alias in Dockerfile pointed to /workspace/.totopo/post-start.mjs — corrected to
+          /home/devuser/.totopo/post-start.mjs, which is where the project config dir is mounted at runtime. Running
+          'status' in a clean project previously crashed with MODULE_NOT_FOUND.
     - rc_version: "2.0.0-rc-2"
       date: "2026-03-26"
       changed:
