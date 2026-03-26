@@ -1,6 +1,13 @@
 in_progress:
   base_version: 2.0.0
   entries:
+    - rc_version: "2.0.0-rc-4"
+      date: "2026-03-26"
+      fixed:
+        - >-
+          status alias wrong path also present in generate-dockerfile.ts — the dynamically generated Dockerfile (used in
+          host-mirror mode) embedded the same /workspace/.totopo/post-start.mjs alias as the static template; corrected
+          to /home/devuser/.totopo/post-start.mjs.
     - rc_version: "2.0.0-rc-3"
       date: "2026-03-26"
       fixed:
