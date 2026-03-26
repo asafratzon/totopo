@@ -1,95 +1,84 @@
 in_progress:
-  base_version: 2.0.0
-  entries:
-    - rc_version: "2.0.0-rc-4"
-      date: "2026-03-26"
-      fixed:
-        - >-
-          status alias wrong path also present in generate-dockerfile.ts — the dynamically generated Dockerfile (used in
-          host-mirror mode) embedded the same /workspace/.totopo/post-start.mjs alias as the static template; corrected
-          to /home/devuser/.totopo/post-start.mjs.
-    - rc_version: "2.0.0-rc-3"
-      date: "2026-03-26"
-      fixed:
-        - >-
-          status alias in Dockerfile pointed to /workspace/.totopo/post-start.mjs — corrected to
-          /home/devuser/.totopo/post-start.mjs, which is where the project config dir is mounted at runtime. Running
-          'status' in a clean project previously crashed with MODULE_NOT_FOUND.
-    - rc_version: "2.0.0-rc-2"
-      date: "2026-03-26"
-      changed:
-        - >-
-          Source restructured — src/releases/ moved to scripts/ (root level); src/core/commands/ flattened to
-          src/commands/; src/core/lib/ flattened to src/lib/. src/core/ deleted entirely.
-        - >-
-          Function renames for clarity — scanCwdDepth2 -> buildDirectoryTree, expandExclusion ->
-          expandDirectoryToChildren, normalizeSelection -> collapseToMinimalPaths, promptDeeperPaths ->
-          promptAdditionalPaths, tildefy -> toTildePath, shortHash -> truncateHash, dim -> dimText.
-        - >-
-          Pre-commit checks extended — pnpm check now auto-fixes divider comment lines to 140 chars (ASCII only,
-          fails for review after fixing) and flags non-ASCII special characters in comments (no auto-fix).
-        - >-
-          AGENTS.md rewritten at repo root — replaces docs/AGENTS.md with a complete project reference covering key
-          concepts, full file structure, global config layout, commands, workflow notes, and agent rules.
-        - >-
-          README improvements — Node.js added to Requirements; How totopo Works section rewritten to lead with the
-          project concept; demo GIF placeholders commented out pending re-recording.
-        - >-
-          Back delay removed — the 500 ms sleep after selecting Back in the Manage totopo menu is removed; the delay
-          after Doctor is kept.
-        - >-
-          pnpm rebuild script added — shorthand for rm -rf dist && tsc -p tsconfig.build.json; useful after
-          structural or rename changes.
-    - rc_version: "2.0.0-rc-1"
-      date: "2026-03-25"
-      added:
-        - >-
-          Global config — all project config and runtime state moved from .totopo/ in the project directory to
-          ~/.totopo/projects/<id>/ on the host machine. Nothing is written to the project directory by default.
-        - >-
-          Project identity — each project is identified by a SHA-256 hash of its absolute root path, stored as
-          ~/.totopo/projects/<id>/. Walk-up resolution from CWD finds the correct project automatically.
-        - >-
-          Container naming v2 — containers and images are now named totopo-<8-char-hash>-<slug> (e.g.
-          totopo-a3f9c812-my-app), guaranteeing uniqueness across projects while keeping docker ps output readable.
-        - >-
-          totopo.yaml anchor file — replaces totopo.json. YAML format with a rich comment block explaining purpose and
-          field usage. Parsed via js-yaml. Contains optional name and description fields for onboarding welcome messages.
-        - >-
-          Manage totopo menu — global menu always accessible from the project menu or when running outside any project.
-          Actions: Stop containers, Clear agent memory, Remove images, Reset API keys, Doctor, Uninstall totopo. All
-          multi-select actions work across all registered projects.
-        - >-
-          Uninstall totopo — new action in Manage totopo that stops all containers, removes all images, and deletes
-          ~/.totopo/ entirely. Requires typing "uninstall-totopo" to confirm.
-        - >-
-          Add project anchor — new project menu action for projects onboarded as local-only. Creates totopo.yaml at the
-          project root with optional name/description. Menu item disappears immediately after creation.
-        - >-
-          Non-git project support — git is no longer a hard requirement. Onboarding proceeds with a one-time warning
-          when no version control is detected; acknowledgement is stored in meta.json.
-      changed:
-        - >-
-          Onboarding rewritten — new flow: detect git root / totopo.yaml context, confirm project root, conflict guard,
-          non-git warning, runtime mode and tool selection, shared/local scope choice, then write all config to
-          ~/.totopo/projects/<id>/.
-        - >-
-          Project menu restructured — Open session, Rebuild container, Stop container, Runtime mode, Add project anchor
-          (conditional), Manage totopo →. Settings renamed to Runtime mode.
-        - >-
-          Doctor accepts null projectDir — passing null skips the Dockerfile existence check, allowing Doctor to run
-          from the global Manage totopo menu outside any project context.
-        - >-
-          strip-json-comments removed — replaced by js-yaml for totopo.yaml parsing. jsonc.ts deleted.
-        - >-
-          docker-name.ts deleted — container naming logic absorbed into project-identity.ts.
-        - >-
-          templates/README.md deleted — no longer auto-copied to projects in v2 (nothing is written to the project).
-        - >-
-          README rewritten for v2 — project concept introduced with menu walkthrough, config location updated to
-          ~/.totopo/, git removed from requirements, new What gets installed section, Shared onboarding and Limitations
-          sections added.
+  base_version: 2.0.1
+  entries: []
 releases:
+  - version: 2.0.0
+    date: "2026-03-26"
+    added:
+      - >-
+        Global config — all project config and runtime state moved from .totopo/ in the project directory to
+        ~/.totopo/projects/<id>/ on the host machine. Nothing is written to the project directory by default.
+      - >-
+        Project identity — each project is identified by a SHA-256 hash of its absolute root path, stored as
+        ~/.totopo/projects/<id>/. Walk-up resolution from CWD finds the correct project automatically.
+      - >-
+        Container naming v2 — containers and images are now named totopo-<8-char-hash>-<slug> (e.g.
+        totopo-a3f9c812-my-app), guaranteeing uniqueness across projects while keeping docker ps output readable.
+      - >-
+        totopo.yaml anchor file — replaces totopo.json. YAML format with a rich comment block explaining purpose and
+        field usage. Parsed via js-yaml. Contains optional name and description fields for onboarding welcome messages.
+      - >-
+        Manage totopo menu — global menu always accessible from the project menu or when running outside any project.
+        Actions: Stop containers, Clear agent memory, Remove images, Reset API keys, Doctor, Uninstall totopo. All
+        multi-select actions work across all registered projects.
+      - >-
+        Uninstall totopo — new action in Manage totopo that stops all containers, removes all images, and deletes
+        ~/.totopo/ entirely. Requires typing "uninstall-totopo" to confirm.
+      - >-
+        Add project anchor — new project menu action for projects onboarded as local-only. Creates totopo.yaml at the
+        project root with optional name/description. Menu item disappears immediately after creation.
+      - >-
+        Non-git project support — git is no longer a hard requirement. Onboarding proceeds with a one-time warning when
+        no version control is detected; acknowledgement is stored in meta.json.
+    changed:
+      - >-
+        Source restructured — src/releases/ moved to scripts/ (root level); src/core/commands/ flattened to
+        src/commands/; src/core/lib/ flattened to src/lib/. src/core/ deleted entirely.
+      - >-
+        Function renames for clarity — scanCwdDepth2 -> buildDirectoryTree, expandExclusion ->
+        expandDirectoryToChildren, normalizeSelection -> collapseToMinimalPaths, promptDeeperPaths ->
+        promptAdditionalPaths, tildefy -> toTildePath, shortHash -> truncateHash, dim -> dimText.
+      - >-
+        Pre-commit checks extended — pnpm check now auto-fixes divider comment lines to 140 chars (ASCII only, fails for
+        review after fixing) and flags non-ASCII special characters in comments (no auto-fix).
+      - >-
+        AGENTS.md rewritten at repo root — replaces docs/AGENTS.md with a complete project reference covering key
+        concepts, full file structure, global config layout, commands, workflow notes, and agent rules.
+      - >-
+        README improvements — Node.js added to Requirements; How totopo Works section rewritten to lead with the project
+        concept; demo GIF placeholders commented out pending re-recording.
+      - >-
+        Back delay removed — the 500 ms sleep after selecting Back in the Manage totopo menu is removed; the delay after
+        Doctor is kept.
+      - >-
+        pnpm rebuild script added — shorthand for rm -rf dist && tsc -p tsconfig.build.json; useful after structural or
+        rename changes.
+      - >-
+        Onboarding rewritten — new flow: detect git root / totopo.yaml context, confirm project root, conflict guard,
+        non-git warning, runtime mode and tool selection, shared/local scope choice, then write all config to
+        ~/.totopo/projects/<id>/.
+      - >-
+        Project menu restructured — Open session, Rebuild container, Stop container, Runtime mode, Add project anchor
+        (conditional), Manage totopo →. Settings renamed to Runtime mode.
+      - >-
+        Doctor accepts null projectDir — passing null skips the Dockerfile existence check, allowing Doctor to run from
+        the global Manage totopo menu outside any project context.
+      - strip-json-comments removed — replaced by js-yaml for totopo.yaml parsing. jsonc.ts deleted.
+      - docker-name.ts deleted — container naming logic absorbed into project-identity.ts.
+      - templates/README.md deleted — no longer auto-copied to projects in v2 (nothing is written to the project).
+      - >-
+        README rewritten for v2 — project concept introduced with menu walkthrough, config location updated to
+        ~/.totopo/, git removed from requirements, new What gets installed section, Shared onboarding and Limitations
+        sections added.
+    fixed:
+      - >-
+        status alias wrong path also present in generate-dockerfile.ts — the dynamically generated Dockerfile (used in
+        host-mirror mode) embedded the same /workspace/.totopo/post-start.mjs alias as the static template; corrected to
+        /home/devuser/.totopo/post-start.mjs.
+      - >-
+        status alias in Dockerfile pointed to /workspace/.totopo/post-start.mjs — corrected to
+        /home/devuser/.totopo/post-start.mjs, which is where the project config dir is mounted at runtime. Running
+        'status' in a clean project previously crashed with MODULE_NOT_FOUND.
   - version: 1.0.8
     date: "2026-03-25"
     changed:
