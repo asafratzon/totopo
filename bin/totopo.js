@@ -148,7 +148,7 @@ while (showMenu) {
             showMenu = true;
             break;
         case "manage-totopo": {
-            const result = await advanced(packageDir);
+            const result = await advanced(packageDir, project.id);
             if (result === "back") showMenu = true;
             break;
         }

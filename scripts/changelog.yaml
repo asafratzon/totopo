@@ -15,6 +15,13 @@ in_progress:
           "Full" runtime mode renamed to "Standard" in documentation and feature descriptions.
         - >-
           Release documentation consolidated from a standalone document into the contributing guide.
+    - rc_version: "2.1.0-rc-2"
+      date: "2026-03-28"
+      added:
+        - >-
+          Uninstall project — new action in the Manage totopo menu that lets you pick individual
+          projects to fully remove (container, image, and ~/.totopo/projects/<id>/ directory) without
+          wiping the entire ~/.totopo/ installation. Current project is shown first when available.
 releases:
   - version: 2.0.0
     date: "2026-03-26"
