@@ -169,12 +169,12 @@ async function resetApiKeys(packageDir: string): Promise<void> {
 }
 
 // --- Uninstall projects (multi-select, remove container + image + project dir) -----------------------------------------------------------
-async function uninstallProjects(currentProjectId?: string): Promise<void> {
+async function uninstallProjects(currentProjectId?: string): Promise<boolean> {
     const projects = listProjects();
 
     if (projects.length === 0) {
         log.info("No registered projects.");
-        return;
+        return false;
     }
 
     // Show current project first if known
@@ -194,10 +194,12 @@ async function uninstallProjects(currentProjectId?: string): Promise<void> {
 
     if (isCancel(selected)) {
         cancel();
-        return;
+        return false;
     }
 
-    for (const id of selected as string[]) {
+    const selectedIds = selected as string[];
+
+    for (const id of selectedIds) {
         const p = projects.find((x) => x.id === id);
         if (!p) continue;
 
@@ -220,6 +222,8 @@ async function uninstallProjects(currentProjectId?: string): Promise<void> {
 
         log.success(`Uninstalled project ${p.meta.displayName}.`);
     }
+
+    return currentProjectId !== undefined && selectedIds.includes(currentProjectId);
 }
 
 // --- Uninstall totopo (global - wipes ~/.totopo/ and all containers/images) --------------------------------------------------------------
@@ -298,9 +302,11 @@ export async function run(packageDir: string, currentProjectId?: string): Promis
             case "reset-keys":
                 await resetApiKeys(packageDir);
                 break;
-            case "uninstall-project":
-                await uninstallProjects(currentProjectId);
+            case "uninstall-project": {
+                const currentDeleted = await uninstallProjects(currentProjectId);
+                if (currentDeleted) return undefined;
                 break;
+            }
             case "doctor":
                 await runDoctor(null, true);
                 await sleep(500);
