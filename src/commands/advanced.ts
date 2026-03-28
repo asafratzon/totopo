@@ -168,6 +168,60 @@ async function resetApiKeys(packageDir: string): Promise<void> {
     log.success(`API keys reset. Edit ${globalEnvPath} to add your keys.`);
 }
 
+// --- Uninstall projects (multi-select, remove container + image + project dir) -----------------------------------------------------------
+async function uninstallProjects(currentProjectId?: string): Promise<void> {
+    const projects = listProjects();
+
+    if (projects.length === 0) {
+        log.info("No registered projects.");
+        return;
+    }
+
+    // Show current project first if known
+    const sorted = currentProjectId
+        ? [...projects].sort((a, b) => (a.id === currentProjectId ? -1 : b.id === currentProjectId ? 1 : 0))
+        : projects;
+
+    const selected = await multiselect({
+        message: "Select projects to uninstall:",
+        options: sorted.map((p) => ({
+            value: p.id,
+            label: p.meta.displayName,
+            hint: p.meta.projectRoot + (p.id === currentProjectId ? " (current)" : ""),
+        })),
+        required: false,
+    });
+
+    if (isCancel(selected)) {
+        cancel();
+        return;
+    }
+
+    for (const id of selected as string[]) {
+        const p = projects.find((x) => x.id === id);
+        if (!p) continue;
+
+        // Stop and remove container if it exists (running or exited)
+        const psResult = spawnSync("docker", ["ps", "-a", "--filter", `name=${p.meta.containerName}`, "--format", "{{.Names}}"], {
+            encoding: "utf8",
+        });
+        const containers = (psResult.stdout ?? "").trim().split("\n").filter(Boolean);
+        for (const c of containers) {
+            log.step(`Stopping and removing container ${c}...`);
+            stopAndRemoveContainer(c);
+        }
+
+        // Remove Docker image if it exists (image name = container name)
+        log.step(`Removing image ${p.meta.containerName}...`);
+        spawnSync("docker", ["rmi", p.meta.containerName], { stdio: "inherit" });
+
+        // Delete project directory
+        rmSync(p.projectDir, { recursive: true, force: true });
+
+        log.success(`Uninstalled project ${p.meta.displayName}.`);
+    }
+}
+
 // --- Uninstall totopo (global - wipes ~/.totopo/ and all containers/images) --------------------------------------------------------------
 async function uninstallTotopo(): Promise<void> {
     const confirmed = await text({
@@ -211,7 +265,7 @@ async function uninstallTotopo(): Promise<void> {
 }
 
 // --- Manage totopo menu ------------------------------------------------------------------------------------------------------------------
-export async function run(packageDir: string): Promise<"back" | undefined> {
+export async function run(packageDir: string, currentProjectId?: string): Promise<"back" | undefined> {
     while (true) {
         const action = await select({
             message: "Manage totopo:",
@@ -221,6 +275,7 @@ export async function run(packageDir: string): Promise<"back" | undefined> {
                 { value: "remove-images", label: "Remove images", hint: "pick images to remove" },
                 { value: "reset-keys", label: "Reset API keys", hint: "overwrites ~/.totopo/.env" },
                 { value: "doctor", label: "Doctor", hint: "check Docker health" },
+                { value: "uninstall-project", label: "Uninstall project", hint: "pick projects to remove" },
                 { value: "uninstall", label: "Uninstall totopo", hint: "wipe ~/.totopo/ and all containers/images" },
                 { value: "back", label: "← Back" },
             ],
@@ -242,6 +297,9 @@ export async function run(packageDir: string): Promise<"back" | undefined> {
                 break;
             case "reset-keys":
                 await resetApiKeys(packageDir);
+                break;
+            case "uninstall-project":
+                await uninstallProjects(currentProjectId);
                 break;
             case "doctor":
                 await runDoctor(null, true);
