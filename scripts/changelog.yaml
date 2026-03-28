@@ -22,6 +22,12 @@ in_progress:
           Uninstall project — new action in the Manage totopo menu that lets you pick individual
           projects to fully remove (container, image, and ~/.totopo/projects/<id>/ directory) without
           wiping the entire ~/.totopo/ installation. Current project is shown first when available.
+    - rc_version: "2.1.0-rc-3"
+      date: "2026-03-28"
+      fixed:
+        - >-
+          Manage totopo menu continued looping after uninstalling the current project, causing stale
+          references. The menu now exits cleanly when the current project is among the deleted projects.
 releases:
   - version: 2.0.0
     date: "2026-03-26"
