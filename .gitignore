@@ -28,7 +28,9 @@ Thumbs.db
 # Editor
 *.swp
 *.swo
-.claude/
+# Claude Code — ignore everything except project-level skills
+.claude/*
+!.claude/skills/
 
 # Build output
 dist/

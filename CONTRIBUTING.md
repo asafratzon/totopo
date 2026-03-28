@@ -47,3 +47,58 @@ agg --theme monokai demo.cast demo.gif         # change color theme
 ```
 
 Place final GIFs in `.github/assets/` and uncomment the relevant placeholder in `README.md`.
+
+### Releases
+
+`scripts/changelog.yaml` is the source of truth for all release notes. `CHANGELOG.md` is a generated artifact — never edit it by hand; regenerate with `pnpm generate-changelog`.
+
+- `pnpm rc` — publish a release candidate to npm under the `rc` dist-tag
+- `pnpm rc:promote` — squash RC entries, regenerate CHANGELOG.md, promote to `latest`
+- `/release` — guided workflow that checks the registry, helps draft changelog entries, and commits
+
+#### changelog.yaml format
+
+```yaml
+in_progress:
+  base_version: "x.y.z"   # next release version
+  entries:                 # accumulates across rc iterations
+    - rc_version: "x.y.z-rc-1"
+      date: "YYYY-MM-DD"
+      fixed:
+        - "Description of fix"
+
+releases:
+  - version: "x.y.z"
+    date: "YYYY-MM-DD"
+    added:     # new features
+    changed:   # changes to existing behaviour
+    fixed:     # bug fixes
+    security:  # security fixes (always include if applicable)
+```
+
+Only include categories that have entries. Keep entries concise — one line per item.
+
+#### npm dist-tags
+
+Two tags are maintained:
+
+| Tag | Points to | Used by |
+| --- | --- | --- |
+| `latest` | last stable release (e.g. `2.0.0`) | `npx totopo` |
+| `rc` | current release candidate (e.g. `2.0.1-rc-1`) | `npx totopo@rc` |
+
+### Maintaining agent mount definitions
+
+totopo intercepts AI CLI config directories via bind mounts defined in
+`src/lib/agent-context.ts`. These must stay aligned with the actual paths each
+CLI reads/writes.
+
+Periodically verify against official documentation:
+- **Claude Code**: https://docs.anthropic.com/en/docs/claude-code
+- **Codex**: https://github.com/openai/codex
+- **OpenCode**: https://github.com/opencode-ai/opencode
+
+Check for new config directories, renamed paths, or new project-level files
+that may need shadowing. Note: `.opencode.json` (a file, not a dir) is read
+by OpenCode at the workspace root but never auto-created there, so no shadow
+is needed.

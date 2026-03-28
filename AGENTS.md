@@ -79,6 +79,10 @@ CONTRIBUTING.md                - Contribution guidelines
       claude/                   - mounted as ~/.claude/ inside container
       opencode/                 - mounted as ~/.config/opencode/ + ~/.local/share/opencode/
       codex/                    - mounted as ~/.codex/ inside container
+      workspace/
+        .claude/                - shadow mount -> /workspace/.claude (intercepts project-level Claude config)
+        .codex/                 - shadow mount -> /workspace/.codex  (intercepts project-level Codex config)
+        .opencode/              - shadow mount -> /workspace/.opencode (intercepts project-level OpenCode config)
 ```
 
 ## Commands
