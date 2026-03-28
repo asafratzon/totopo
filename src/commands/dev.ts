@@ -6,20 +6,20 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, relative } from "node:path";
+import { join, relative } from "node:path";
 import { cancel, confirm, groupMultiselect, isCancel, log, multiselect, note, outro, path, select } from "@clack/prompts";
+import {
+    buildAgentContextDocs,
+    buildAgentMountArgs,
+    injectAgentContext,
+    resolveShadowedDirs,
+    type ScopeConfig,
+    type WorkspaceScope,
+} from "../lib/agent-context.js";
 import type { ProjectContext } from "../lib/project-identity.js";
 
 // The project config dir is always mounted here inside the container (read-only)
 const TOTOPO_CONTAINER_PATH = "/home/devuser/.totopo";
-
-// --- Types -------------------------------------------------------------------------------------------------------------------------------
-type WorkspaceScope = "repo" | "cwd" | "selective";
-interface ScopeConfig {
-    mode: WorkspaceScope;
-    hostCwd: string;
-    selectedPaths: string[]; // relative names; empty for repo/cwd
-}
 
 // --- Prompt: scope selection -------------------------------------------------------------------------------------------------------------
 async function promptScope(workspaceDir: string, cwd: string): Promise<ScopeConfig> {
@@ -263,25 +263,11 @@ async function promptSelectivePaths(cwd: string): Promise<string[]> {
     return result;
 }
 
-// --- Build agent mount args --------------------------------------------------------------------------------------------------------------
-// Creates agents/ subdirectories in the project dir on the host (lazily) and
-// returns volume mount args for all supported agent tools.
-function buildAgentMountArgs(projectDir: string): string[] {
-    const agentsDir = join(projectDir, "agents");
-    const mounts = [
-        { host: join(agentsDir, "claude"), container: "/home/devuser/.claude" },
-        { host: join(agentsDir, "opencode", "config"), container: "/home/devuser/.config/opencode" },
-        { host: join(agentsDir, "opencode", "data"), container: "/home/devuser/.local/share/opencode" },
-        { host: join(agentsDir, "codex"), container: "/home/devuser/.codex" },
-    ];
-    for (const { host } of mounts) mkdirSync(host, { recursive: true });
-    return mounts.flatMap(({ host, container }) => ["-v", `${host}:${container}`]);
-}
-
 // --- Build mount args --------------------------------------------------------------------------------------------------------------------
 // Project config dir is always explicitly mounted - it's never inside the workspace.
 function buildMountArgs(scope: ScopeConfig, workspaceDir: string, projectDir: string, cwd: string): string[] {
-    const agentMounts = buildAgentMountArgs(projectDir);
+    const hostWorkspaceDir = scope.mode === "repo" ? workspaceDir : cwd;
+    const agentMounts = buildAgentMountArgs(projectDir, hostWorkspaceDir);
     const configMount = ["-v", `${projectDir}:${TOTOPO_CONTAINER_PATH}:ro`];
 
     if (scope.mode === "repo") {
@@ -373,113 +359,24 @@ function scopesMatch(selected: ScopeConfig, existing: ScopeConfig | null, worksp
     return true;
 }
 
-// --- Build agent context documents -------------------------------------------------------------------------------------------------------
-interface AgentContextDocs {
-    claude: string; // -> agents/claude/CLAUDE.md
-    opencode: string; // -> agents/opencode/config/AGENTS.md
-    codex: string; // -> agents/codex/AGENTS.md
+// --- Shadow label args -------------------------------------------------------------------------------------------------------------------
+function buildShadowLabelArgs(shadowedDirs: string[]): string[] {
+    return ["--label", `totopo.shadows=${shadowedDirs.sort().join(",")}`];
 }
 
-// Assembles the agent context markdown injected into each supported agent's config dir at session start
-function buildAgentContextDocs(scope: ScopeConfig): AgentContextDocs {
-    // -- Scope section --------------------------------------------------------------------------------------------------------------------
-    let scopeSection: string;
-    if (scope.mode === "repo") {
-        scopeSection = `## Workspace scope: repo
-
-You have access to the full repository at \`/workspace\`. Some operations (git push, system-level changes) require running on the host.`;
-    } else if (scope.mode === "cwd") {
-        scopeSection = `## Workspace scope: cwd
-
-Workspace is scoped to one directory (\`${scope.hostCwd}\`). Files outside it are not visible to you. Commands that depend on absent files will fail.`;
-    } else {
-        const pathList = scope.selectedPaths.map((p) => `- \`/workspace/${p}\``).join("\n");
-        scopeSection = `## Workspace scope: selective
-
-Workspace is selectively scoped. Only the following paths are mounted:\n\n${pathList}`;
-    }
-
-    // -- Git section ----------------------------------------------------------------------------------------------------------------------
-    let gitSection: string;
-    if (scope.mode === "repo") {
-        gitSection = `## Git availability
-
-Git is fully available for local operations (commit, branch, log, diff, status, etc.).
-
-Remote access (push, pull, fetch, clone) is **blocked at the system level** by design — \`protocol.allow = never\` is enforced in \`/etc/gitconfig\` and cannot be overridden without root. This is a deliberate security boundary: the container has no access to remote repositories. Ask the user to run any remote git operations from the host.`;
-    } else {
-        gitSection = `## Git availability
-
-Git local operations are **not available** in this scope — \`.git\` is not mounted. This is intentional: mounting \`.git\` would expose the full commit history of all repository files, including those outside your current mount, defeating the security boundary of scoped access.
-
-Remote access is also **blocked container-wide** by design (\`protocol.allow = never\` in \`/etc/gitconfig\`).
-
-If git operations are needed, ask the user to run them on the host.`;
-    }
-
-    // -- Selective-only warning -----------------------------------------------------------------------------------------------------------
-    const selectiveWarning =
-        scope.mode === "selective"
-            ? `\n\n## Selective scope: file creation warning
-
-Any file you create **outside your mounted paths** (e.g. at \`/\`, \`/tmp\`, or any path not listed above) will **not be visible on the host** and will be lost when the container is rebuilt.
-
-If the user asks you to create or modify a file at such a location:
-1. Notify the user that the path is outside your mounted workspace.
-2. Explain that files created there will not sync to the host.
-3. Suggest the user run the command on the host instead, or confirm they want the file only inside the container (understanding it will be lost on rebuild).`
-            : "";
-
-    // -- Responsibilities section ---------------------------------------------------------------------------------------------------------
-    const responsibilitiesSection = `## Your responsibilities at session start
-
-At the start of every session:
-- Briefly surface your current workspace scope and its limitations to the user.
-- Tell the user what you cannot access in this session (files, git, remotes).`;
-
-    // -- Assemble per-tool - only the self-referencing path differs -----------------------------------------------------------------------
-    function build(toolPath: string): string {
-        const constraintsSection = `## Constraints
-
-- Files outside mounted paths cannot be read, written, or executed.
-- If a command fails because of missing files, tell the user: "I have limited workspace scope — please run \`<command>\` on the host."
-- \`~/.totopo/\` is read-only inside the container.
-- This file (\`${toolPath}\`) is managed by totopo and overwritten on every session start. Do not edit it.`;
-
-        return (
-            [
-                "# totopo Workspace Context\n\nYou are running inside a totopo dev container.\n",
-                scopeSection,
-                gitSection,
-                constraintsSection,
-                responsibilitiesSection,
-            ].join("\n\n") +
-            selectiveWarning +
-            "\n"
-        );
-    }
-
-    return {
-        claude: build("~/.claude/CLAUDE.md"),
-        opencode: build("~/.config/opencode/AGENTS.md"),
-        codex: build("~/.codex/AGENTS.md"),
-    };
+function readContainerShadowLabel(name: string): string[] {
+    const result = spawnSync("docker", ["inspect", "--format", '{{index .Config.Labels "totopo.shadows"}}', name], {
+        encoding: "utf8",
+        stdio: "pipe",
+    });
+    if (result.status !== 0) return [];
+    const raw = result.stdout.trim();
+    if (!raw || raw === "<no value>") return [];
+    return raw.split(",").sort();
 }
 
-// --- Inject agent context ----------------------------------------------------------------------------------------------------------------
-function injectAgentContext(projectDir: string, docs: AgentContextDocs): void {
-    const a = join(projectDir, "agents");
-
-    const files = [
-        { path: join(a, "claude", "CLAUDE.md"), content: docs.claude },
-        { path: join(a, "opencode", "config", "AGENTS.md"), content: docs.opencode },
-        { path: join(a, "codex", "AGENTS.md"), content: docs.codex },
-    ];
-
-    for (const { path: filePath, content } of files) {
-        mkdirSync(dirname(filePath), { recursive: true });
-        writeFileSync(filePath, content);
-    }
+function shadowsMatch(current: string[], existing: string[]): boolean {
+    return JSON.stringify([...current].sort()) === JSON.stringify([...existing].sort());
 }
 
 // --- Run post-start ----------------------------------------------------------------------------------------------------------------------
@@ -519,6 +416,7 @@ function runContainer(
     workspaceDir: string,
     projectDir: string,
     cwd: string,
+    shadowedDirs: string[],
 ): void {
     const envFile = ensureGlobalEnvFile();
     const run = spawnSync(
@@ -533,6 +431,7 @@ function runContainer(
             envFile,
             ...buildScopeEnvArgs(scope),
             ...buildScopeLabelArgs(scope),
+            ...buildShadowLabelArgs(shadowedDirs),
             "--security-opt",
             "no-new-privileges:true",
             "--label",
@@ -558,6 +457,9 @@ export async function run(_packageDir: string, ctx: ProjectContext): Promise<voi
 
     // --- Always prompt scope first -------------------------------------------------------------------------------------------------------
     const scope = await promptScope(workspaceDir, cwd);
+    const hostWorkspaceDir = scope.mode === "repo" ? workspaceDir : cwd;
+    const shadowedDirs = resolveShadowedDirs(hostWorkspaceDir);
+    const agentDocs = buildAgentContextDocs(scope, shadowedDirs);
 
     // --- Inspect container state ---------------------------------------------------------------------------------------------------------
     const inspect = spawnSync("docker", ["inspect", "--format", "{{.State.Status}}", containerName], {
@@ -581,17 +483,18 @@ export async function run(_packageDir: string, ctx: ProjectContext): Promise<voi
         }
 
         log.step("Preparing agent context...");
-        injectAgentContext(projectDir, buildAgentContextDocs(scope));
+        injectAgentContext(projectDir, agentDocs);
         log.step("Starting dev container...");
-        runContainer(scope, containerName, imageName, workspaceDir, projectDir, cwd);
+        runContainer(scope, containerName, imageName, workspaceDir, projectDir, cwd, shadowedDirs);
         runPostStart(containerName);
     } else if (containerStatus === "exited") {
-        // --- Container stopped - resume or recreate based on scope -----------------------------------------------------------------------
+        // --- Container stopped - resume or recreate based on scope/shadows ---------------------------------------------------------------
         const existingScope = readContainerScopeLabel(containerName);
+        const existingShadows = readContainerShadowLabel(containerName);
 
-        if (scopesMatch(scope, existingScope, workspaceDir)) {
+        if (scopesMatch(scope, existingScope, workspaceDir) && shadowsMatch(shadowedDirs, existingShadows)) {
             log.step("Preparing agent context...");
-            injectAgentContext(projectDir, buildAgentContextDocs(scope));
+            injectAgentContext(projectDir, agentDocs);
             log.step("Resuming dev container...");
             const start = spawnSync("docker", ["start", containerName], { stdio: "inherit" });
             if (start.status !== 0) {
@@ -601,27 +504,28 @@ export async function run(_packageDir: string, ctx: ProjectContext): Promise<voi
             runPostStart(containerName);
         } else {
             log.step("Preparing agent context...");
-            injectAgentContext(projectDir, buildAgentContextDocs(scope));
+            injectAgentContext(projectDir, agentDocs);
             log.step("Recreating dev container with new scope...");
             removeContainer(containerName);
-            runContainer(scope, containerName, imageName, workspaceDir, projectDir, cwd);
+            runContainer(scope, containerName, imageName, workspaceDir, projectDir, cwd, shadowedDirs);
             runPostStart(containerName);
         }
     } else {
-        // --- Container running - connect directly or recreate based on scope -------------------------------------------------------------
+        // --- Container running - connect directly or recreate based on scope/shadows -----------------------------------------------------
         const existingScope = readContainerScopeLabel(containerName);
+        const existingShadows = readContainerShadowLabel(containerName);
 
-        if (!scopesMatch(scope, existingScope, workspaceDir)) {
+        if (!scopesMatch(scope, existingScope, workspaceDir) || !shadowsMatch(shadowedDirs, existingShadows)) {
             log.step("Preparing agent context...");
-            injectAgentContext(projectDir, buildAgentContextDocs(scope));
+            injectAgentContext(projectDir, agentDocs);
             log.step("Recreating dev container with new scope...");
             removeContainer(containerName);
-            runContainer(scope, containerName, imageName, workspaceDir, projectDir, cwd);
+            runContainer(scope, containerName, imageName, workspaceDir, projectDir, cwd, shadowedDirs);
             runPostStart(containerName);
         } else {
-            // Same scope and container already running - refresh context in place.
+            // Same scope/shadows and container already running - refresh context in place.
             log.step("Refreshing agent context...");
-            injectAgentContext(projectDir, buildAgentContextDocs(scope));
+            injectAgentContext(projectDir, agentDocs);
         }
         // Fall through to connect
     }

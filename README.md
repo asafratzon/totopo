@@ -25,7 +25,7 @@ totopo organises work around **projects** — any local directory you register w
 - **Runtime Mode** — adjust runtime mode and installed tools
 - **Rebuild container** — rebuild the docker image (upon changing runtime mode)
 
-All config lives in `~/.totopo/` — nothing is written to your project by default.
+All config lives in `~/.totopo/` — nothing is written to your project directory.
 
 ### Concurrent Sessions
 totopo uses one Docker container per project, not one per session. You can open as many terminal sessions as you need — they all connect to the same container, keeping resource usage bounded and reconnections fast.
@@ -53,11 +53,11 @@ npx totopo
 ## Core features at a glance
 
 - **Docker isolation** — AI agents run in a container with strict filesystem and privilege boundaries
-- **Agents can't reach remote** — push, pull, fetch, and clone are blocked inside the container, preventing agents from accidentally affecting your remote repositories
-- **AI CLIs with persistent sessions** — OpenCode, Claude Code, and Codex are pre-installed, with conversation history that survives restarts and rebuilds
-- **Host-mirror or full runtime** — either match the container environment to your host, or use a standard dev container with the latest stable tools
-- **Agents are scope-aware** — agents are informed of the mounted files and constraints at session start, so they can factor that into how they work
-- **Scoped access** — expose only the files and directories the agent needs
+- **No remote git access** — push, pull, fetch, and clone are blocked inside the container, so agents can't accidentally affect your remote repositories
+- **Scoped access** — expose only the files and directories the agent needs; agents are informed of their scope and constraints at session start
+- **AI CLIs included** — OpenCode, Claude Code, and Codex are pre-installed and ready to use
+- **Persistent agent memory** — conversation history and session data survive container restarts and rebuilds; if your project has its own `.claude/`, `.codex/`, or `.opencode/` directories, they pass through into the container — otherwise they are stored in `~/.totopo/`
+- **Host-mirror or standard runtime** — match the container environment to your host, or use a general-purpose dev container with the latest stable tools
 
 ## Features in Detail
 
@@ -99,7 +99,7 @@ Scoped sessions are well-suited for focused tasks where you want to give the age
 <!-- Example showcasing agent awareness of selective scope limitations:-->
 <!-- ![Scoped access](.github/assets/demo-scoped.gif) -->
 
-### AI CLIs with persistent sessions
+### AI CLIs included
 
 The container comes with the major AI coding CLIs ready to use out of the box:
 
@@ -109,20 +109,24 @@ claude      # Claude Code (Anthropic)
 codex       # Codex (OpenAI)
 ```
 
-Agent session data is isolated per project, so agents do not bleed context between projects. To clear memory, run `npx totopo` and navigate to `Manage totopo > Clear agent memory` and select a project. This stops the container if running and removes the agents directory.
+### Persistent agent memory
+
+Agent session data is isolated per project and persists across container restarts and rebuilds. If your project has its own `.claude/`, `.codex/`, or `.opencode/` directories, they pass through into the container so the AI CLI can read your project-level config. If they don't exist, totopo redirects writes to `~/.totopo/` so nothing is created in your project directory.
+
+To clear memory, run `npx totopo` and navigate to `Manage totopo > Clear agent memory` and select a project. This stops the container if running and removes the agents directory.
 
 ### Dev container runtime
 
 Choose between two modes:
 
 - **Host-mirror** — the container runtime matches your host Node.js version and selected tools, keeping the environment consistent with your local setup.
-- **Full** — a full dev container with the latest stable versions of all tools. Good default if you do not need version parity with your host.
+- **Standard** — a general-purpose dev container with the latest stable versions of all tools. Good default if you do not need version parity with your host.
 
 Either way, basic dev tools and all three AI CLIs are always included.
 
 ## What gets installed
 
-All totopo config lives in `~/.totopo/` on your machine — nothing is written to your project directory unless you opt in.
+All totopo config lives in `~/.totopo/` on your machine — nothing is written to your project directory.
 
 ```text
 ~/.totopo/
@@ -136,7 +140,9 @@ All totopo config lives in `~/.totopo/` on your machine — nothing is written t
         └── agents/             # agent session data — created on first session start
             ├── claude/         # mounted as ~/.claude/
             ├── opencode/       # mounted as ~/.config/opencode/ + ~/.local/share/opencode/
-            └── codex/          # mounted as ~/.codex/
+            ├── codex/          # mounted as ~/.codex/
+            └── workspace/      # shadow mounts — used when the project doesn't have
+                                # its own .claude/, .codex/, or .opencode/ dirs
 ```
 
 Agent session history and conversation data are persisted in the `agents/` directory across container rebuilds and restarts.

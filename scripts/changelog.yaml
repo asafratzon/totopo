@@ -1,6 +1,20 @@
 in_progress:
-  base_version: 2.0.1
-  entries: []
+  base_version: 2.1.0
+  entries:
+    - rc_version: "2.1.0-rc-1"
+      date: "2026-03-28"
+      added:
+        - >-
+          Automatic workspace shadow mounts — `.claude/`, `.codex/`, and `.opencode/` are detected at
+          container creation time. If the directory exists in the project, it passes through into the
+          container. If not, totopo shadow-mounts it so AI CLIs write to `~/.totopo/` instead of
+          creating directories in the project. Containers are automatically recreated when shadow state
+          changes.
+      changed:
+        - >-
+          "Full" runtime mode renamed to "Standard" in documentation and feature descriptions.
+        - >-
+          Release documentation consolidated from a standalone document into the contributing guide.
 releases:
   - version: 2.0.0
     date: "2026-03-26"
