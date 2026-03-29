@@ -1,164 +1,34 @@
 in_progress:
-  base_version: 2.1.0
-  entries:
-    - rc_version: "2.1.0-rc-1"
-      date: "2026-03-28"
-      added:
-        - >-
-          Automatic workspace shadow mounts — `.claude/`, `.codex/`, and `.opencode/` are detected at
-          container creation time. If the directory exists in the project, it passes through into the
-          container. If not, totopo shadow-mounts it so AI CLIs write to `~/.totopo/` instead of
-          creating directories in the project. Containers are automatically recreated when shadow state
-          changes.
-      changed:
-        - >-
-          "Full" runtime mode renamed to "Standard" in documentation and feature descriptions.
-        - >-
-          Release documentation consolidated from a standalone document into the contributing guide.
-    - rc_version: "2.1.0-rc-2"
-      date: "2026-03-28"
-      added:
-        - >-
-          Uninstall project — new action in the Manage totopo menu that lets you pick individual
-          projects to fully remove (container, image, and ~/.totopo/projects/<id>/ directory) without
-          wiping the entire ~/.totopo/ installation. Current project is shown first when available.
-    - rc_version: "2.1.0-rc-3"
-      date: "2026-03-28"
-      fixed:
-        - >-
-          Manage totopo menu continued looping after uninstalling the current project, causing stale
-          references. The menu now exits cleanly when the current project is among the deleted projects.
-    - rc_version: "2.1.0-rc-4"
-      date: "2026-03-29"
-      added:
-        - >-
-          Shadow paths — user-configurable option to overlay specific project directories with empty
-          container-local directories. Configured via Settings > Shadow paths. Use cases include
-          separate node_modules (different host/container OS) and hiding sensitive files from agents.
-          Shadow directories persist in ~/.totopo/ across rebuilds; containers are automatically
-          recreated when shadow paths change.
-        - >-
-          Uninstall project — new action in the Manage totopo menu that lets you pick individual
-          projects to fully remove (container, image, and ~/.totopo/projects/<id>/ directory) without
-          wiping the entire ~/.totopo/ installation.
-      changed:
-        - >-
-          Settings is now a submenu with Runtime mode and Shadow paths options, replacing the previous
-          single runtime mode picker. Menu label updated from "Runtime mode" to "Settings".
-        - >-
-          Sessions always mount the full project directory at /workspace. When launched from a
-          subdirectory, a simple "Here / Repo root" prompt sets the starting working directory.
-        - >-
-          "Full" runtime mode renamed to "Standard" in documentation and feature descriptions.
-        - >-
-          Release documentation consolidated from a standalone document into the contributing guide.
-        - >-
-          Changelog convention updated — each RC entry is now a cumulative release description.
-          pnpm rc:promote uses only the latest RC entry as the release notes instead of squashing
-          all entries.
-      fixed:
-        - >-
-          Manage totopo menu continued looping after uninstalling the current project, causing stale
-          references. The menu now exits cleanly when the current project is among the deleted projects.
-    - rc_version: "2.1.0-rc-5"
-      date: "2026-03-29"
-      added:
-        - >-
-          Shadow paths — user-configurable option to overlay specific project directories with empty
-          container-local directories. Configured via Settings > Shadow paths. Use cases include
-          separate node_modules (different host/container OS) and hiding sensitive files from agents.
-          Shadow directories persist in ~/.totopo/ across rebuilds; containers are automatically
-          recreated when shadow paths change.
-        - >-
-          Uninstall project — new action in the Manage totopo menu that lets you pick individual
-          projects to fully remove (container, image, and ~/.totopo/projects/<id>/ directory) without
-          wiping the entire ~/.totopo/ installation.
-      changed:
-        - >-
-          Settings is now a submenu with Runtime mode and Shadow paths options, replacing the previous
-          single runtime mode picker. Menu label updated from "Runtime mode" to "Settings".
-        - >-
-          Sessions always mount the full project directory at /workspace. When launched from a
-          subdirectory, a simple "Here / Repo root" prompt sets the starting working directory.
-        - >-
-          "Full" runtime mode renamed to "Standard" in documentation and feature descriptions.
-        - >-
-          Release documentation consolidated from a standalone document into the contributing guide.
-        - >-
-          Changelog convention updated — each RC entry is now a cumulative release description.
-          pnpm rc:promote uses only the latest RC entry as the release notes instead of squashing
-          all entries.
-      fixed:
-        - >-
-          Manage totopo menu continued looping after uninstalling the current project, causing stale
-          references. The menu now exits cleanly when the current project is among the deleted projects.
-    - rc_version: "2.1.0-rc-6"
-      date: "2026-03-29"
-      added:
-        - >-
-          Shadow paths — overlay specific project files or directories with empty container-local
-          equivalents. Configured via Settings > Shadow paths. Shadowed directories are initialized
-          empty and accumulate container content across sessions (e.g. node_modules). Shadowed files
-          appear as empty files, hiding host contents from agents. Persists across rebuilds; container
-          is recreated when paths change.
-        - >-
-          Uninstall project — new action in the Manage totopo menu that lets you pick individual
-          projects to fully remove (container, image, and ~/.totopo/projects/<id>/ directory) without
-          wiping the entire ~/.totopo/ installation.
-      changed:
-        - >-
-          Settings is now a submenu with Runtime mode, Shadow paths, and Add project anchor options.
-          The project anchor option moves from the main menu into Settings and is only shown when
-          totopo.yaml does not yet exist.
-        - >-
-          Sessions always mount the full project directory at /workspace. When launched from a
-          subdirectory, a simple "Here / Repo root" prompt sets the starting working directory.
-        - >-
-          "Full" runtime mode renamed to "Standard" in documentation and feature descriptions.
-        - >-
-          Release documentation consolidated from a standalone document into the contributing guide.
-        - >-
-          Changelog convention updated — each RC entry is now a cumulative release description.
-          pnpm rc:promote uses only the latest RC entry as the release notes instead of squashing
-          all entries.
-      fixed:
-        - >-
-          Manage totopo menu continued looping after uninstalling the current project, causing stale
-          references. The menu now exits cleanly when the current project is among the deleted projects.
-    - rc_version: "2.1.0-rc-7"
-      date: "2026-03-29"
-      added:
-        - >-
-          Shadow paths — overlay specific project files or directories with empty container-local
-          equivalents. Configured via Settings > Shadow paths. Shadowed directories are initialized
-          empty and accumulate container content across sessions (e.g. node_modules). Shadowed files
-          appear as empty files, hiding host contents from agents. Persists across rebuilds; container
-          is recreated when paths change.
-        - >-
-          Uninstall project — new action in the Manage totopo menu that lets you pick individual
-          projects to fully remove (container, image, and ~/.totopo/projects/<id>/ directory) without
-          wiping the entire ~/.totopo/ installation.
-      changed:
-        - >-
-          Settings is now a submenu with Runtime mode, Shadow paths, and Add project anchor options.
-          The project anchor option moves from the main menu into Settings and is only shown when
-          totopo.yaml does not yet exist.
-        - >-
-          Sessions always mount the full project directory at /workspace. When launched from a
-          subdirectory, a simple "Here / Repo root" prompt sets the starting working directory.
-        - >-
-          "Full" runtime mode renamed to "Standard" in documentation and feature descriptions.
-        - >-
-          Release documentation consolidated from a standalone document into the contributing guide.
-        - >-
-          Changelog convention updated — each RC entry is now a cumulative release description.
-          pnpm rc:promote uses only the latest RC entry as the release notes instead of squashing
-          all entries.
-      fixed:
-        - >-
-          Manage totopo menu continued looping after uninstalling the current project, causing stale
-          references. The menu now exits cleanly when the current project is among the deleted projects.
+  base_version: 2.1.1
+  entries: []
 releases:
+  - version: 2.1.0
+    date: "2026-03-29"
+    added:
+      - >-
+        Shadow paths — overlay specific project files or directories with empty container-local equivalents. Configured
+        via Settings > Shadow paths. Shadowed directories are initialized empty and accumulate container content across
+        sessions (e.g. node_modules). Shadowed files appear as empty files, hiding host contents from agents. Persists
+        across rebuilds; container is recreated when paths change.
+      - >-
+        Uninstall project — new action in the Manage totopo menu that lets you pick individual projects to fully remove
+        (container, image, and ~/.totopo/projects/<id>/ directory) without wiping the entire ~/.totopo/ installation.
+    changed:
+      - >-
+        Settings is now a submenu with Runtime mode, Shadow paths, and Add project anchor options. The project anchor
+        option moves from the main menu into Settings and is only shown when totopo.yaml does not yet exist.
+      - >-
+        Sessions always mount the full project directory at /workspace. When launched from a subdirectory, a simple
+        "Here / Repo root" prompt sets the starting working directory.
+      - "\"Full\" runtime mode renamed to \"Standard\" in documentation and feature descriptions."
+      - Release documentation consolidated from a standalone document into the contributing guide.
+      - >-
+        Changelog convention updated — each RC entry is now a cumulative release description. pnpm rc:promote uses only
+        the latest RC entry as the release notes instead of squashing all entries.
+    fixed:
+      - >-
+        Manage totopo menu continued looping after uninstalling the current project, causing stale references. The menu
+        now exits cleanly when the current project is among the deleted projects.
   - version: 2.0.0
     date: "2026-03-26"
     added:
