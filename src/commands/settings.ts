@@ -155,13 +155,15 @@ async function removeShadowPaths(ctx: ProjectContext): Promise<void> {
 async function promptRecreateContainer(ctx: ProjectContext): Promise<void> {
     const containerName = ctx.meta.containerName;
 
-    // Check if container exists
+    // Check if container is running
     const inspect = spawnSync("docker", ["inspect", "--format", "{{.State.Status}}", containerName], {
         encoding: "utf8",
         stdio: "pipe",
     });
-    if (inspect.status !== 0) {
-        log.info("No running container — changes will apply on next session.");
+    const containerStatus = inspect.status === 0 ? inspect.stdout.trim() : null;
+
+    if (containerStatus !== "running") {
+        log.info("Changes will apply on next session.");
         return;
     }
 
