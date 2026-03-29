@@ -141,7 +141,7 @@ if (!squashAlreadyDone && changelog.in_progress.base_version !== baseVersion) {
     process.exit(1);
 }
 
-if (!squashAlreadyDone) log.success(`Found ${changelog.in_progress.entries.length} rc entry/entries to squash for ${baseVersion}`);
+if (!squashAlreadyDone) log.success(`Found rc-${changelog.in_progress.entries.length} to qualify as ${baseVersion}`);
 
 // ─── Confirm ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 const ok = await confirm({
