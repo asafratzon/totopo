@@ -108,12 +108,15 @@ At the start of every session:
         const pathList = shadowPaths.map((p) => `- \`/workspace/${p}\``).join("\n");
         shadowSection = `## Shadow paths
 
-The following paths are shadowed — their host contents are overlaid with empty
-directories inside the container:
+The following paths are overlaid with container-local entries and do not reflect
+the host filesystem:
 
 ${pathList}
 
-These paths exist in the container but do not reflect the host filesystem.`;
+These paths are initialized empty on first use. The container may accumulate
+content in them over time (for example, a shadowed \`node_modules\` gets
+populated when you run \`npm install\` inside the container). Do not assume they
+are empty, and do not attempt to sync or restore their host contents.`;
     }
 
     // -- Assemble per-tool - only the self-referencing path differs -----------------------------------------------------------------------

@@ -8,6 +8,8 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 
+export const TOTOPO_YAML = "totopo.yaml";
+
 export interface ProjectMeta {
     projectRoot: string;
     displayName: string;

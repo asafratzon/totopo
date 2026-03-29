@@ -54,7 +54,7 @@ npx totopo
 - **No remote git access** — push, pull, fetch, and clone are blocked inside the container, so agents can't accidentally affect your remote repositories
 - **AI CLIs included** — OpenCode, Claude Code, and Codex are pre-installed and ready to use, agents are informed of their constraints at session start
 - **Persistent agent memory** — conversation history and session data survive container restarts and rebuilds, stored in `~/.totopo/`
-- **Shadow paths** — opt-in overlay of specific directories with container-local directories, useful for separate `node_modules` or hiding sensitive files from agents
+- **Shadow paths** — opt-in overlay of specific files or directories with empty container-local equivalents, useful for separate `node_modules` or hiding sensitive files from agents
 - **Host-mirror or standard runtime** — match the container environment to your host, or use a general-purpose dev container with the latest stable tools
 
 ## Features in Detail
@@ -85,13 +85,16 @@ If you're already at the project root, no prompt is shown — the session starts
 
 ### Shadow paths
 
-Shadow paths let you overlay specific project directories with empty container-local directories. Configure them via the Settings menu (`Settings > Shadow paths`).
+Shadow paths let you overlay specific project files or directories with empty container-local equivalents. Configure them via the Settings menu (`Settings > Shadow paths`).
+
+- A shadowed **directory** appears as an empty directory on first use. The container can populate it freely and the contents persist across sessions — for example, running `npm install` into a shadowed `node_modules` means subsequent sessions find it already installed.
+- A shadowed **file** appears as an empty file inside the container, hiding the host file's contents from agents.
 
 Common use cases:
 - **Separate `node_modules`** — the container installs its own dependencies, useful when host and container run different operating systems
 - **Hide sensitive files** — keep `.env`, credentials, or other secrets invisible to agents running inside the container
 
-Shadow paths are stored in `settings.json` and persist across rebuilds. When shadow paths change, the container is automatically recreated on the next session. Host-side shadow directories are stored in `~/.totopo/projects/<id>/shadows/`.
+Shadow paths are stored in `settings.json` and persist across rebuilds. When shadow paths change, the container is automatically recreated on the next session. Host-side shadow entries are stored in `~/.totopo/projects/<id>/shadows/`.
 
 ### AI CLIs included
 

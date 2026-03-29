@@ -14,7 +14,7 @@ import { type RuntimeMode, writeSettings } from "../lib/config.js";
 import { detectHostRuntimes } from "../lib/detect-host.js";
 import { generateDockerfile } from "../lib/generate-dockerfile.js";
 import type { ProjectContext } from "../lib/project-identity.js";
-import { findConflictingProject, registerProject, writeProjectMeta } from "../lib/project-identity.js";
+import { findConflictingProject, registerProject, TOTOPO_YAML, writeProjectMeta } from "../lib/project-identity.js";
 import { selectTools } from "../lib/select-tools.js";
 
 interface TotopoYaml {
@@ -23,7 +23,7 @@ interface TotopoYaml {
 }
 
 function readTotopoYaml(dir: string): TotopoYaml | null {
-    const p = join(dir, "totopo.yaml");
+    const p = join(dir, TOTOPO_YAML);
     if (!existsSync(p)) return null;
     try {
         const raw = loadYaml(readFileSync(p, "utf8"));
@@ -249,7 +249,7 @@ export async function run(packageDir: string, cwd: string): Promise<ProjectConte
 
     // --- Create totopo.yaml (shared mode only) -------------------------------------------------------------------------------------------
     if (commitScope === "shared") {
-        const totopoYamlPath = join(projectRoot, "totopo.yaml");
+        const totopoYamlPath = join(projectRoot, TOTOPO_YAML);
         if (!existsSync(totopoYamlPath)) {
             const wantsMeta = await confirm({ message: "Add a name/description to totopo.yaml?", initialValue: false });
             let nameStr = "";
@@ -283,7 +283,7 @@ export async function run(packageDir: string, cwd: string): Promise<ProjectConte
 // Creates totopo.yaml at the project root, prompting for optional name/description.
 export async function addProjectAnchor(ctx: ProjectContext): Promise<void> {
     const toTildePath = (p: string) => (p.startsWith(homedir()) ? p.replace(homedir(), "~") : p);
-    const totopoYamlPath = join(ctx.meta.projectRoot, "totopo.yaml");
+    const totopoYamlPath = join(ctx.meta.projectRoot, TOTOPO_YAML);
 
     if (existsSync(totopoYamlPath)) {
         log.info(`${toTildePath(totopoYamlPath)} already exists.`);

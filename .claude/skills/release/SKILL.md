@@ -75,7 +75,7 @@ If yes:
 
 If no, skip this step.
 
-## Step 7 — Remind about host commands
+## Step 7 — Remind about host commands and testing
 
 Print this reminder:
 
@@ -87,3 +87,18 @@ Print this reminder:
 > ```
 >
 > This will publish the RC to npm and push the commit + tag.
+
+Then, derive a short test checklist from the RC changelog entry (the `added`, `changed`, and `fixed` items). For each item, suggest one concrete action the user can take to verify it works end-to-end on the host. Focus on user-visible behavior — skip internal refactors or convention changes that have no runtime effect.
+
+Format it as:
+
+> **RC smoke tests** — run these after `pnpm rc` publishes:
+>
+> ```
+> npx totopo@rc
+> ```
+>
+> - [ ] _test scenario derived from changelog item_
+> - [ ] _..._
+
+Only include tests that are actually testable by running `npx totopo@rc` interactively. Omit items that are documentation-only, tooling-only, or already covered by `pnpm check`.
