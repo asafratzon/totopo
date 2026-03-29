@@ -76,7 +76,7 @@ if (porcelainLines.length > 0) {
             stashedBeforeRelease = true;
         } else {
             log.step("Committing non-packaged changes...");
-            execSync(`git add ${changedPaths.map((p) => JSON.stringify(p)).join(" ")}`, { stdio: "inherit" });
+            execSync("git add -A", { stdio: "inherit" });
             execSync(`git commit -m "chore: commit non-packaged changes before release"`, { stdio: "inherit" });
         }
     }
