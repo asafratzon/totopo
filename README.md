@@ -20,17 +20,15 @@ Note: no sandbox substitutes for good judgment. Consider keeping any sensitive s
 
 totopo organises work around **projects** — any local directory you register with totopo. The first time you run `npx totopo` in a directory, it walks you through a short setup. Every subsequent run, from anywhere inside that directory tree, totopo resolves the project automatically and shows the project menu:
 
-- **Open session** — choose a scope and jump into an AI coding session
+- **Open session** — jump into an AI coding session
 - **Stop container** — stop the running container
-- **Runtime Mode** — adjust runtime mode and installed tools
+- **Settings** — runtime mode, shadow paths
 - **Rebuild container** — rebuild the docker image (upon changing runtime mode)
 
 All config lives in `~/.totopo/` — nothing is written to your project directory.
 
 ### Concurrent Sessions
 totopo uses one Docker container per project, not one per session. You can open as many terminal sessions as you need — they all connect to the same container, keeping resource usage bounded and reconnections fast.
-
-The tradeoff is that only one scope can be active at a time: if you reopen a session with a different scope, totopo recreates the container to match the new mounts, which would terminate any active sessions connected to the previous container.
 
 ## Requirements
 
@@ -47,16 +45,16 @@ npx totopo
 <!--First-time setup — running `npx totopo` in a fresh repo, selecting a runtime mode, and waiting for the Docker image to build for the first time:-->
 <!-- ![First-time setup](.github/assets/demo-onboarding.gif) -->
 
-<!--Opening a session when totopo is already initialized is quick. The agent is aware of its scope and sandbox constraints:-->
+<!--Opening a session when totopo is already initialized is quick. The agent is aware of the sandbox constraints:-->
 <!-- ![Quick start](.github/assets/demo-quickstart.gif) -->
 
 ## Core features at a glance
 
 - **Docker isolation** — AI agents run in a container with strict filesystem and privilege boundaries
 - **No remote git access** — push, pull, fetch, and clone are blocked inside the container, so agents can't accidentally affect your remote repositories
-- **Scoped access** — expose only the files and directories the agent needs; agents are informed of their scope and constraints at session start
-- **AI CLIs included** — OpenCode, Claude Code, and Codex are pre-installed and ready to use
-- **Persistent agent memory** — conversation history and session data survive container restarts and rebuilds; if your project has its own `.claude/`, `.codex/`, or `.opencode/` directories, they pass through into the container — otherwise they are stored in `~/.totopo/`
+- **AI CLIs included** — OpenCode, Claude Code, and Codex are pre-installed and ready to use, agents are informed of their constraints at session start
+- **Persistent agent memory** — conversation history and session data survive container restarts and rebuilds, stored in `~/.totopo/`
+- **Shadow paths** — opt-in overlay of specific directories with container-local directories, useful for separate `node_modules` or hiding sensitive files from agents
 - **Host-mirror or standard runtime** — match the container environment to your host, or use a general-purpose dev container with the latest stable tools
 
 ## Features in Detail
@@ -68,7 +66,7 @@ Every session runs inside a Docker container. Your code is bind-mounted from the
 | Control | Implementation |
 | --- | --- |
 | Non-root user | All processes run as `devuser` (uid 1001) and cannot modify system-level config |
-| Filesystem isolation | Only the selected project paths are mounted; the rest of the host filesystem is not visible |
+| Filesystem isolation | Only the project directory is mounted; the rest of the host filesystem is not visible |
 | Git remote block | `protocol.allow = never` in `/etc/gitconfig` — push, pull, fetch, and clone are all refused and require root to override |
 | No host credentials forwarded | Host git credentials are never copied into the container |
 | Secrets never in image | API keys are loaded at runtime from `~/.totopo/.env` — never baked into the image, never mounted into the container |
@@ -76,28 +74,24 @@ Every session runs inside a Docker container. Your code is bind-mounted from the
 
 Remote git operations are blocked inside the container. Push from your host terminal instead.
 
-### Session scope
+### Working directory
 
-When you open a session, totopo asks what part of the project to mount into the container:
+The full project directory is always mounted at `/workspace` inside the container. When you run totopo from a subdirectory, you get a quick prompt to choose your starting working directory:
 
-- `Repo root` — the full project directory
-- `Current directory` — only the current directory
-- `Selective` — specific files and folders chosen interactively
+- **Here** — start in the subdirectory you launched from
+- **Repo root** — start at `/workspace`
 
-The selected scope is stored on the container and checked on every later `Open session`.
+If you're already at the project root, no prompt is shown — the session starts directly at `/workspace`.
 
-- If the requested scope matches the existing container, totopo connects directly to it if running, or resumes it if stopped.
-- If the requested scope is different, totopo recreates the container so the mounted paths match the new scope.
-- Parallel terminals on the same scope are fine. totopo connects with `docker exec`, so any concurrency limits are just the normal limits of sharing one running container.
+### Shadow paths
 
-This is an intentional tradeoff: you get predictable resource usage and quick reconnects, but only one active mounted view per project at a time.
+Shadow paths let you overlay specific project directories with empty container-local directories. Configure them via the Settings menu (`Settings > Shadow paths`).
 
-In `Current directory` and `Selective` scopes, `.git` is intentionally not mounted. Mounting `.git` would expose the full commit history of every repository file, including files outside the mounted paths, which defeats the point of scoped access. As a result, git is unavailable inside those scoped sessions and the agent operates without repository history. The agent is instructed to surface these limitations at session start.
+Common use cases:
+- **Separate `node_modules`** — the container installs its own dependencies, useful when host and container run different operating systems
+- **Hide sensitive files** — keep `.env`, credentials, or other secrets invisible to agents running inside the container
 
-Scoped sessions are well-suited for focused tasks where you want to give the agent a narrow, explicit view of your codebase.
-
-<!-- Example showcasing agent awareness of selective scope limitations:-->
-<!-- ![Scoped access](.github/assets/demo-scoped.gif) -->
+Shadow paths are stored in `settings.json` and persist across rebuilds. When shadow paths change, the container is automatically recreated on the next session. Host-side shadow directories are stored in `~/.totopo/projects/<id>/shadows/`.
 
 ### AI CLIs included
 
@@ -111,9 +105,9 @@ codex       # Codex (OpenAI)
 
 ### Persistent agent memory
 
-Agent session data is isolated per project and persists across container restarts and rebuilds. If your project has its own `.claude/`, `.codex/`, or `.opencode/` directories, they pass through into the container so the AI CLI can read your project-level config. If they don't exist, totopo redirects writes to `~/.totopo/` so nothing is created in your project directory.
+Agent session data is isolated per project and persists across container restarts and rebuilds.
 
-To clear memory, run `npx totopo` and navigate to `Manage totopo > Clear agent memory` and select a project. This stops the container if running and removes the agents directory.
+To clear memory, run `npx totopo` and navigate to `Manage totopo > Clear agent memory` and select a project. This stops the container if running and removes the agents memory from ~/.totopo directory.
 
 ### Dev container runtime
 
@@ -137,12 +131,11 @@ All totopo config lives in `~/.totopo/` on your machine — nothing is written t
         ├── settings.json       # runtime mode + selected tools
         ├── Dockerfile          # container image definition
         ├── post-start.mjs      # security checks + readiness summary on every start
+        ├── shadows/            # host-side directories for shadow path mounts
         └── agents/             # agent session data — created on first session start
-            ├── claude/         # mounted as ~/.claude/
             ├── opencode/       # mounted as ~/.config/opencode/ + ~/.local/share/opencode/
-            ├── codex/          # mounted as ~/.codex/
-            └── workspace/      # shadow mounts — used when the project doesn't have
-                                # its own .claude/, .codex/, or .opencode/ dirs
+            ├── claude/         # mounted as ~/.claude/
+            └── codex/          # mounted as ~/.codex/
 ```
 
 Agent session history and conversation data are persisted in the `agents/` directory across container rebuilds and restarts.

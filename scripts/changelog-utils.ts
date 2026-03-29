@@ -147,20 +147,19 @@ export function squashAndPromote(baseVersion: string, date: string): ReleaseEntr
         throw new Error("changelog.yaml has no entries for this release. Run pnpm rc and add notes first.");
     }
 
-    // Combine all rc entries by category (preserve order, skip duplicates)
+    // Use the highest-numbered RC entry as the release notes (it contains the cumulative description).
+    // Entries may not be in order if added by different sessions, so sort by rc number.
+    const lastEntry = [...data.in_progress.entries]
+        .sort((a, b) => {
+            const numA = Number.parseInt(a.rc_version.split("-rc-")[1] ?? "0", 10);
+            const numB = Number.parseInt(b.rc_version.split("-rc-")[1] ?? "0", 10);
+            return numA - numB;
+        })
+        .at(-1) as RcEntry;
     const combined: Record<string, string[]> = {};
     for (const category of ["added", "changed", "fixed", "security"] as const) {
-        const seen = new Set<string>();
-        const items: string[] = [];
-        for (const entry of data.in_progress.entries) {
-            for (const item of entry[category] ?? []) {
-                if (!seen.has(item)) {
-                    seen.add(item);
-                    items.push(item);
-                }
-            }
-        }
-        if (items.length > 0) combined[category] = items;
+        const items = lastEntry[category];
+        if (items && items.length > 0) combined[category] = items;
     }
 
     const promoted: ReleaseEntry = { version: baseVersion, date, ...combined };

@@ -245,7 +245,7 @@ export async function run(packageDir: string, cwd: string): Promise<ProjectConte
     log.success(`Config written to ${toTildePath(ctx.projectDir)}`);
 
     // --- Write settings ------------------------------------------------------------------------------------------------------------------
-    writeSettings(ctx.projectDir, { runtimeMode: mode, selectedTools });
+    writeSettings(ctx.projectDir, { runtimeMode: mode, selectedTools, shadowPaths: [] });
 
     // --- Create totopo.yaml (shared mode only) -------------------------------------------------------------------------------------------
     if (commitScope === "shared") {

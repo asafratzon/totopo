@@ -4,6 +4,7 @@
 // =========================================================================================================================================
 
 import { box, cancel, isCancel, select } from "@clack/prompts";
+import { readSettings } from "../lib/config.js";
 import type { ProjectContext } from "../lib/project-identity.js";
 
 interface MenuArgs {
@@ -19,8 +20,11 @@ export async function run(args: MenuArgs): Promise<string> {
     // --- Status box ----------------------------------------------------------------------------------------------------------------------
     const containersLabel = activeCount === 0 ? "none" : activeCount === 1 ? "1 running" : `${activeCount} running`;
     const containerStatus = projectRunning ? "running" : "stopped";
+    const settings = readSettings(ctx.projectDir);
+    const shadowCount = settings.shadowPaths.length;
+    const shadowLine = shadowCount > 0 ? `\nshadows:     ${shadowCount === 1 ? "1 path" : `${shadowCount} paths`}` : "";
     box(
-        `project:     ${ctx.meta.displayName}\ncontainer:   ${containerStatus}\nall:         ${containersLabel}\nkeys:        ~/.totopo/.env`,
+        `project:     ${ctx.meta.displayName}\ncontainer:   ${containerStatus}\nall:         ${containersLabel}\nkeys:        ~/.totopo/.env${shadowLine}`,
         " totopo ",
         { contentAlign: "left", titleAlign: "center", width: "auto", rounded: true },
     );
@@ -30,7 +34,7 @@ export async function run(args: MenuArgs): Promise<string> {
     const options: Option[] = [
         { value: "dev", label: "Open session", hint: "start or resume the dev container" },
         ...(projectRunning ? [{ value: "stop", label: "Stop container", hint: "stops this project's container" }] : []),
-        { value: "settings", label: "Runtime mode", hint: "switch between host-mirror and full" },
+        { value: "settings", label: "Settings", hint: "runtime mode, shadow paths" },
         { value: "rebuild", label: "Rebuild container", hint: "force a fresh image build" },
         ...(!hasTotopoYaml ? [{ value: "add-anchor", label: "Add project anchor", hint: "create totopo.yaml for shared onboarding" }] : []),
         { value: "manage-totopo", label: "Manage totopo →", hint: "stop, clear, remove, reset, uninstall" },

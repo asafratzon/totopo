@@ -11,11 +11,13 @@ export type RuntimeMode = "full" | "host-mirror";
 export interface TotopoSettings {
     runtimeMode: RuntimeMode;
     selectedTools: string[]; // only meaningful in host-mirror mode
+    shadowPaths: string[];
 }
 
 const DEFAULTS: TotopoSettings = {
     runtimeMode: "host-mirror",
     selectedTools: [],
+    shadowPaths: [],
 };
 
 export function readSettings(totopoDir: string): TotopoSettings {
@@ -28,6 +30,8 @@ export function readSettings(totopoDir: string): TotopoSettings {
         return {
             runtimeMode: raw.runtimeMode === "full" ? "full" : "host-mirror",
             selectedTools: Array.isArray(raw.selectedTools) ? raw.selectedTools : [],
+            shadowPaths:
+                Array.isArray(raw.shadowPaths) && raw.shadowPaths.every((p: unknown) => typeof p === "string") ? raw.shadowPaths : [],
         };
     } catch {
         return { ...DEFAULTS };

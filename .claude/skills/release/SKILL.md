@@ -30,8 +30,15 @@ Print the current `latest` and `rc` dist-tags.
 ## Step 3 — Determine target RC version
 
 Apply these rules:
-- Look at `in_progress.entries` for any entry whose `rc_version` is **not** present in the published npm versions list. If found, that entry is being updated — use its `rc_version`.
-- Otherwise, find the highest published RC number for `base_version` and target `base_version-rc-{N+1}`. If no RCs exist yet, target `base_version-rc-1`.
+
+1. Find all entries in `in_progress.entries` whose `rc_version` is **not** present in the published npm versions list.
+2. **If more than one unpublished entry exists**, this is a mistake (likely from prior agent sessions). Warn the user, then fix it:
+   - The target RC version is `base_version-rc-{N+1}` where N is the highest **published** RC number for `base_version` (or 0 if none exist).
+   - Take the **content** (categories) from the highest-numbered unpublished entry (it should be cumulative).
+   - Remove all unpublished entries from `in_progress.entries` and replace them with a single entry at the target RC version, carrying over the content and setting the date to today.
+   - Show the user what you did.
+3. **If exactly one unpublished entry exists**, that entry is being updated — use its `rc_version`.
+4. **If no unpublished entries exist**, find the highest published RC number for `base_version` and target `base_version-rc-{N+1}`. If no RCs exist yet, target `base_version-rc-1`.
 
 **Ask the user to confirm** the target RC version before proceeding.
 
@@ -45,6 +52,7 @@ If not, help the user draft a new entry. The entry must follow these rules:
 - No implementation details, file paths, or internal module names
 - Group related changes into single entries rather than listing each file change separately
 - Set `date` to today's date (YYYY-MM-DD format)
+- **Cumulative convention**: the new RC entry should describe the **full release** as it would appear in the final release notes, not just the delta from the previous RC. Review all previous RC entries in `in_progress.entries` and carry forward any items that still apply. The latest entry becomes the release notes when promoted via `pnpm rc:promote`. Previous RC entries serve as a development audit trail.
 
 Write the entry to `scripts/changelog.yaml` under `in_progress.entries`.
 

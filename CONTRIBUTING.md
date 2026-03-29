@@ -78,6 +78,8 @@ releases:
 
 Only include categories that have entries. Keep entries concise — one line per item.
 
+**Cumulative convention**: each RC entry should be a cumulative description of the full release — not just its delta from the previous RC. When drafting a new entry, carry forward all items from previous RC entries that still apply. `pnpm rc:promote` uses only the latest RC entry as the release notes. Earlier RC entries serve as a development audit trail.
+
 #### npm dist-tags
 
 Two tags are maintained:
@@ -98,7 +100,10 @@ Periodically verify against official documentation:
 - **Codex**: https://github.com/openai/codex
 - **OpenCode**: https://github.com/opencode-ai/opencode
 
-Check for new config directories, renamed paths, or new project-level files
-that may need shadowing. Note: `.opencode.json` (a file, not a dir) is read
-by OpenCode at the workspace root but never auto-created there, so no shadow
-is needed.
+Check for new config directories, renamed paths, or new project-level files.
+Agent config dirs (`.claude/`, `.codex/`, `.opencode/`) are managed by the
+agents themselves inside the container.
+
+Shadow path mounts (configured via Settings > Shadow paths) are also assembled
+in `src/commands/dev.ts` and must be appended after the workspace mount to
+overlay correctly.
