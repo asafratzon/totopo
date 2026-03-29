@@ -11,11 +11,10 @@ interface MenuArgs {
     ctx: ProjectContext;
     activeCount: number;
     projectRunning: boolean;
-    hasTotopoYaml: boolean;
 }
 
 export async function run(args: MenuArgs): Promise<string> {
-    const { ctx, activeCount, projectRunning, hasTotopoYaml } = args;
+    const { ctx, activeCount, projectRunning } = args;
 
     // --- Status box ----------------------------------------------------------------------------------------------------------------------
     const containersLabel = activeCount === 0 ? "none" : activeCount === 1 ? "1 running" : `${activeCount} running`;
@@ -34,9 +33,8 @@ export async function run(args: MenuArgs): Promise<string> {
     const options: Option[] = [
         { value: "dev", label: "Open session", hint: "start or resume the dev container" },
         ...(projectRunning ? [{ value: "stop", label: "Stop container", hint: "stops this project's container" }] : []),
-        { value: "settings", label: "Settings", hint: "runtime mode, shadow paths" },
+        { value: "settings", label: "Project Settings", hint: "runtime mode, shadow paths, project anchor" },
         { value: "rebuild", label: "Rebuild container", hint: "force a fresh image build" },
-        ...(!hasTotopoYaml ? [{ value: "add-anchor", label: "Add project anchor", hint: "create totopo.yaml for shared onboarding" }] : []),
         { value: "manage-totopo", label: "Manage totopo →", hint: "stop, clear, remove, reset, uninstall" },
         { value: "quit", label: "Quit" },
     ];

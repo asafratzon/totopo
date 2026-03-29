@@ -13,12 +13,12 @@ import { run as advanced } from "../dist/commands/advanced.js";
 import { run as dev } from "../dist/commands/dev.js";
 import { run as doctor } from "../dist/commands/doctor.js";
 import { run as menu } from "../dist/commands/menu.js";
-import { addProjectAnchor, run as onboard } from "../dist/commands/onboard.js";
+import { run as onboard } from "../dist/commands/onboard.js";
 import { run as rebuild } from "../dist/commands/rebuild.js";
 import { run as settings } from "../dist/commands/settings.js";
 import { run as stop } from "../dist/commands/stop.js";
 import { run as syncDockerfile } from "../dist/commands/sync-dockerfile.js";
-import { listProjectIds, resolveProject } from "../dist/lib/project-identity.js";
+import { listProjectIds, resolveProject, TOTOPO_YAML } from "../dist/lib/project-identity.js";
 
 // --- Guard: inside container -------------------------------------------------------------------------------------------------------------
 try {
@@ -63,7 +63,7 @@ if (!project) {
         // Not in a git repo - that's fine
     }
 
-    const totopoJsonPath = `${gitRoot ?? cwd}/totopo.yaml`;
+    const totopoJsonPath = `${gitRoot ?? cwd}/${TOTOPO_YAML}`;
     const hasTotopoYaml = existsSync(totopoJsonPath);
 
     if (gitRoot !== null || hasTotopoYaml) {
@@ -123,10 +123,7 @@ let showMenu = true;
 while (showMenu) {
     showMenu = false;
 
-    // Re-evaluated each iteration so menu options stay in sync (e.g. after "Add project anchor")
-    const hasTotopoYaml = existsSync(`${project.meta.projectRoot}/totopo.yaml`);
-
-    const action = await menu({ ctx: project, activeCount, projectRunning, hasTotopoYaml });
+    const action = await menu({ ctx: project, activeCount, projectRunning });
 
     switch (action) {
         case "dev":
@@ -141,10 +138,6 @@ while (showMenu) {
             break;
         case "settings":
             await settings(packageDir, project);
-            showMenu = true;
-            break;
-        case "add-anchor":
-            await addProjectAnchor(project);
             showMenu = true;
             break;
         case "manage-totopo": {

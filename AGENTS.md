@@ -79,7 +79,7 @@ CONTRIBUTING.md                - Contribution guidelines
       claude/                   - mounted as ~/.claude/ inside container
       opencode/                 - mounted as ~/.config/opencode/ + ~/.local/share/opencode/
       codex/                    - mounted as ~/.codex/ inside container
-    shadows/                    - host-side dirs for shadow path mounts (one subdir per path)
+    shadows/                    - host-side shadow entries; initialized empty but container may persist content over sessions
 ```
 
 ## Commands

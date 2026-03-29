@@ -3,14 +3,17 @@
 // =========================================================================================================================================
 
 import { spawnSync } from "node:child_process";
-import { cpSync, mkdirSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { confirm, isCancel, log, multiselect, note, path, select } from "@clack/prompts";
 import { type RuntimeMode, readSettings, writeSettings } from "../lib/config.js";
 import { detectHostRuntimes } from "../lib/detect-host.js";
 import { generateDockerfile } from "../lib/generate-dockerfile.js";
 import type { ProjectContext } from "../lib/project-identity.js";
+import { TOTOPO_YAML } from "../lib/project-identity.js";
 import { selectTools } from "../lib/select-tools.js";
+import { ensureShadowsInSync } from "../lib/shadows.js";
+import { addProjectAnchor } from "./onboard.js";
 
 // --- Runtime mode menu -------------------------------------------------------------------------------------------------------------------
 async function runtimeModeMenu(packageDir: string, ctx: ProjectContext): Promise<void> {
@@ -99,7 +102,8 @@ async function addShadowPaths(ctx: ProjectContext): Promise<void> {
         });
         if (isCancel(selected)) break;
 
-        const rel = relative(ctx.meta.projectRoot, (selected as string).trim());
+        const absPath = (selected as string).trim();
+        const rel = relative(ctx.meta.projectRoot, absPath);
 
         // Validate
         if (!rel || rel.startsWith("..")) {
@@ -116,15 +120,11 @@ async function addShadowPaths(ctx: ProjectContext): Promise<void> {
         log.info(`Added: ${rel}`);
     }
 
-    if (paths.length !== updated.shadowPaths.length) {
+    const newPaths = paths.filter((p) => !updated.shadowPaths.includes(p));
+    if (newPaths.length > 0) {
         updated.shadowPaths = paths;
         writeSettings(ctx.projectDir, updated);
-
-        // Create shadow directories on the host
-        for (const p of paths) {
-            mkdirSync(join(ctx.projectDir, "shadows", p), { recursive: true });
-        }
-
+        ensureShadowsInSync(ctx.projectDir, ctx.meta.projectRoot, new Set(newPaths));
         await promptRecreateContainer(ctx);
     }
 }
@@ -147,7 +147,7 @@ async function removeShadowPaths(ctx: ProjectContext): Promise<void> {
     const removeSet = new Set(toRemove as string[]);
     updated.shadowPaths = updated.shadowPaths.filter((p) => !removeSet.has(p));
     writeSettings(ctx.projectDir, updated);
-
+    ensureShadowsInSync(ctx.projectDir, ctx.meta.projectRoot);
     await promptRecreateContainer(ctx);
 }
 
@@ -180,14 +180,17 @@ async function promptRecreateContainer(ctx: ProjectContext): Promise<void> {
 // --- Settings submenu (main entry point) -------------------------------------------------------------------------------------------------
 export async function run(packageDir: string, ctx: ProjectContext): Promise<"back" | undefined> {
     while (true) {
-        const action = await select({
-            message: "Settings:",
-            options: [
-                { value: "runtime-mode", label: "Runtime mode", hint: "host-mirror / full" },
-                { value: "shadow-paths", label: "Shadow paths", hint: "hide paths from the container" },
-                { value: "back", label: "← Back" },
-            ],
-        });
+        const hasTotopoYaml = existsSync(join(ctx.meta.projectRoot, TOTOPO_YAML));
+        const options: { value: string; label: string; hint?: string }[] = [
+            { value: "runtime-mode", label: "Runtime mode", hint: "host-mirror / full" },
+            { value: "shadow-paths", label: "Shadow paths", hint: "hide paths from the container" },
+            ...(!hasTotopoYaml
+                ? [{ value: "add-anchor", label: "Add project anchor", hint: "create totopo.yaml for shared onboarding" }]
+                : []),
+            { value: "back", label: "← Back" },
+        ];
+
+        const action = await select({ message: "Settings:", options });
 
         if (isCancel(action) || action === "back") {
             return "back";
@@ -199,6 +202,9 @@ export async function run(packageDir: string, ctx: ProjectContext): Promise<"bac
                 break;
             case "shadow-paths":
                 await shadowPathsMenu(ctx);
+                break;
+            case "add-anchor":
+                await addProjectAnchor(ctx);
                 break;
         }
     }

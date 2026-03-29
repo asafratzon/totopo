@@ -11,6 +11,7 @@ import { cancel, isCancel, log, outro, select } from "@clack/prompts";
 import { buildAgentContextDocs, buildAgentMountArgs, injectAgentContext } from "../lib/agent-context.js";
 import { readSettings } from "../lib/config.js";
 import type { ProjectContext } from "../lib/project-identity.js";
+import { ensureShadowsInSync } from "../lib/shadows.js";
 
 // The project config dir is always mounted here inside the container (read-only)
 const TOTOPO_CONTAINER_PATH = "/home/devuser/.totopo";
@@ -34,15 +35,16 @@ async function promptWorkdir(workspaceDir: string, cwd: string): Promise<string>
 }
 
 // --- Build shadow mount args -------------------------------------------------------------------------------------------------------------
-function buildShadowMountArgs(projectDir: string): { args: string[]; shadowPaths: string[] } {
+function buildShadowMountArgs(projectDir: string, workspaceDir: string): { args: string[]; shadowPaths: string[] } {
     const settings = readSettings(projectDir);
     const shadowPaths = settings.shadowPaths;
-    const args: string[] = [];
 
+    // Sync shadows/ dir with settings (create missing, remove stale, preserve existing)
+    ensureShadowsInSync(projectDir, workspaceDir);
+
+    const args: string[] = [];
     for (const relPath of shadowPaths) {
-        const hostDir = join(projectDir, "shadows", relPath);
-        mkdirSync(hostDir, { recursive: true });
-        args.push("-v", `${hostDir}:/workspace/${relPath}`);
+        args.push("-v", `${join(projectDir, "shadows", relPath)}:/workspace/${relPath}`);
     }
 
     return { args, shadowPaths };
@@ -53,7 +55,7 @@ function buildShadowMountArgs(projectDir: string): { args: string[]; shadowPaths
 function buildMountArgs(workspaceDir: string, projectDir: string): { mountArgs: string[]; shadowPaths: string[] } {
     const agentMounts = buildAgentMountArgs(projectDir);
     const configMount = ["-v", `${projectDir}:${TOTOPO_CONTAINER_PATH}:ro`];
-    const { args: shadowArgs, shadowPaths } = buildShadowMountArgs(projectDir);
+    const { args: shadowArgs, shadowPaths } = buildShadowMountArgs(projectDir, workspaceDir);
     // Shadow mounts must come AFTER the workspace mount to overlay correctly
     return {
         mountArgs: ["-v", `${workspaceDir}:/workspace`, ...shadowArgs, ...configMount, ...agentMounts],
