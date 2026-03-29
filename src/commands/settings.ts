@@ -93,12 +93,13 @@ async function addShadowPaths(ctx: ProjectContext): Promise<void> {
         if (isCancel(wantMore) || !wantMore) break;
 
         const selected = await path({
-            message: "Path to shadow (relative to project root):",
-            initialValue: "",
+            message: "Path to shadow:",
+            root: ctx.meta.projectRoot,
+            directory: true,
         });
         if (isCancel(selected)) break;
 
-        const rel = relative(ctx.meta.projectRoot, selected as string);
+        const rel = relative(ctx.meta.projectRoot, (selected as string).trim());
 
         // Validate
         if (!rel || rel.startsWith("..")) {

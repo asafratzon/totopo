@@ -53,8 +53,11 @@ If not, help the user draft a new entry. The entry must follow these rules:
 - Group related changes into single entries rather than listing each file change separately
 - Set `date` to today's date (YYYY-MM-DD format)
 - **Cumulative convention**: the new RC entry should describe the **full release** as it would appear in the final release notes, not just the delta from the previous RC. Review all previous RC entries in `in_progress.entries` and carry forward any items that still apply. The latest entry becomes the release notes when promoted via `pnpm rc:promote`. Previous RC entries serve as a development audit trail.
+- **Omit RC-relative fixes**: if a bug was introduced in a previous RC and fixed before this one, do NOT include it. The final release notes describe changes relative to the **last stable release**, not relative to previous RCs. A user upgrading from the last stable version never experienced the bug, so it is not a release note. Only include fixes for bugs that exist in the last stable release.
 
 Write the entry to `scripts/changelog.yaml` under `in_progress.entries`.
+
+**Before writing**, present the draft to the user and explicitly call out any items you chose to omit (and why) so they can confirm.
 
 ## Step 5 — Lint and fix
 
