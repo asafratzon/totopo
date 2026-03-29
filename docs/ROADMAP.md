@@ -10,6 +10,8 @@ Tracks current work in progress and upcoming planned items.
 
 - Run 'npx totopo' when installed totopo version is older - discuss strategy and auto-upgrade option
 
+- Make project directory name a bit more readbale? 1f0be1b76af0f6de36967119ec460080abce476ce15de6e88a109f342f63dac4...
+
 - Add Tests + pnpm test + update AGENTS.md + update pre-commit hook to run them
 
 - Improve/standarize the container image used so AI agents have all the tools they need

@@ -22,7 +22,7 @@ totopo organises work around **projects** — any local directory you register w
 
 - **Open session** — jump into an AI coding session
 - **Stop container** — stop the running container
-- **Settings** — runtime mode, shadow paths
+- **Project Settings** — runtime mode, shadow paths
 - **Rebuild container** — rebuild the docker image (upon changing runtime mode)
 
 All config lives in `~/.totopo/` — nothing is written to your project directory.
