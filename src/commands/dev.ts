@@ -4,379 +4,61 @@
 // =========================================================================================================================================
 
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, relative } from "node:path";
-import { cancel, confirm, groupMultiselect, isCancel, log, multiselect, note, outro, path, select } from "@clack/prompts";
-import {
-    buildAgentContextDocs,
-    buildAgentMountArgs,
-    injectAgentContext,
-    resolveShadowedDirs,
-    type ScopeConfig,
-    type WorkspaceScope,
-} from "../lib/agent-context.js";
+import { cancel, isCancel, log, outro, select } from "@clack/prompts";
+import { buildAgentContextDocs, buildAgentMountArgs, injectAgentContext } from "../lib/agent-context.js";
+import { readSettings } from "../lib/config.js";
 import type { ProjectContext } from "../lib/project-identity.js";
 
 // The project config dir is always mounted here inside the container (read-only)
 const TOTOPO_CONTAINER_PATH = "/home/devuser/.totopo";
 
-// --- Prompt: scope selection -------------------------------------------------------------------------------------------------------------
-async function promptScope(workspaceDir: string, cwd: string): Promise<ScopeConfig> {
-    const cwdIsRepo = cwd === workspaceDir;
-
-    const options = [
-        { value: "repo", label: "Repo root  (full repository)" },
-        ...(!cwdIsRepo ? [{ value: "cwd", label: "Current directory  (this folder only)" }] : []),
-        { value: "selective", label: "Selective  (choose specific files/folders)" },
-    ];
-
-    const modeChoice = await select({
-        message: "Workspace scope:",
-        options,
-    });
-
-    if (isCancel(modeChoice)) {
-        cancel("Cancelled.");
-        process.exit(0);
-    }
-
-    const mode = modeChoice as WorkspaceScope;
-
-    if (mode === "selective") {
-        const selectedPaths = await promptSelectivePaths(cwd);
-        if (selectedPaths.length === 0) {
-            // Fallback to cwd mode when no visible items exist
-            return { mode: "cwd", hostCwd: cwd, selectedPaths: [] };
-        }
-        log.warn(
-            "Scoped workspace — some context may be unavailable to the agent:\n" +
-                "  · Your personal agent config files (~/.claude/CLAUDE.md, ~/.config/opencode/AGENTS.md, etc.)\n" +
-                "    are not mounted from the host — only totopo's injected context is available.\n" +
-                "  · Project-level context files (AGENTS.md, CLAUDE.md, .claude/rules/, etc.) that live\n" +
-                "    outside your mounted paths will not be visible to the agent.\n" +
-                "  · Git is unavailable — .git is not mounted in scoped mode (security boundary).\n" +
-                "  The agent has been instructed to surface its limitations at session start.",
-        );
-        return { mode, hostCwd: cwd, selectedPaths };
-    }
-
-    if (mode === "cwd") {
-        log.warn(
-            "Scoped workspace — some context may be unavailable to the agent:\n" +
-                "  · Your personal agent config files (~/.claude/CLAUDE.md, ~/.config/opencode/AGENTS.md, etc.)\n" +
-                "    are not mounted from the host — only totopo's injected context is available.\n" +
-                "  · Project-level context files (AGENTS.md, CLAUDE.md, .claude/rules/, etc.) that live\n" +
-                "    outside this directory will not be visible to the agent.\n" +
-                "  · Git is unavailable — .git is not mounted in scoped mode (security boundary).\n" +
-                "  The agent has been instructed to surface its limitations at session start.",
-        );
-    }
-
-    return { mode, hostCwd: cwd, selectedPaths: [] };
-}
-
-// --- Prompt: selective path selection ----------------------------------------------------------------------------------------------------
-// Recursively expands a selected path into its children when a nested exclusion target is found,
-// Until the excluded path itself can be dropped from the list.
-function expandDirectoryToChildren(paths: string[], excl: string, cwd: string): string[] {
-    if (paths.includes(excl)) {
-        return paths.filter((p) => p !== excl);
-    }
-    const ancestor = paths.find((p) => excl.startsWith(`${p}/`));
-    if (!ancestor) {
-        log.warn(`Cannot exclude "${excl}" — it is not within any selected path. Skipping.`);
-        return paths;
-    }
-    const children = readdirSync(join(cwd, ancestor)).map((child) => `${ancestor}/${child}`);
-    const withoutAncestor = paths.filter((p) => p !== ancestor);
-    return expandDirectoryToChildren([...withoutAncestor, ...children], excl, cwd);
-}
-
-// Builds a two-level directory structure for the scope picker: dirs mapped to their children, flat files separately
-function buildDirectoryTree(cwd: string): { dirs: Record<string, string[]>; files: string[] } {
-    const dirs: Record<string, string[]> = {};
-    const files: string[] = [];
-
-    for (const item of readdirSync(cwd)) {
-        const itemPath = join(cwd, item);
-        if (statSync(itemPath).isDirectory()) {
-            const children = readdirSync(itemPath).map((child) => `${item}/${child}`);
-            if (children.length === 0) {
-                files.push(item); // empty dir -> treat as flat item
-            } else {
-                dirs[item] = children;
-            }
-        } else {
-            files.push(item);
-        }
-    }
-
-    return { dirs, files };
-}
-
-// Collapses redundant child paths: when all children of a dir are selected, replaces them with the parent dir
-function collapseToMinimalPaths(selected: string[], dirs: Record<string, string[]>): string[] {
-    const selectedSet = new Set(selected);
-    const result: string[] = [];
-
-    for (const [dir, children] of Object.entries(dirs)) {
-        const selectedChildren = children.filter((c) => selectedSet.has(c));
-        if (selectedChildren.length === children.length) {
-            result.push(dir); // all children selected -> mount whole dir efficiently
-        } else {
-            result.push(...selectedChildren);
-        }
-    }
-
-    // Root files (no slash)
-    result.push(...selected.filter((s) => !s.includes("/")));
-
-    return result;
-}
-
-async function promptAdditionalPaths(style: "only" | "except", cwd: string): Promise<string[]> {
-    const verb = style === "only" ? "include" : "exclude";
-    const accumulated: string[] = [];
-
-    while (true) {
-        const addAnother = await confirm({
-            message: accumulated.length === 0 ? `Add a nested path to ${verb}?` : `Add another nested path to ${verb}?`,
-            initialValue: false,
-        });
-
-        if (isCancel(addAnother)) {
-            cancel("Cancelled.");
-            process.exit(0);
-        }
-
-        if (!addAnother) break;
-
-        const selectedAbs = await path({
-            message: `Select a path to ${verb}:`,
-            root: cwd,
-            directory: true, // contrary to docs: true = files + dirs, false = files only
-        });
-
-        if (isCancel(selectedAbs)) break;
-
-        const prefix = relative(cwd, (selectedAbs as string).trim());
-        if (!prefix) continue; // selected cwd root - skip
-
-        accumulated.push(prefix);
-        log.success(`Added: ${prefix}`);
-    }
-
-    return accumulated;
-}
-
-async function promptSelectivePaths(cwd: string): Promise<string[]> {
-    const allItems = readdirSync(cwd);
-
-    if (allItems.length === 0) {
-        log.warn("No files/folders in current directory — falling back to cwd mode.");
-        return [];
-    }
-
-    const styleChoice = await select({
-        message: "Select by:",
+// --- Prompt: working directory selection -------------------------------------------------------------------------------------------------
+async function promptWorkdir(workspaceDir: string, cwd: string): Promise<string> {
+    if (cwd === workspaceDir) return "/workspace";
+    const relPath = relative(workspaceDir, cwd);
+    const choice = await select({
+        message: "Start session:",
         options: [
-            { value: "only", label: "Only the following..." },
-            { value: "except", label: "All except for..." },
+            { value: "here", label: `Here  (./${relPath})` },
+            { value: "root", label: "Repo root" },
         ],
     });
-
-    if (isCancel(styleChoice)) {
+    if (isCancel(choice)) {
         cancel("Cancelled.");
         process.exit(0);
     }
+    return choice === "here" ? `/workspace/${relPath}` : "/workspace";
+}
 
-    const style = styleChoice as "only" | "except";
-    const { dirs, files } = buildDirectoryTree(cwd);
-    const dirNames = Object.keys(dirs);
+// --- Build shadow mount args -------------------------------------------------------------------------------------------------------------
+function buildShadowMountArgs(projectDir: string): { args: string[]; shadowPaths: string[] } {
+    const settings = readSettings(projectDir);
+    const shadowPaths = settings.shadowPaths;
+    const args: string[] = [];
 
-    log.warn("This picker shows only two directory levels. Deeper files/dirs can be selected by path in the next step.");
-    const selectMessage = `Choose paths (Space to toggle · Enter to continue):`;
-
-    // -- flat fallback when there are no dirs ---------------------------------------------------------------------------------------------
-    if (dirNames.length === 0) {
-        const flatSelected = await multiselect({
-            message: selectMessage,
-            options: files.map((f) => ({ value: f, label: f })),
-            initialValues: style === "except" ? files : [],
-            required: false,
-        });
-
-        if (isCancel(flatSelected)) {
-            cancel("Cancelled.");
-            process.exit(0);
-        }
-
-        return flatSelected as string[];
+    for (const relPath of shadowPaths) {
+        const hostDir = join(projectDir, "shadows", relPath);
+        mkdirSync(hostDir, { recursive: true });
+        args.push("-v", `${hostDir}:/workspace/${relPath}`);
     }
 
-    // -- build groupMultiselect options ---------------------------------------------------------------------------------------------------
-    const groupOptions: Record<string, { value: string; label: string }[]> = {};
-    for (const [dir, children] of Object.entries(dirs)) {
-        groupOptions[dir] = children.map((child) => ({
-            value: child,
-            label: child.slice(child.indexOf("/") + 1),
-        }));
-    }
-    if (files.length > 0) {
-        groupOptions.Files = files.map((f) => ({ value: f, label: f }));
-    }
-
-    // "except" mode: pre-select all depth-2 children + root files
-    const initialValues = style === "except" ? [...Object.values(dirs).flat(), ...files] : [];
-
-    const rawSelected = await groupMultiselect({
-        message: selectMessage,
-        options: groupOptions,
-        initialValues,
-        required: false,
-        selectableGroups: true,
-    });
-
-    if (isCancel(rawSelected)) {
-        cancel("Cancelled.");
-        process.exit(0);
-    }
-
-    const selected = collapseToMinimalPaths(rawSelected as string[], dirs);
-
-    // -- deeper-path text+multiselect loop ------------------------------------------------------------------------------------------------
-    const deeperPaths = await promptAdditionalPaths(style, cwd);
-
-    let result = selected;
-    if (style === "only") {
-        result = [...new Set([...selected, ...deeperPaths])];
-    } else {
-        for (const p of deeperPaths) {
-            result = expandDirectoryToChildren(result, p, cwd);
-        }
-    }
-
-    if (result.length > 0) {
-        note(result.map((p) => `  ${p}`).join("\n"), "Paths to mount");
-    }
-    return result;
+    return { args, shadowPaths };
 }
 
 // --- Build mount args --------------------------------------------------------------------------------------------------------------------
 // Project config dir is always explicitly mounted - it's never inside the workspace.
-function buildMountArgs(scope: ScopeConfig, workspaceDir: string, projectDir: string, cwd: string): string[] {
-    const hostWorkspaceDir = scope.mode === "repo" ? workspaceDir : cwd;
-    const agentMounts = buildAgentMountArgs(projectDir, hostWorkspaceDir);
+function buildMountArgs(workspaceDir: string, projectDir: string): { mountArgs: string[]; shadowPaths: string[] } {
+    const agentMounts = buildAgentMountArgs(projectDir);
     const configMount = ["-v", `${projectDir}:${TOTOPO_CONTAINER_PATH}:ro`];
-
-    if (scope.mode === "repo") {
-        return ["-v", `${workspaceDir}:/workspace`, ...configMount, ...agentMounts];
-    }
-
-    if (scope.mode === "cwd") {
-        return ["-v", `${cwd}:/workspace`, ...configMount, ...agentMounts];
-    }
-
-    // Selective: validate all paths exist first
-    for (const p of scope.selectedPaths) {
-        const hostPath = join(cwd, p);
-        if (!existsSync(hostPath)) {
-            log.error(`Selected path does not exist: ${hostPath}`);
-            process.exit(1);
-        }
-    }
-
-    return [...scope.selectedPaths.flatMap((p) => ["-v", `${join(cwd, p)}:/workspace/${p}`]), ...configMount, ...agentMounts];
-}
-
-// --- Build scope env args ----------------------------------------------------------------------------------------------------------------
-function buildScopeEnvArgs(scope: ScopeConfig): string[] {
-    return [
-        "-e",
-        `TOTOPO_SCOPE=${scope.mode}`,
-        "-e",
-        `TOTOPO_HOST_CWD=${scope.hostCwd}`,
-        "-e",
-        `TOTOPO_SELECTIVE_PATHS=${JSON.stringify(scope.selectedPaths)}`,
-    ];
-}
-
-// --- Build scope label args --------------------------------------------------------------------------------------------------------------
-function buildScopeLabelArgs(scope: ScopeConfig): string[] {
-    return [
-        "--label",
-        `totopo.scope=${scope.mode}`,
-        "--label",
-        `totopo.scope.cwd=${scope.hostCwd}`,
-        "--label",
-        `totopo.scope.paths=${JSON.stringify(scope.selectedPaths)}`,
-    ];
-}
-
-// --- Read container scope label ----------------------------------------------------------------------------------------------------------
-function readContainerScopeLabel(name: string): ScopeConfig | null {
-    const result = spawnSync(
-        "docker",
-        [
-            "inspect",
-            "--format",
-            '{{index .Config.Labels "totopo.scope"}}|{{index .Config.Labels "totopo.scope.cwd"}}|{{index .Config.Labels "totopo.scope.paths"}}',
-            name,
-        ],
-        { encoding: "utf8", stdio: "pipe" },
-    );
-
-    if (result.status !== 0) return null;
-
-    const parts = result.stdout.trim().split("|");
-    const mode = parts[0];
-    const hostCwd = parts[1];
-    const pathsJson = parts[2] ?? "[]";
-
-    if (!mode || !hostCwd) return null;
-
-    let selectedPaths: string[] = [];
-    try {
-        selectedPaths = JSON.parse(pathsJson);
-    } catch {
-        // Leave empty on parse failure
-    }
-
-    return { mode: mode as WorkspaceScope, hostCwd, selectedPaths };
-}
-
-// --- Scope comparison --------------------------------------------------------------------------------------------------------------------
-// null existing scope (pre-feature container) is treated as repo mode.
-function scopesMatch(selected: ScopeConfig, existing: ScopeConfig | null, workspaceDir: string): boolean {
-    const eff = existing ?? { mode: "repo" as WorkspaceScope, hostCwd: workspaceDir, selectedPaths: [] };
-    if (selected.mode !== eff.mode) return false;
-    if (selected.mode === "repo") return true;
-    if (selected.hostCwd !== eff.hostCwd) return false;
-    if (selected.mode === "selective") {
-        return JSON.stringify([...selected.selectedPaths].sort()) === JSON.stringify([...eff.selectedPaths].sort());
-    }
-    return true;
-}
-
-// --- Shadow label args -------------------------------------------------------------------------------------------------------------------
-function buildShadowLabelArgs(shadowedDirs: string[]): string[] {
-    return ["--label", `totopo.shadows=${shadowedDirs.sort().join(",")}`];
-}
-
-function readContainerShadowLabel(name: string): string[] {
-    const result = spawnSync("docker", ["inspect", "--format", '{{index .Config.Labels "totopo.shadows"}}', name], {
-        encoding: "utf8",
-        stdio: "pipe",
-    });
-    if (result.status !== 0) return [];
-    const raw = result.stdout.trim();
-    if (!raw || raw === "<no value>") return [];
-    return raw.split(",").sort();
-}
-
-function shadowsMatch(current: string[], existing: string[]): boolean {
-    return JSON.stringify([...current].sort()) === JSON.stringify([...existing].sort());
+    const { args: shadowArgs, shadowPaths } = buildShadowMountArgs(projectDir);
+    // Shadow mounts must come AFTER the workspace mount to overlay correctly
+    return {
+        mountArgs: ["-v", `${workspaceDir}:/workspace`, ...shadowArgs, ...configMount, ...agentMounts],
+        shadowPaths,
+    };
 }
 
 // --- Run post-start ----------------------------------------------------------------------------------------------------------------------
@@ -391,12 +73,6 @@ function runPostStart(containerName: string): void {
     }
 }
 
-// --- Remove container --------------------------------------------------------------------------------------------------------------------
-function removeContainer(name: string): void {
-    spawnSync("docker", ["stop", name], { stdio: "pipe" });
-    spawnSync("docker", ["rm", name], { stdio: "pipe" });
-}
-
 // --- Ensure global env file exists -------------------------------------------------------------------------------------------------------
 function ensureGlobalEnvFile(): string {
     const globalTotopoDir = join(homedir(), ".totopo");
@@ -408,17 +84,35 @@ function ensureGlobalEnvFile(): string {
     return envFile;
 }
 
+// --- Read container shadow label ---------------------------------------------------------------------------------------------------------
+function readContainerShadowLabel(containerName: string): string {
+    const result = spawnSync("docker", ["inspect", "--format", '{{index .Config.Labels "totopo.shadows"}}', containerName], {
+        encoding: "utf8",
+        stdio: "pipe",
+    });
+    if (result.status !== 0) return "";
+    const val = result.stdout.trim();
+    // Docker returns "<no value>" when label is missing
+    return val === "<no value>" ? "" : val;
+}
+
+// --- Normalize shadow label --------------------------------------------------------------------------------------------------------------
+function shadowLabel(paths: string[]): string {
+    if (paths.length === 0) return "";
+    return [...paths].sort().join(",");
+}
+
+// --- Stop and remove container -----------------------------------------------------------------------------------------------------------
+function stopAndRemoveContainer(containerName: string): void {
+    spawnSync("docker", ["stop", containerName], { stdio: "pipe" });
+    spawnSync("docker", ["rm", containerName], { stdio: "pipe" });
+}
+
 // --- Run container -----------------------------------------------------------------------------------------------------------------------
-function runContainer(
-    scope: ScopeConfig,
-    containerName: string,
-    imageName: string,
-    workspaceDir: string,
-    projectDir: string,
-    cwd: string,
-    shadowedDirs: string[],
-): void {
+function runContainer(containerName: string, imageName: string, workspaceDir: string, projectDir: string): void {
     const envFile = ensureGlobalEnvFile();
+    const { mountArgs, shadowPaths } = buildMountArgs(workspaceDir, projectDir);
+    const labelArgs = ["--label", "totopo.managed=true", "--label", `totopo.shadows=${shadowLabel(shadowPaths)}`];
     const run = spawnSync(
         "docker",
         [
@@ -426,16 +120,12 @@ function runContainer(
             "-d",
             "--name",
             containerName,
-            ...buildMountArgs(scope, workspaceDir, projectDir, cwd),
+            ...mountArgs,
             "--env-file",
             envFile,
-            ...buildScopeEnvArgs(scope),
-            ...buildScopeLabelArgs(scope),
-            ...buildShadowLabelArgs(shadowedDirs),
             "--security-opt",
             "no-new-privileges:true",
-            "--label",
-            "totopo.managed=true",
+            ...labelArgs,
             imageName,
             "sleep",
             "infinity",
@@ -455,11 +145,16 @@ export async function run(_packageDir: string, ctx: ProjectContext): Promise<voi
     const imageName = ctx.meta.containerName;
     const projectDir = ctx.projectDir;
 
-    // --- Always prompt scope first -------------------------------------------------------------------------------------------------------
-    const scope = await promptScope(workspaceDir, cwd);
-    const hostWorkspaceDir = scope.mode === "repo" ? workspaceDir : cwd;
-    const shadowedDirs = resolveShadowedDirs(hostWorkspaceDir);
-    const agentDocs = buildAgentContextDocs(scope, shadowedDirs);
+    // --- Prompt for working directory ----------------------------------------------------------------------------------------------------
+    const workdir = await promptWorkdir(workspaceDir, cwd);
+    const hasGit = existsSync(join(workspaceDir, ".git"));
+    const settings = readSettings(projectDir);
+    const agentDocs = buildAgentContextDocs(hasGit, settings.shadowPaths);
+
+    // --- Session start warning for shadow paths ------------------------------------------------------------------------------------------
+    if (settings.shadowPaths.length > 0) {
+        log.warn(`Shadow paths active: ${settings.shadowPaths.join(", ")}  (Settings > Shadow paths)`);
+    }
 
     // --- Inspect container state ---------------------------------------------------------------------------------------------------------
     const inspect = spawnSync("docker", ["inspect", "--format", "{{.State.Status}}", containerName], {
@@ -467,7 +162,18 @@ export async function run(_packageDir: string, ctx: ProjectContext): Promise<voi
         stdio: "pipe",
     });
 
-    const containerStatus = inspect.status === 0 ? inspect.stdout.trim() : null;
+    let containerStatus = inspect.status === 0 ? inspect.stdout.trim() : null;
+
+    // --- Check for shadow path mismatch --------------------------------------------------------------------------------------------------
+    if (containerStatus !== null) {
+        const currentLabel = readContainerShadowLabel(containerName);
+        const expectedLabel = shadowLabel(settings.shadowPaths);
+        if (currentLabel !== expectedLabel) {
+            log.info("Shadow paths changed — recreating container...");
+            stopAndRemoveContainer(containerName);
+            containerStatus = null;
+        }
+    }
 
     if (containerStatus === null) {
         // --- No container - build image and run ------------------------------------------------------------------------------------------
@@ -485,53 +191,27 @@ export async function run(_packageDir: string, ctx: ProjectContext): Promise<voi
         log.step("Preparing agent context...");
         injectAgentContext(projectDir, agentDocs);
         log.step("Starting dev container...");
-        runContainer(scope, containerName, imageName, workspaceDir, projectDir, cwd, shadowedDirs);
+        runContainer(containerName, imageName, workspaceDir, projectDir);
         runPostStart(containerName);
     } else if (containerStatus === "exited") {
-        // --- Container stopped - resume or recreate based on scope/shadows ---------------------------------------------------------------
-        const existingScope = readContainerScopeLabel(containerName);
-        const existingShadows = readContainerShadowLabel(containerName);
-
-        if (scopesMatch(scope, existingScope, workspaceDir) && shadowsMatch(shadowedDirs, existingShadows)) {
-            log.step("Preparing agent context...");
-            injectAgentContext(projectDir, agentDocs);
-            log.step("Resuming dev container...");
-            const start = spawnSync("docker", ["start", containerName], { stdio: "inherit" });
-            if (start.status !== 0) {
-                outro("Failed to start dev container.");
-                process.exit(start.status ?? 1);
-            }
-            runPostStart(containerName);
-        } else {
-            log.step("Preparing agent context...");
-            injectAgentContext(projectDir, agentDocs);
-            log.step("Recreating dev container with new scope...");
-            removeContainer(containerName);
-            runContainer(scope, containerName, imageName, workspaceDir, projectDir, cwd, shadowedDirs);
-            runPostStart(containerName);
+        // --- Container stopped - resume --------------------------------------------------------------------------------------------------
+        log.step("Preparing agent context...");
+        injectAgentContext(projectDir, agentDocs);
+        log.step("Resuming dev container...");
+        const start = spawnSync("docker", ["start", containerName], { stdio: "inherit" });
+        if (start.status !== 0) {
+            outro("Failed to start dev container.");
+            process.exit(start.status ?? 1);
         }
+        runPostStart(containerName);
     } else {
-        // --- Container running - connect directly or recreate based on scope/shadows -----------------------------------------------------
-        const existingScope = readContainerScopeLabel(containerName);
-        const existingShadows = readContainerShadowLabel(containerName);
-
-        if (!scopesMatch(scope, existingScope, workspaceDir) || !shadowsMatch(shadowedDirs, existingShadows)) {
-            log.step("Preparing agent context...");
-            injectAgentContext(projectDir, agentDocs);
-            log.step("Recreating dev container with new scope...");
-            removeContainer(containerName);
-            runContainer(scope, containerName, imageName, workspaceDir, projectDir, cwd, shadowedDirs);
-            runPostStart(containerName);
-        } else {
-            // Same scope/shadows and container already running - refresh context in place.
-            log.step("Refreshing agent context...");
-            injectAgentContext(projectDir, agentDocs);
-        }
-        // Fall through to connect
+        // --- Container running - refresh agent context and connect ------------------------------------------------------------------------
+        log.step("Refreshing agent context...");
+        injectAgentContext(projectDir, agentDocs);
     }
 
     // --- Connect -------------------------------------------------------------------------------------------------------------------------
-    const exec = spawnSync("docker", ["exec", "-it", "-w", "/workspace", containerName, "bash", "--login"], {
+    const exec = spawnSync("docker", ["exec", "-it", "-w", workdir, containerName, "bash", "--login"], {
         stdio: "inherit",
     });
 

@@ -20,12 +20,12 @@ bin/
 src/commands/                  - Command modules (compiled to dist/commands/ by pnpm build)
   advanced.ts                  - "Manage totopo" menu: stop containers, clear memory, remove images,
                                  reset API keys, doctor, uninstall
-  dev.ts                       - Scope picker, container lifecycle, agent context injection
+  dev.ts                       - Working directory prompt, container lifecycle, agent context injection
   doctor.ts                    - Host readiness checks (Docker installed/running, Dockerfile present)
   menu.ts                      - Project menu (per-project actions)
   onboard.ts                   - First-time setup flow; also exports addProjectAnchor()
   rebuild.ts                   - Stop container + remove image to force a fresh build
-  settings.ts                  - Runtime mode switcher (host-mirror / full)
+  settings.ts                  - Settings submenu: runtime mode, shadow paths
   stop.ts                      - Stop and remove a project's container
   sync-dockerfile.ts           - Silent pre-flight: regenerate Dockerfile if host runtimes changed
 
@@ -79,10 +79,7 @@ CONTRIBUTING.md                - Contribution guidelines
       claude/                   - mounted as ~/.claude/ inside container
       opencode/                 - mounted as ~/.config/opencode/ + ~/.local/share/opencode/
       codex/                    - mounted as ~/.codex/ inside container
-      workspace/
-        .claude/                - shadow mount -> /workspace/.claude (intercepts project-level Claude config)
-        .codex/                 - shadow mount -> /workspace/.codex  (intercepts project-level Codex config)
-        .opencode/              - shadow mount -> /workspace/.opencode (intercepts project-level OpenCode config)
+    shadows/                    - host-side dirs for shadow path mounts (one subdir per path)
 ```
 
 ## Commands
