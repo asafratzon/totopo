@@ -1,0 +1,31 @@
+FROM ubuntu:24.04
+
+# Simulate the totopo essentials layer:
+# - base OS tools
+# - Node.js (required by totopo itself and AI CLIs)
+# - a placeholder for AI CLI installs
+# - devuser setup
+# - post-start script copied in from package
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    git \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Node.js (essentials - always present)
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# Non-root user (security layer - always present)
+RUN useradd -m -s /bin/bash devuser
+
+# Copy post-start script from package into image (no temp file in ~/.totopo needed)
+COPY post-start.mjs /home/devuser/post-start.mjs
+RUN chown devuser:devuser /home/devuser/post-start.mjs
+
+WORKDIR /workspace
+
+# dockerfile_extra from totopo.yaml is injected here at build time ---
+# USER devuser is always appended last by totopo after dockerfile_extra ---

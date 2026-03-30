@@ -51,10 +51,6 @@ templates/                     - Copied to ~/.totopo/projects/<id>/ during onboa
   post-start.mjs               - Runs inside container after start; checks tool readiness
   env                          - API key template copied to ~/.totopo/.env on first onboard
 
-docs/
-  ROADMAP.md                   - Current work in progress and backlog; read at session start
-  RELEASES.md                  - Release workflow and checklist
-
 .githooks/pre-commit           - Runs pnpm check before every commit (auto-installed via pnpm prepare)
 biome.json                     - Lint and format config (lineWidth: 140, indentWidth: 4)
 tsconfig.json                  - Type-check config (includes src/ and scripts/)
@@ -63,6 +59,7 @@ totopo.yaml                    - Shared onboarding anchor for this repo (example
 CHANGELOG.md                   - Generated artifact — edit scripts/changelog.yaml instead,
                                  then run pnpm generate-changelog
 CONTRIBUTING.md                - Contribution guidelines
+ROADMAP.md                     - Current work in progress and backlog; read at session start
 ```
 
 ## Global config layout (host machine, outside this repo)
@@ -102,6 +99,6 @@ Workflow after making changes: `pnpm fix:all` then `pnpm check`. If `pnpm check`
 - Use plain ASCII in comments only: `->` instead of Unicode arrows (`->`, `<-`), `-` instead of em dashes (`-`). `pnpm check` flags violations and blocks the commit.
 - All comment lines must start with a capital letter.
 - Security boundary is non-negotiable: container isolation, git remote block (`protocol.allow = never`), and non-root user (`devuser`) must never be weakened.
-- Read `docs/ROADMAP.md` at session start to understand current state and open items.
+- Read `ROADMAP.md` at session start to understand current state and open items.
 - For release operations, follow `docs/RELEASES.md`.
 - Never edit `scripts/changelog.yaml` without explicit user approval — changelog entries must be confirmed before writing.
