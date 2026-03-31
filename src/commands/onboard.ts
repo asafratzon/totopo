@@ -1,60 +1,31 @@
 // =========================================================================================================================================
 // src/commands/onboard.ts - First-time project setup
-// Invoked by bin/totopo.js when no registered project is found in ~/.totopo/projects/
-// Returns the registered ProjectContext on success, or null if cancelled.
+// Creates totopo.yaml, registers the project, and returns ProjectContext (or null if cancelled).
 // =========================================================================================================================================
 
 import { execSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { cancel, confirm, intro, isCancel, log, outro, select, text } from "@clack/prompts";
-import { load as loadYaml } from "js-yaml";
-import { type RuntimeMode, writeSettings } from "../lib/config.js";
-import { detectHostRuntimes } from "../lib/detect-host.js";
-import { generateDockerfile } from "../lib/generate-dockerfile.js";
 import type { ProjectContext } from "../lib/project-identity.js";
-import { findConflictingProject, registerProject, TOTOPO_YAML, writeProjectMeta } from "../lib/project-identity.js";
-import { selectTools } from "../lib/select-tools.js";
-
-interface TotopoYaml {
-    name?: string;
-    description?: string;
-}
-
-function readTotopoYaml(dir: string): TotopoYaml | null {
-    const p = join(dir, TOTOPO_YAML);
-    if (!existsSync(p)) return null;
-    try {
-        const raw = loadYaml(readFileSync(p, "utf8"));
-        if (typeof raw !== "object" || raw === null) return {};
-        const obj = raw as Record<string, unknown>;
-        const result: TotopoYaml = {};
-        if (typeof obj.name === "string") result.name = obj.name;
-        if (typeof obj.description === "string") result.description = obj.description;
-        return result;
-    } catch {
-        return null;
-    }
-}
-
-function buildTotopoYaml(name: string, description: string): string {
-    const header = [
-        "# totopo.yaml — project anchor",
-        "#",
-        "# Place this file at your project root to enable one-click onboarding for contributors.",
-        "# When a new contributor runs `npx totopo`, totopo reads this file to anchor the project",
-        "# root and display a welcome message before prompting for setup.",
-        "#",
-        '# name        — shown as: "Welcome to <name>."',
-        '# description — shown as: "<description>"',
-        "#",
-        "# Both fields are optional. Omit either to skip it.",
-        "",
-    ].join("\n");
-    const fields = [name ? `name: ${name}` : "", description ? `description: ${description}` : ""].filter(Boolean).join("\n");
-    return `${header}${fields}\n`;
-}
+import {
+    checkCollision,
+    deriveContainerName,
+    findOrphanProjectDir,
+    findTotopoYamlDir,
+    getProjectDir,
+    initProjectDir,
+    readLockFile,
+} from "../lib/project-identity.js";
+import {
+    buildDefaultTotopoYaml,
+    readTotopoYaml,
+    slugifyForProjectId,
+    type TotopoYamlConfig,
+    validateProjectId,
+    writeTotopoYaml,
+} from "../lib/totopo-yaml.js";
 
 function tryGetGitRoot(cwd: string): string | null {
     try {
@@ -64,51 +35,57 @@ function tryGetGitRoot(cwd: string): string | null {
     }
 }
 
-function tryGetGitRemote(repoRoot: string): string | undefined {
-    try {
-        const url = execSync("git remote get-url origin", { encoding: "utf8", cwd: repoRoot, stdio: "pipe" }).trim();
-        return url || undefined;
-    } catch {
-        return undefined;
-    }
-}
-
-// Returns the registered ProjectContext on success, null if cancelled.
-export async function run(packageDir: string, cwd: string): Promise<ProjectContext | null> {
-    const templatesDir = join(packageDir, "templates");
+export async function run(cwd: string): Promise<ProjectContext | null> {
     const toTildePath = (p: string) => (p.startsWith(homedir()) ? p.replace(homedir(), "~") : p);
 
     // --- Detect context ------------------------------------------------------------------------------------------------------------------
     const gitRoot = tryGetGitRoot(cwd);
     const searchRoot = gitRoot ?? cwd;
-    const totopoYaml = readTotopoYaml(searchRoot);
-    const hasAnchor = totopoYaml !== null;
+    const yamlDir = findTotopoYamlDir(searchRoot);
 
     // --- Intro ---------------------------------------------------------------------------------------------------------------------------
     process.stdout.write("\n");
     intro("totopo · new project");
     process.stdout.write("\n");
 
-    // --- totopo.yaml found: show welcome message -----------------------------------------------------------------------------------------
-    if (hasAnchor && (totopoYaml.name ?? totopoYaml.description)) {
-        const parts = [totopoYaml.name ? `Welcome to ${totopoYaml.name}.` : "", totopoYaml.description ?? ""].filter(Boolean);
-        log.info(parts.join(" "));
-        process.stdout.write("\n");
-    }
-
-    // --- Confirm / choose project root ---------------------------------------------------------------------------------------------------
     let projectRoot: string;
+    let yaml: TotopoYamlConfig;
 
-    if (hasAnchor) {
-        // Anchor file found - project root confirmed, no walk-up ambiguity
-        projectRoot = searchRoot;
+    if (yamlDir) {
+        // --- totopo.yaml found: read and validate ----------------------------------------------------------------------------------------
+        let existing: TotopoYamlConfig | null;
+        try {
+            existing = readTotopoYaml(yamlDir);
+        } catch (err) {
+            log.error(`Found ${join(yamlDir, "totopo.yaml")} but it is invalid: ${err instanceof Error ? err.message : err}`);
+            cancel("Setup cancelled.");
+            return null;
+        }
+        if (!existing) {
+            log.error(`Could not read ${join(yamlDir, "totopo.yaml")}.`);
+            cancel("Setup cancelled.");
+            return null;
+        }
+
+        projectRoot = yamlDir;
+        yaml = existing;
+
+        // Show welcome message
+        if (yaml.name ?? yaml.description) {
+            const parts = [yaml.name ? `Welcome to ${yaml.name}.` : "", yaml.description ?? ""].filter(Boolean);
+            log.info(parts.join(" "));
+            process.stdout.write("\n");
+        }
+
         const ok = await confirm({ message: `Set up totopo for: ${toTildePath(projectRoot)}?` });
         if (isCancel(ok) || !ok) {
             cancel("Setup cancelled.");
             return null;
         }
     } else {
-        // Present options: git root / CWD / custom path
+        // --- No totopo.yaml: create one interactively ------------------------------------------------------------------------------------
+
+        // Choose project root
         const suggestedRoot = gitRoot ?? cwd;
         type RootOption = { value: string; label: string; hint?: string };
         const options: RootOption[] = [
@@ -120,7 +97,6 @@ export async function run(packageDir: string, cwd: string): Promise<ProjectConte
         options.push({ value: "__custom__", label: "Enter a different path…" });
 
         const rootChoice = await select({ message: "Project root:", options });
-
         if (isCancel(rootChoice)) {
             cancel("Setup cancelled.");
             return null;
@@ -145,24 +121,42 @@ export async function run(packageDir: string, cwd: string): Promise<ProjectConte
         } else {
             projectRoot = rootChoice as string;
         }
-    }
 
-    // --- Validate: not inside an existing registered project -----------------------------------------------------------------------------
-    const conflict = findConflictingProject(projectRoot);
-    if (conflict) {
-        log.error(
-            `"${toTildePath(projectRoot)}" is already inside a registered totopo project:\n` +
-                `  ${toTildePath(conflict.meta.projectRoot)}\n\n` +
-                `  Run \`npx totopo\` from that directory instead.`,
-        );
-        cancel("Setup cancelled.");
-        return null;
+        // Prompt for project_id
+        const suggestedId = slugifyForProjectId(basename(projectRoot));
+        const idInput = await text({
+            message: "Project ID:",
+            placeholder: suggestedId,
+            defaultValue: suggestedId,
+            validate: (v) => validateProjectId((v ?? "").trim()),
+        });
+        if (isCancel(idInput)) {
+            cancel("Setup cancelled.");
+            return null;
+        }
+        const projectId = (idInput as string).trim();
+
+        // Prompt for optional name/description
+        const nameInput = await text({
+            message: "Project name (optional):",
+            placeholder: basename(projectRoot),
+        });
+        const nameStr = isCancel(nameInput) ? "" : (nameInput as string).trim();
+
+        const descInput = await text({
+            message: "Short description (optional):",
+            placeholder: "e.g. Our AI coding sandbox",
+        });
+        const descStr = isCancel(descInput) ? "" : (descInput as string).trim();
+
+        // Build and write totopo.yaml
+        yaml = buildDefaultTotopoYaml(projectId, nameStr || undefined, descStr || undefined);
+        writeTotopoYaml(projectRoot, yaml);
+        log.success(`Created ${toTildePath(join(projectRoot, "totopo.yaml"))}`);
     }
 
     // --- Non-git warning -----------------------------------------------------------------------------------------------------------------
-    const projectGitRoot = tryGetGitRoot(projectRoot);
-    const isNonGit = projectGitRoot === null;
-
+    const isNonGit = tryGetGitRoot(projectRoot) === null;
     if (isNonGit) {
         log.warn("No version control detected. Agent changes won't be tracked.");
         const ack = await confirm({ message: "Continue without git?" });
@@ -172,142 +166,80 @@ export async function run(packageDir: string, cwd: string): Promise<ProjectConte
         }
     }
 
-    // --- Runtime mode --------------------------------------------------------------------------------------------------------------------
-    const modeChoice = await select({
-        message: "Runtime mode:",
-        options: [
-            { value: "host-mirror", label: "Host-mirror  (recommended — match your installed runtimes)" },
-            { value: "full", label: "Full  (latest stable versions of every tool)" },
-        ],
-    });
+    // --- Collision / orphan check --------------------------------------------------------------------------------------------------------
+    const projectId = yaml.project_id;
+    const collision = checkCollision(projectId, projectRoot);
 
-    if (isCancel(modeChoice)) {
-        cancel("Setup cancelled.");
-        return null;
-    }
+    if (collision === "collision") {
+        const existingLock = readLockFile(projectId);
+        log.error(
+            `Project ID "${projectId}" is already used by another project:\n` +
+                `  ${existingLock}\n\n` +
+                `Choose a different project_id in totopo.yaml.`,
+        );
 
-    const mode = modeChoice as RuntimeMode;
-    let selectedTools: string[] = [];
+        const newId = await text({
+            message: "New project ID:",
+            validate: (v) => {
+                const id = (v ?? "").trim();
+                const err = validateProjectId(id);
+                if (err) return err;
+                const c = checkCollision(id, projectRoot);
+                if (c === "collision") return `"${id}" is also taken`;
+                return undefined;
+            },
+        });
+        if (isCancel(newId)) {
+            cancel("Setup cancelled.");
+            return null;
+        }
 
-    // --- Tool selection (host-mirror only) -----------------------------------------------------------------------------------------------
-    if (mode === "host-mirror") {
-        const hostRuntimes = detectHostRuntimes();
-        selectedTools = await selectTools(hostRuntimes);
-    }
-
-    // --- Shared or local? ----------------------------------------------------------------------------------------------------------------
-    const scopeChoice = await select({
-        message: "Share setup with other contributors?",
-        options: [
-            { value: "shared", label: "Shared — create totopo.yaml in the project root" },
-            { value: "local", label: "Local only — keep config entirely in ~/.totopo/" },
-        ],
-    });
-
-    if (isCancel(scopeChoice)) {
-        cancel("Setup cancelled.");
-        return null;
-    }
-
-    const commitScope = scopeChoice as "shared" | "local";
-
-    // --- Create global .env if needed ----------------------------------------------------------------------------------------------------
-    const globalTotopoDir = join(homedir(), ".totopo");
-    const globalEnvPath = join(globalTotopoDir, ".env");
-    mkdirSync(globalTotopoDir, { recursive: true });
-    if (existsSync(globalEnvPath)) {
-        log.info(`${toTildePath(globalEnvPath)} already exists — leaving it untouched`);
+        yaml.project_id = (newId as string).trim();
+        writeTotopoYaml(projectRoot, yaml);
+        log.info(`Updated project_id to "${yaml.project_id}"`);
     } else {
-        cpSync(join(templatesDir, "env"), globalEnvPath);
-        log.success(`Created ${toTildePath(globalEnvPath)}`);
-    }
+        // Check for orphan (project_id changed in yaml but old dir still points here)
+        const orphanId = findOrphanProjectDir(projectRoot);
+        if (orphanId && orphanId !== projectId) {
+            log.warn(`Found orphaned project cache "${orphanId}" pointing to this project.`);
+            const action = await select({
+                message: "How to handle the orphaned cache?",
+                options: [
+                    { value: "realign", label: `Revert project_id to "${orphanId}"`, hint: "keeps existing cache" },
+                    { value: "clean", label: `Use "${projectId}" (clean slate)`, hint: "deletes old cache" },
+                ],
+            });
 
-    // --- Register project in ~/.totopo/projects/<id>/ ------------------------------------------------------------------------------------
-    const gitRemoteUrl = projectGitRoot !== null ? tryGetGitRemote(projectGitRoot) : undefined;
-    const ctx = registerProject(projectRoot, gitRemoteUrl);
-
-    if (isNonGit) {
-        writeProjectMeta(ctx.id, { ...ctx.meta, nonGitWarningAcknowledged: true });
-        ctx.meta.nonGitWarningAcknowledged = true;
-    }
-
-    // --- Generate Dockerfile -> ~/.totopo/projects/<id>/Dockerfile ------------------------------------------------------------------------
-    if (mode === "host-mirror") {
-        const hostRuntimes = detectHostRuntimes();
-        const dockerfile = generateDockerfile("host-mirror", templatesDir, selectedTools, hostRuntimes);
-        writeFileSync(join(ctx.projectDir, "Dockerfile"), dockerfile);
-    } else {
-        cpSync(join(templatesDir, "Dockerfile"), join(ctx.projectDir, "Dockerfile"));
-    }
-
-    // --- Copy post-start.mjs -> ~/.totopo/projects/<id>/post-start.mjs --------------------------------------------------------------------
-    cpSync(join(templatesDir, "post-start.mjs"), join(ctx.projectDir, "post-start.mjs"));
-    log.success(`Config written to ${toTildePath(ctx.projectDir)}`);
-
-    // --- Write settings ------------------------------------------------------------------------------------------------------------------
-    writeSettings(ctx.projectDir, { runtimeMode: mode, selectedTools, shadowPaths: [] });
-
-    // --- Create totopo.yaml (shared mode only) -------------------------------------------------------------------------------------------
-    if (commitScope === "shared") {
-        const totopoYamlPath = join(projectRoot, TOTOPO_YAML);
-        if (!existsSync(totopoYamlPath)) {
-            const wantsMeta = await confirm({ message: "Add a name/description to totopo.yaml?", initialValue: false });
-            let nameStr = "";
-            let descStr = "";
-
-            if (!isCancel(wantsMeta) && wantsMeta) {
-                const nameInput = await text({
-                    message: "Project name (optional):",
-                    placeholder: `e.g. ${basename(projectRoot)}`,
-                });
-                if (!isCancel(nameInput)) nameStr = (nameInput as string).trim();
-
-                const descInput = await text({
-                    message: "Short description (optional):",
-                    placeholder: "e.g. Our AI coding sandbox",
-                });
-                if (!isCancel(descInput)) descStr = (descInput as string).trim();
+            if (isCancel(action)) {
+                cancel("Setup cancelled.");
+                return null;
             }
 
-            writeFileSync(totopoYamlPath, buildTotopoYaml(nameStr, descStr));
-            log.success(`Created ${toTildePath(totopoYamlPath)}`);
+            if (action === "realign") {
+                yaml.project_id = orphanId;
+                writeTotopoYaml(projectRoot, yaml);
+                log.info(`Reverted project_id to "${orphanId}"`);
+            } else {
+                // Clean slate - remove orphaned dir
+                const { rmSync } = await import("node:fs");
+                rmSync(getProjectDir(orphanId), { recursive: true, force: true });
+                log.info(`Removed orphaned cache for "${orphanId}"`);
+            }
         }
     }
 
-    log.info(`Optionally add API keys to ${toTildePath(globalEnvPath)} — they are injected into every totopo container at runtime.`);
+    // --- Initialize project dir ----------------------------------------------------------------------------------------------------------
+    const finalId = yaml.project_id;
+    initProjectDir(finalId, projectRoot);
+
+    log.success(`Config written to ${toTildePath(getProjectDir(finalId))}`);
     outro("Setup complete.");
-    return ctx;
-}
 
-// --- Add project anchor (for projects onboarded as local-only) ---------------------------------------------------------------------------
-// Creates totopo.yaml at the project root, prompting for optional name/description.
-export async function addProjectAnchor(ctx: ProjectContext): Promise<void> {
-    const toTildePath = (p: string) => (p.startsWith(homedir()) ? p.replace(homedir(), "~") : p);
-    const totopoYamlPath = join(ctx.meta.projectRoot, TOTOPO_YAML);
-
-    if (existsSync(totopoYamlPath)) {
-        log.info(`${toTildePath(totopoYamlPath)} already exists.`);
-        return;
-    }
-
-    const wantsMeta = await confirm({ message: "Add a name/description to totopo.yaml?", initialValue: false });
-    let nameStr = "";
-    let descStr = "";
-
-    if (!isCancel(wantsMeta) && wantsMeta) {
-        const nameInput = await text({
-            message: "Project name (optional):",
-            placeholder: `e.g. ${ctx.meta.displayName}`,
-        });
-        if (!isCancel(nameInput)) nameStr = (nameInput as string).trim();
-
-        const descInput = await text({
-            message: "Short description (optional):",
-            placeholder: "e.g. Our AI coding sandbox",
-        });
-        if (!isCancel(descInput)) descStr = (descInput as string).trim();
-    }
-
-    writeFileSync(totopoYamlPath, buildTotopoYaml(nameStr, descStr));
-    log.success(`Created ${toTildePath(totopoYamlPath)}`);
+    return {
+        projectId: finalId,
+        projectRoot,
+        containerName: deriveContainerName(finalId),
+        projectDir: getProjectDir(finalId),
+        displayName: yaml.name || finalId,
+    };
 }

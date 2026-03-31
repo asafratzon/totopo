@@ -1,6 +1,6 @@
 {
     "name": "totopo",
-    "version": "2.1.0",
+    "version": "3.0.0",
     "description": "Run AI coding agents safely in your local codebase",
     "type": "module",
     "bin": {
@@ -8,14 +8,16 @@
     },
     "dependencies": {
         "@clack/prompts": "^1.1.0",
+        "ajv": "^8.18.0",
+        "fast-glob": "^3.3.3",
         "js-yaml": "^4.1.1"
     },
     "devDependencies": {
         "@biomejs/biome": "^2.4.6",
         "@types/js-yaml": "^4.0.9",
         "@types/node": "^25.4.0",
-        "typescript": "^5.9.3",
-        "tsx": "^4.21.0"
+        "tsx": "^4.21.0",
+        "typescript": "^5.9.3"
     },
     "pnpm": {
         "supportedArchitectures": {
@@ -68,6 +70,7 @@
     "files": [
         "bin/",
         "templates/",
+        "schema/",
         "LICENSE",
         "dist/"
     ]

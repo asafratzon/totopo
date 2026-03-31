@@ -1,28 +1,64 @@
 // =========================================================================================================================================
-// src/lib/shadows.ts - Sync shadows/ directory on disk with shadowPaths in settings.json
+// src/lib/shadows.ts - Gitignore-style shadow path expansion and sync
+// Expands patterns like "node_modules", ".env*" into concrete paths, then syncs shadow directories.
 // =========================================================================================================================================
 
 import { existsSync, lstatSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
-import { readSettings } from "./config.js";
+import fg from "fast-glob";
+
+// --- Pattern expansion -------------------------------------------------------------------------------------------------------------------
 
 /**
- * Ensures the shadows/ directory matches the shadowPaths in settings.json.
+ * Expand gitignore-style patterns into concrete relative paths.
  *
- * - Creates missing shadow entries (empty dir or empty file, matching the project path type)
- * - If `freshPaths` is provided, those entries are deleted and recreated (clean slate for new additions)
- * - Removes shadow entries not listed in settings
- * - Cleans up empty parent directories left behind after removals
+ * Patterns without a directory separator are treated as recursive (prepended with **&#47;)
+ * following gitignore convention. Patterns with a / are matched relative to the project root.
+ * Matched directories are not recursed into (e.g. node_modules matches once, not its children).
  */
-export function ensureShadowsInSync(projectDir: string, projectRoot: string, freshPaths?: Set<string>): void {
-    const settings = readSettings(projectDir);
-    const expected = new Set(settings.shadowPaths);
+export function expandShadowPatterns(patterns: string[], projectRoot: string): string[] {
+    if (patterns.length === 0) return [];
+
+    // Convert gitignore-style patterns to fast-glob patterns
+    const globPatterns = patterns.map((p) => (p.includes("/") ? p : `**/${p}`));
+
+    // Build ignore list: skip .git and contents of any matched directory
+    const ignorePatterns = ["**/.git", ...globPatterns.map((p) => `${p}/**/*`)];
+
+    const results = fg.sync(globPatterns, {
+        cwd: projectRoot,
+        onlyFiles: false,
+        dot: true,
+        ignore: ignorePatterns,
+    });
+
+    return results.sort();
+}
+
+// --- Hit counting (for menu UX) ----------------------------------------------------------------------------------------------------------
+
+/** Count how many paths a pattern would match in the project. */
+export function countPatternHits(pattern: string, projectRoot: string): number {
+    return expandShadowPatterns([pattern], projectRoot).length;
+}
+
+// --- Shadow sync -------------------------------------------------------------------------------------------------------------------------
+
+/**
+ * Ensures the shadows/ directory matches the given expanded paths.
+ * - Creates missing shadow entries (empty dir or empty file, matching project path type)
+ * - If `freshPaths` is provided, those entries are deleted and recreated (clean slate)
+ * - Removes shadow entries not in the expanded set
+ * - Cleans up empty parent directories
+ */
+export function ensureShadowsInSync(projectDir: string, expandedPaths: string[], projectRoot: string, freshPaths?: Set<string>): void {
+    const expected = new Set(expandedPaths);
     const shadowsDir = join(projectDir, "shadows");
 
     // Create shadows/ root if needed
     mkdirSync(shadowsDir, { recursive: true });
 
-    // Remove entries on disk that are no longer in settings
+    // Remove stale entries
     removeStaleEntries(shadowsDir, shadowsDir, expected);
 
     // Create or refresh expected entries
@@ -38,6 +74,17 @@ export function ensureShadowsInSync(projectDir: string, projectRoot: string, fre
             createShadowEntry(projectPath, shadowPath);
         }
     }
+}
+
+// --- Mount args --------------------------------------------------------------------------------------------------------------------------
+
+/** Build -v args for shadow mounts from expanded paths. */
+export function buildShadowMountArgs(projectDir: string, expandedPaths: string[]): string[] {
+    const args: string[] = [];
+    for (const relPath of expandedPaths) {
+        args.push("-v", `${join(projectDir, "shadows", relPath)}:/workspace/${relPath}`);
+    }
+    return args;
 }
 
 // --- Helpers -----------------------------------------------------------------------------------------------------------------------------

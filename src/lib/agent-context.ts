@@ -77,7 +77,7 @@ export function buildAgentMountArgs(projectDir: string): string[] {
 /**
  * Assembles the agent context markdown injected into each supported agent's config dir at session start.
  */
-export function buildAgentContextDocs(hasGit: boolean, shadowPaths?: string[]): AgentContextDocs {
+export function buildAgentContextDocs(hasGit: boolean, shadowPatterns?: string[]): AgentContextDocs {
     // -- Git section ----------------------------------------------------------------------------------------------------------------------
     let gitSection: string;
     if (hasGit) {
@@ -104,16 +104,16 @@ At the start of every session:
 
     // -- Shadow paths section ----------------------------------------------------------------------------------------------------------------
     let shadowSection = "";
-    if (shadowPaths && shadowPaths.length > 0) {
-        const pathList = shadowPaths.map((p) => `- \`/workspace/${p}\``).join("\n");
+    if (shadowPatterns && shadowPatterns.length > 0) {
+        const patternList = shadowPatterns.map((p) => `- \`${p}\``).join("\n");
         shadowSection = `## Shadow paths
 
-The following paths are overlaid with container-local entries and do not reflect
+The following patterns are overlaid with container-local storage and do not reflect
 the host filesystem:
 
-${pathList}
+${patternList}
 
-These paths are initialized empty on first use. The container may accumulate
+Matching paths are initialized empty on first use. The container may accumulate
 content in them over time (for example, a shadowed \`node_modules\` gets
 populated when you run \`npm install\` inside the container). Do not assume they
 are empty, and do not attempt to sync or restore their host contents.`;
@@ -125,7 +125,6 @@ are empty, and do not attempt to sync or restore their host contents.`;
 
 - Files outside mounted paths cannot be read, written, or executed.
 - If a command fails because of missing files or permissions, tell the user: "This requires running on the host — please run \`<command>\` outside the container."
-- \`~/.totopo/\` is read-only inside the container.
 - This file (\`${toolPath}\`) is managed by totopo and overwritten on every session start. Do not edit it.`;
 
         const sections = [
