@@ -1,8 +1,11 @@
 # =============================================================================
-# Secure AI Dev Container — General-purpose multi-stack
+# totopo — Secure AI Dev Container (essentials base)
 # =============================================================================
-# Non-root user, no git remote access, AI tools: opencode, claude, codex
-# Runtimes: Node.js, Python, Go, Rust, Java (Temurin 21), Bun
+# Non-root user, git remote block, AI tools: opencode, claude, codex
+# Base runtime: Node.js LTS + python3 (for build scripts)
+#
+# Additional runtimes (Go, Rust, Java, Bun, etc.) are added via
+# dockerfile_hook in totopo.yaml profiles.
 # =============================================================================
 
 FROM debian:bookworm-slim
@@ -14,7 +17,7 @@ LABEL totopo.managed=true
 RUN apt-get update && apt-get install -y --no-install-recommends \
     # Core utilities
     git curl wget bash zsh make \
-    # Build essentials (needed for Rust compilation, C extensions, etc.)
+    # Build essentials
     build-essential pkg-config libssl-dev \
     # Utilities
     jq unzip zip tree htop procps lsb-release gnupg ca-certificates sox \
@@ -22,14 +25,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ripgrep fzf \
     # Database clients
     sqlite3 postgresql-client default-mysql-client redis-tools \
-    # Python (system runtime)
+    # Python (needed for build scripts and as a light default)
     python3 python3-pip python3-venv pipx \
-    # Java build tools
-    maven \
     && rm -rf /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------
-# Layer 2 — fd (not available as fd-find in bookworm; install from GitHub)
+# Layer 2 — fd (GitHub release)
 # ---------------------------------------------------------------------------
 RUN ARCH=$(dpkg --print-architecture) && \
     FD_VERSION=$(curl -fsSL https://api.github.com/repos/sharkdp/fd/releases/latest \
@@ -38,7 +39,7 @@ RUN ARCH=$(dpkg --print-architecture) && \
         -o /tmp/fd.deb && dpkg -i /tmp/fd.deb && rm /tmp/fd.deb
 
 # ---------------------------------------------------------------------------
-# Layer 3 — yq (not in apt)
+# Layer 3 — yq (GitHub release)
 # ---------------------------------------------------------------------------
 RUN ARCH=$(dpkg --print-architecture) && \
     curl -fsSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${ARCH}" \
@@ -61,35 +62,13 @@ RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - && \
     apt-get install -y nodejs && rm -rf /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------
-# Layer 6 — Eclipse Temurin 21 JDK (Adoptium apt repo)
-# ---------------------------------------------------------------------------
-RUN curl -fsSL https://packages.adoptium.net/artifactory/api/gpg/key/public \
-        | gpg --dearmor -o /usr/share/keyrings/adoptium.gpg && \
-    echo "deb [signed-by=/usr/share/keyrings/adoptium.gpg] \
-        https://packages.adoptium.net/artifactory/deb $(lsb_release -cs) main" \
-        > /etc/apt/sources.list.d/adoptium.list && \
-    apt-get update && apt-get install -y temurin-21-jdk && rm -rf /var/lib/apt/lists/*
-RUN echo 'export JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java))))' \
-        > /etc/profile.d/java.sh
-
-# ---------------------------------------------------------------------------
-# Layer 7 — Go (official tarball, latest stable, multi-arch)
-# ---------------------------------------------------------------------------
-RUN ARCH=$(dpkg --print-architecture) && \
-    GO_VERSION=$(curl -fsSL 'https://go.dev/dl/?mode=json' \
-        | python3 -c "import sys,json; d=json.load(sys.stdin); print(d[0]['version'].lstrip('go'))") && \
-    curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${ARCH}.tar.gz" \
-        | tar -xz -C /usr/local && \
-    echo 'export PATH=/usr/local/go/bin:$PATH' > /etc/profile.d/go.sh
-
-# ---------------------------------------------------------------------------
-# Layer 8 — Git remote block
+# Layer 6 — Git remote block (security boundary)
 # ---------------------------------------------------------------------------
 RUN git config --system protocol.allow never && \
     git config --system protocol.file.allow always
 
 # ---------------------------------------------------------------------------
-# Layer 9 — Global npm tools
+# Layer 7 — Global npm tools (AI CLIs)
 # ---------------------------------------------------------------------------
 RUN npm install -g \
     pnpm \
@@ -99,42 +78,22 @@ RUN npm install -g \
     && npm cache clean --force
 
 # ---------------------------------------------------------------------------
-# Layer 10 — Non-root user
+# Layer 8 — Non-root user
 # ---------------------------------------------------------------------------
 RUN groupadd --gid 1001 devuser && \
     useradd --uid 1001 --gid devuser --shell /bin/bash --create-home devuser && \
     mkdir -p /home/devuser/.local/state /home/devuser/.local/share /home/devuser/.local/bin && \
     chown -R devuser:devuser /home/devuser
 
-USER devuser
+# ---------------------------------------------------------------------------
+# Layer 9 — Bake post-start script into image
+# ---------------------------------------------------------------------------
+COPY post-start.mjs /home/devuser/post-start.mjs
+RUN chown devuser:devuser /home/devuser/post-start.mjs
+
 WORKDIR /workspace
 
 # ---------------------------------------------------------------------------
-# Layer 11 — Rust (installed as devuser via rustup)
+# NOTE: USER devuser is appended by totopo at build time (after profile hook)
+# Do not add it here.
 # ---------------------------------------------------------------------------
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-        | sh -s -- -y --no-modify-path --default-toolchain stable && \
-    /home/devuser/.cargo/bin/rustup component add rustfmt clippy
-
-# ---------------------------------------------------------------------------
-# Layer 12 — Bun (installed as devuser via official installer)
-# ---------------------------------------------------------------------------
-RUN curl -fsSL https://bun.sh/install | bash
-
-# ---------------------------------------------------------------------------
-# Layer 13 — Python user tools (uv + poetry via pipx)
-# ---------------------------------------------------------------------------
-RUN pipx install uv && pipx install poetry
-
-# ---------------------------------------------------------------------------
-# Layer 14 — PATH + shell experience
-# ---------------------------------------------------------------------------
-ENV PATH="/home/devuser/.cargo/bin:/home/devuser/.bun/bin:/home/devuser/.local/bin:/usr/local/go/bin:${PATH}"
-RUN echo 'export PS1="\[\033[01;32m\][devcontainer]\[\033[00m\] \[\033[01;34m\]\w\[\033[00m\] \$ "' \
-        >> /home/devuser/.bashrc && \
-    echo 'echo ""' >> /home/devuser/.bashrc && \
-    echo "echo \"  Run 'opencode', 'claude', or 'codex' to start an agent.\"" >> /home/devuser/.bashrc && \
-    echo 'echo ""' >> /home/devuser/.bashrc && \
-    echo 'alias status="node /home/devuser/.totopo/post-start.mjs"' >> /home/devuser/.bashrc
-
-CMD ["/bin/bash"]

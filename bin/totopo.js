@@ -17,8 +17,7 @@ import { run as onboard } from "../dist/commands/onboard.js";
 import { run as rebuild } from "../dist/commands/rebuild.js";
 import { run as settings } from "../dist/commands/settings.js";
 import { run as stop } from "../dist/commands/stop.js";
-import { run as syncDockerfile } from "../dist/commands/sync-dockerfile.js";
-import { listProjectIds, resolveProject, TOTOPO_YAML } from "../dist/lib/project-identity.js";
+import { findTotopoYamlDir, listProjectIds, resolveProject } from "../dist/lib/project-identity.js";
 
 // --- Guard: inside container -------------------------------------------------------------------------------------------------------------
 try {
@@ -36,12 +35,11 @@ try {
 }
 
 // --- Paths -------------------------------------------------------------------------------------------------------------------------------
-// dirname(dirname(...)) walks up from bin/ to the package root.
 const packageDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const cwd = process.cwd();
 
 // --- Guard: dist/ must exist -------------------------------------------------------------------------------------------------------------
-if (!existsSync(new URL("../dist/commands/sync-dockerfile.js", import.meta.url))) {
+if (!existsSync(new URL("../dist/commands/dev.js", import.meta.url))) {
     console.error("");
     console.error("  totopo: compiled output not found.");
     console.error("  This should not happen with a published package.");
@@ -50,7 +48,15 @@ if (!existsSync(new URL("../dist/commands/sync-dockerfile.js", import.meta.url))
     process.exit(1);
 }
 
-// --- Resolve project from CWD (walk-up through ~/.totopo/projects/) ----------------------------------------------------------------------
+// --- v2 migration check ------------------------------------------------------------------------------------------------------------------
+try {
+    const { runMigration } = await import("../dist/lib/migrate-v2.js");
+    await runMigration();
+} catch {
+    // migrate-v2 module may not exist yet during development - that's fine
+}
+
+// --- Resolve project from CWD (walk-up looking for totopo.yaml) --------------------------------------------------------------------------
 let project = resolveProject(cwd);
 
 // --- Onboarding (if not in a registered project) -----------------------------------------------------------------------------------------
@@ -63,10 +69,9 @@ if (!project) {
         // Not in a git repo - that's fine
     }
 
-    const totopoJsonPath = `${gitRoot ?? cwd}/${TOTOPO_YAML}`;
-    const hasTotopoYaml = existsSync(totopoJsonPath);
+    const hasContext = gitRoot !== null || findTotopoYamlDir(cwd) !== null;
 
-    if (gitRoot !== null || hasTotopoYaml) {
+    if (hasContext) {
         // Has project context - if other projects already exist, let the user choose first
         if (listProjectIds().length > 0) {
             process.stdout.write("\n");
@@ -82,26 +87,23 @@ if (!project) {
                 process.exit(0);
             }
             if (choice === "manage") {
-                await advanced(packageDir);
+                await advanced();
                 process.exit(0);
             }
         }
 
-        const ctx = await onboard(packageDir, cwd);
-        if (!ctx) process.exit(0); // cancelled -> exit cleanly
+        const ctx = await onboard(cwd);
+        if (!ctx) process.exit(0);
         project = ctx;
     } else {
         // No project context -> show Manage totopo menu directly
-        await advanced(packageDir);
+        await advanced();
         process.exit(0);
     }
 }
 
-// --- Sync Dockerfile with host runtimes --------------------------------------------------------------------------------------------------
-await syncDockerfile(packageDir, project);
-
 // --- Doctor (silent pre-check) -----------------------------------------------------------------------------------------------------------
-const doctorResult = await doctor(project.projectDir, false);
+const doctorResult = await doctor(null, false);
 if (!doctorResult.ok) {
     console.error("  Fix the issues above and re-run totopo.");
     console.error("");
@@ -109,7 +111,7 @@ if (!doctorResult.ok) {
 }
 
 // --- Gather container state for menu -----------------------------------------------------------------------------------------------------
-const { containerName } = project.meta;
+const { containerName } = project;
 
 const dockerResult = spawnSync("docker", ["ps", "--filter", "name=totopo-", "--format", "{{.Names}}"], {
     encoding: "utf8",
@@ -130,22 +132,22 @@ while (showMenu) {
             await dev(packageDir, project);
             break;
         case "rebuild":
-            await rebuild(project.meta.containerName);
+            await rebuild(project.containerName);
             await dev(packageDir, project);
             break;
         case "stop":
-            await stop(project.meta.containerName);
+            await stop(project.containerName);
             break;
         case "settings":
-            await settings(packageDir, project);
+            await settings(project);
             showMenu = true;
             break;
         case "manage-totopo": {
-            const result = await advanced(packageDir, project.id);
+            const result = await advanced(project.projectId);
             if (result === "back") showMenu = true;
             break;
         }
         default:
-            break; // quit or cancelled
+            break;
     }
 }

@@ -1,0 +1,53 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "totopo.yaml",
+    "description": "Configuration file for totopo — secure AI dev containers",
+    "type": "object",
+    "required": ["schema_version", "project_id"],
+    "additionalProperties": false,
+    "properties": {
+        "schema_version": {
+            "type": "integer",
+            "const": 3,
+            "description": "Schema version — must be 3"
+        },
+        "project_id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]*[a-z0-9]$",
+            "minLength": 2,
+            "maxLength": 48,
+            "description": "Unique project identifier. Used for container naming and cache directory. Lowercase alphanumeric and hyphens only."
+        },
+        "name": {
+            "type": "string",
+            "description": "Human-readable project name (shown in menus and welcome message)"
+        },
+        "description": {
+            "type": "string",
+            "description": "Short project description (shown during onboarding)"
+        },
+        "env_file": {
+            "type": "string",
+            "description": "Path to env file relative to totopo.yaml (e.g. '.env'). Injected into container at runtime via --env-file."
+        },
+        "shadow_paths": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Gitignore-style patterns. Matching paths are hidden from the agent — the container gets an empty, isolated copy instead. Patterns without a '/' match at any depth (e.g. 'node_modules' matches all nested node_modules too). Patterns with a '/' match relative to the project root. Supports globs: * (any chars), ? (single char), {a,b} (alternatives)."
+        },
+        "profiles": {
+            "type": "object",
+            "description": "Named Dockerfile profiles. Each profile defines a dockerfile_hook with raw Dockerfile instructions appended to the base image.",
+            "additionalProperties": {
+                "type": "object",
+                "properties": {
+                    "dockerfile_hook": {
+                        "type": "string",
+                        "description": "Raw Dockerfile instructions appended after the base image layers. Use for installing additional runtimes, tools, or dependencies."
+                    }
+                },
+                "additionalProperties": false
+            }
+        }
+    }
+}

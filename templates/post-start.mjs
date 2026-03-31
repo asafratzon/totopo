@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // =============================================================================
 // post-start.mjs — Security validation & readiness check
-// Runs automatically on every container start via postStartCommand.
+// Baked into the container image at /home/devuser/post-start.mjs
 // Must use only Node.js built-ins — no external packages available in container.
 // =============================================================================
 
@@ -20,7 +20,7 @@ const run = (cmd) => {
 
 // ─── ANSI helpers ─────────────────────────────────────────────────────────────
 const green = (s) => `\x1b[32m${s}\x1b[0m`;
-const yellow = (s) => `\x1b[33m${s}\x1b[0m`;
+const _yellow = (s) => `\x1b[33m${s}\x1b[0m`;
 const red = (s) => `\x1b[31m${s}\x1b[0m`;
 const dim = (s) => `\x1b[2m${s}\x1b[0m`;
 const bold = (s) => `\x1b[1m${s}\x1b[0m`;
@@ -31,7 +31,6 @@ const grey = (s) => `\x1b[90m${s}\x1b[0m`;
 
 const ok = (label, detail) => console.log(`${green("✓")} ${label.padEnd(24)}${detail ? dim(detail) : ""}`);
 const skip = (label, detail) => console.log(`${grey("–")} ${grey(label.padEnd(24))}${detail ? grey(detail) : ""}`);
-const _warn = (label, detail) => console.log(`${yellow("▲")} ${label.padEnd(24)}${detail ? dim(detail) : ""}`);
 const fail = (label, detail) => {
     console.log(`${red("✗")} ${label.padEnd(24)}${detail || ""}`);
     errors++;
@@ -71,9 +70,6 @@ section("AI tools");
 const aiToolResults = [];
 
 const checkTool = (cmd) => {
-    // Try --version first; some tools (e.g. opencode) may write version to
-    // stderr or exit non-zero in a non-TTY context, so fall back to `which`
-    // to confirm the binary exists before reporting failure.
     const out = run(`${cmd} --version`);
     if (out !== null && out.trim() !== "") {
         const version = out.split("\n")[0];
@@ -100,22 +96,22 @@ section("Runtimes");
 
 const checkRuntime = (label, version) => {
     if (version !== null) ok(label, version);
-    else skip(label, "skipped");
+    else skip(label, "not installed");
 };
 
-// JavaScript
+// Always present (base image)
 ok("node", run("node --version") ?? "not found");
 ok("npm", `v${run("npm --version") ?? "not found"}`);
-ok("pnpm", run("pnpm --version") ? `v${run("pnpm --version")}` : "not found");
-checkRuntime("bun", run("bun --version") ? `v${run("bun --version")}` : null);
-// Python
+const pnpmVer = run("pnpm --version");
+ok("pnpm", pnpmVer ? `v${pnpmVer}` : "not found");
 ok("python3", run("python3 --version") ?? "not found");
+
+// Optional (installed via profile hooks)
+const bunVer = run("bun --version");
+checkRuntime("bun", bunVer ? `v${bunVer}` : null);
 checkRuntime("uv", run("uv --version"));
-// Go
 checkRuntime("go", run("go version"));
-// Rust
 checkRuntime("cargo", run("cargo --version"));
-// Java
 checkRuntime("java", run("java --version")?.split("\n")[0] ?? null);
 
 // ─── Dev tools ───────────────────────────────────────────────────────────────
@@ -131,16 +127,10 @@ ok("yq", run("yq --version") ?? "not found");
 // ─── API keys ────────────────────────────────────────────────────────────────
 section("API keys");
 
-console.log(`ℹ ${dim("Optionally add API keys to ~/.totopo/.env on your host — all keys are injected into every container at runtime.")}`);
+console.log(`ℹ ${dim("API keys are injected via env_file in totopo.yaml. Set env_file to point to your .env file.")}`);
 
 // ─── Summary ─────────────────────────────────────────────────────────────────
 if (errors === 0) {
-    section("AI tools");
-    for (const { cmd, version, found } of aiToolResults) {
-        if (found) ok(cmd, version);
-        else fail(cmd, "not found — rebuild container");
-    }
-
     console.log(`\n${green("●")} ${bold("Ready.")}`);
     console.log(`${grey("Type 'status' to re-run the readiness check.")}\n`);
 } else {

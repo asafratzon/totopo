@@ -1,161 +1,204 @@
 // =========================================================================================================================================
 // src/lib/project-identity.ts - Project identity, registration, and lookup
-// Maps project root paths to stable IDs stored in ~/.totopo/projects/
+// Uses project_id from totopo.yaml instead of path hashing. Lock files in ~/.totopo/projects/<project_id>/
 // =========================================================================================================================================
 
-import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { dirname, join } from "node:path";
+import { readTotopoYaml, TOTOPO_YAML } from "./totopo-yaml.js";
 
-export const TOTOPO_YAML = "totopo.yaml";
+export { TOTOPO_YAML };
 
-export interface ProjectMeta {
-    projectRoot: string;
-    displayName: string;
-    containerName: string;
-    gitRemoteUrl?: string;
-    nonGitWarningAcknowledged?: boolean;
-}
+// --- Interfaces --------------------------------------------------------------------------------------------------------------------------
 
 export interface ProjectContext {
-    id: string;
-    meta: ProjectMeta;
-    projectDir: string; // ~/.totopo/projects/<id>
+    projectId: string;
+    projectRoot: string;
+    containerName: string;
+    projectDir: string; // ~/.totopo/projects/<project_id>
+    displayName: string;
 }
 
-/** Stable SHA-256 hash of the absolute project root path */
-export function hashProjectPath(absolutePath: string): string {
-    return createHash("sha256").update(absolutePath).digest("hex");
-}
+// --- Path helpers ------------------------------------------------------------------------------------------------------------------------
 
-/** First 8 characters of the hash — used in container/image names */
-function truncateHash(id: string): string {
-    return id.slice(0, 8);
-}
-
-/** Slugify a directory name for use in Docker container/image names (max 20 chars) */
-function slugifyName(name: string): string {
-    return (
-        name
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, "-")
-            .replace(/^-+|-+$/g, "")
-            .slice(0, 20) || "workspace"
-    );
-}
-
-/** Derive a human-readable container/image name from project ID and root directory name */
-export function deriveContainerName(id: string, projectRoot: string): string {
-    return `totopo-${truncateHash(id)}-${slugifyName(basename(projectRoot))}`;
-}
-
-/** Base directory for all project configs — ~/.totopo/projects/ */
+/** Base directory for all project caches — ~/.totopo/projects/ */
 export function getProjectsBaseDir(): string {
     return join(homedir(), ".totopo", "projects");
 }
 
-/** Config directory for a specific project — ~/.totopo/projects/<id>/ */
-export function getProjectDir(id: string): string {
-    return join(getProjectsBaseDir(), id);
+/** Cache directory for a specific project — ~/.totopo/projects/<project_id>/ */
+export function getProjectDir(projectId: string): string {
+    return join(getProjectsBaseDir(), projectId);
 }
 
-/** Read a project's meta.json; returns null if missing or invalid */
-export function readProjectMeta(id: string): ProjectMeta | null {
-    const metaPath = join(getProjectDir(id), "meta.json");
-    if (!existsSync(metaPath)) return null;
+/** Derive container and image name from project ID */
+export function deriveContainerName(projectId: string): string {
+    return `totopo-${projectId}`;
+}
+
+// --- Lock file (stores project root path and active profile) -----------------------------------------------------------------------------
+// Format: line 1 = absolute project root path, line 2 = active profile name
+
+const LOCK_FILE = ".lock";
+
+/** Parse a lock file into its two fields. */
+function parseLockFile(projectId: string): { projectRoot: string; activeProfile: string } | null {
+    const lockPath = join(getProjectDir(projectId), LOCK_FILE);
+    if (!existsSync(lockPath)) return null;
     try {
-        const raw = JSON.parse(readFileSync(metaPath, "utf8")) as Record<string, unknown>;
-        if (typeof raw.projectRoot !== "string" || typeof raw.displayName !== "string" || typeof raw.containerName !== "string") {
-            return null;
-        }
-        const meta: ProjectMeta = {
-            projectRoot: raw.projectRoot,
-            displayName: raw.displayName,
-            containerName: raw.containerName,
-        };
-        if (typeof raw.gitRemoteUrl === "string") meta.gitRemoteUrl = raw.gitRemoteUrl;
-        if (typeof raw.nonGitWarningAcknowledged === "boolean") meta.nonGitWarningAcknowledged = raw.nonGitWarningAcknowledged;
-        return meta;
+        const lines = readFileSync(lockPath, "utf8").trimEnd().split("\n");
+        const projectRoot = lines[0]?.trim();
+        if (!projectRoot) return null;
+        return { projectRoot, activeProfile: lines[1]?.trim() || "default" };
     } catch {
         return null;
     }
 }
 
-/** Write a project's meta.json, creating the project directory if needed */
-export function writeProjectMeta(id: string, meta: ProjectMeta): void {
-    const dir = getProjectDir(id);
+/** Write lock file with project root path and active profile. */
+function writeLockFileInternal(projectId: string, projectRoot: string, activeProfile: string): void {
+    const dir = getProjectDir(projectId);
     mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, "meta.json"), `${JSON.stringify(meta, null, 4)}\n`);
+    writeFileSync(join(dir, LOCK_FILE), `${projectRoot}\n${activeProfile}\n`);
 }
 
-/** List all registered project IDs (directories with a meta.json) */
+/** Read a project's lock file. Returns the absolute project root path, or null if missing. */
+export function readLockFile(projectId: string): string | null {
+    return parseLockFile(projectId)?.projectRoot ?? null;
+}
+
+/** Write a project's lock file with the owning project root path. Preserves active profile if already set. */
+export function writeLockFile(projectId: string, projectRoot: string): void {
+    const existing = parseLockFile(projectId);
+    writeLockFileInternal(projectId, projectRoot, existing?.activeProfile ?? "default");
+}
+
+/** Read the active profile name. Returns null if lock file is missing. */
+export function readActiveProfile(projectId: string): string | null {
+    return parseLockFile(projectId)?.activeProfile ?? null;
+}
+
+/** Write the active profile name. Preserves project root path. */
+export function writeActiveProfile(projectId: string, profile: string): void {
+    const existing = parseLockFile(projectId);
+    if (!existing) return;
+    writeLockFileInternal(projectId, existing.projectRoot, profile);
+}
+
+// --- Project directory initialization ----------------------------------------------------------------------------------------------------
+
+/** Initialize ~/.totopo/projects/<project_id>/ with lock file and subdirs. */
+export function initProjectDir(projectId: string, projectRoot: string, activeProfile = "default"): void {
+    const dir = getProjectDir(projectId);
+    mkdirSync(join(dir, "agents"), { recursive: true });
+    mkdirSync(join(dir, "shadows"), { recursive: true });
+    writeLockFileInternal(projectId, projectRoot, activeProfile);
+}
+
+// --- Listing -----------------------------------------------------------------------------------------------------------------------------
+
+/** List all registered project IDs (directories with a .lock file) */
 export function listProjectIds(): string[] {
     const base = getProjectsBaseDir();
     if (!existsSync(base)) return [];
     try {
-        return readdirSync(base).filter((name) => existsSync(join(base, name, "meta.json")));
+        return readdirSync(base).filter((name) => existsSync(join(base, name, LOCK_FILE)));
     } catch {
         return [];
     }
 }
 
-/** List all registered projects as ProjectContext objects */
+/** List all registered projects as ProjectContext objects. Skips entries whose lock target has no totopo.yaml. */
 export function listProjects(): ProjectContext[] {
     return listProjectIds()
-        .map((id) => {
-            const meta = readProjectMeta(id);
-            return meta ? { id, meta, projectDir: getProjectDir(id) } : null;
+        .map((projectId) => {
+            const lockPath = readLockFile(projectId);
+            if (!lockPath) return null;
+            try {
+                const yaml = readTotopoYaml(lockPath);
+                if (!yaml || yaml.project_id !== projectId) return null;
+                return {
+                    projectId,
+                    projectRoot: lockPath,
+                    containerName: deriveContainerName(projectId),
+                    projectDir: getProjectDir(projectId),
+                    displayName: yaml.name || projectId,
+                };
+            } catch {
+                return null;
+            }
         })
         .filter((p): p is ProjectContext => p !== null);
 }
 
-/** Register a new project — creates the project dir and writes meta.json */
-export function registerProject(projectRoot: string, gitRemoteUrl?: string): ProjectContext {
-    const id = hashProjectPath(projectRoot);
-    const containerName = deriveContainerName(id, projectRoot);
-    const meta: ProjectMeta = {
-        projectRoot,
-        displayName: basename(projectRoot),
-        containerName,
-        ...(gitRemoteUrl !== undefined ? { gitRemoteUrl } : {}),
-    };
-    writeProjectMeta(id, meta);
-    return { id, meta, projectDir: getProjectDir(id) };
-}
+// --- Resolution --------------------------------------------------------------------------------------------------------------------------
 
 /**
- * Walk up from the given path and return the first registered project whose root
- * is an ancestor of (or equal to) the given path. Returns null if none found.
- * Resolves the most-specific (deepest) ancestor when multiple projects could match.
+ * Walk up from the given path looking for totopo.yaml. If found, read project_id,
+ * verify lock file, and return ProjectContext. Returns null if no totopo.yaml found
+ * or if the project dir is not initialized.
  */
 export function resolveProject(fromPath: string): ProjectContext | null {
-    const projects = listProjects();
-    if (projects.length === 0) return null;
-
-    // Sort by path length descending - deepest root wins
-    const sorted = [...projects].sort((a, b) => b.meta.projectRoot.length - a.meta.projectRoot.length);
-
     let current = fromPath;
     while (true) {
-        const match = sorted.find((p) => p.meta.projectRoot === current);
-        if (match) return match;
+        const yaml = readTotopoYaml(current);
+        if (yaml) {
+            const projectDir = getProjectDir(yaml.project_id);
+            const lockPath = readLockFile(yaml.project_id);
+            // Project dir exists and lock matches this path
+            if (lockPath === current) {
+                return {
+                    projectId: yaml.project_id,
+                    projectRoot: current,
+                    containerName: deriveContainerName(yaml.project_id),
+                    projectDir,
+                    displayName: yaml.name || yaml.project_id,
+                };
+            }
+            // totopo.yaml found but project not initialized or lock mismatch - return null
+            // (caller handles onboarding / collision)
+            return null;
+        }
         const parent = dirname(current);
-        if (parent === current) break; // reached filesystem root
+        if (parent === current) break;
         current = parent;
     }
     return null;
 }
 
 /**
- * Check if a given candidate root path conflicts with (is inside) any existing
- * registered project. Returns the conflicting project if found, null if safe.
+ * Walk up from the given path looking for totopo.yaml. Returns the directory containing it, or null.
  */
-export function findConflictingProject(candidateRoot: string): ProjectContext | null {
-    for (const p of listProjects()) {
-        if (candidateRoot === p.meta.projectRoot || candidateRoot.startsWith(`${p.meta.projectRoot}/`)) {
-            return p;
-        }
+export function findTotopoYamlDir(fromPath: string): string | null {
+    let current = fromPath;
+    while (true) {
+        if (existsSync(join(current, TOTOPO_YAML))) return current;
+        const parent = dirname(current);
+        if (parent === current) break;
+        current = parent;
+    }
+    return null;
+}
+
+// --- Collision and orphan detection ------------------------------------------------------------------------------------------------------
+
+/** Check if a project_id's lock file points to a different path than expected. */
+export function checkCollision(projectId: string, currentPath: string): "ok" | "collision" {
+    const lockPath = readLockFile(projectId);
+    if (lockPath === null) return "ok"; // no lock = no collision
+    return lockPath === currentPath ? "ok" : "collision";
+}
+
+/**
+ * Scan all project dirs for a lock file pointing to the given path.
+ * Used when a project_id has changed and we need to find the orphaned dir.
+ * Returns the orphan's project_id, or null.
+ */
+export function findOrphanProjectDir(currentPath: string): string | null {
+    for (const id of listProjectIds()) {
+        const lockPath = readLockFile(id);
+        if (lockPath === currentPath) return id;
     }
     return null;
 }

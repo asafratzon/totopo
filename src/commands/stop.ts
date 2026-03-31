@@ -25,8 +25,8 @@ export async function run(containerName: string): Promise<void> {
 
     // --- Stop and remove -----------------------------------------------------------------------------------------------------------------
     log.step(`Stopping ${containerName}...`);
-    spawnSync("docker", ["stop", containerName], { stdio: "inherit" });
-    spawnSync("docker", ["rm", containerName], { stdio: "inherit" });
+    spawnSync("docker", ["stop", containerName], { stdio: "pipe" });
+    spawnSync("docker", ["rm", containerName], { stdio: "pipe" });
 
     outro(`${containerName} stopped and removed.`);
 }

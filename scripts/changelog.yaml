@@ -1,6 +1,36 @@
 in_progress:
-  base_version: 2.1.1
-  entries: []
+  base_version: 3.0.0
+  entries:
+    - rc_version: 3.0.0-rc-1
+      date: "2026-03-31"
+      added:
+        - >-
+          Major simplification of project configuration and container lifecycle.
+        - >-
+          totopo.yaml is the single source of truth — declares project identity, shadow patterns, env file, and
+          Dockerfile profiles. Replaces settings.json, meta.json, and hash-based project directories.
+        - >-
+          JSON Schema for totopo.yaml with IDE autocomplete, plus runtime validation via ajv.
+        - >-
+          Dockerfile profiles — named profiles with dockerfile_hook for extending the base image with custom
+          instructions (e.g. Go, Rust, Bun). Base image stripped to essentials; optional runtimes move to profile hooks.
+        - >-
+          Gitignore-style shadow path patterns powered by fast-glob — patterns without '/' match at any depth. Inline
+          documentation in generated totopo.yaml explains the concept.
+        - >-
+          Automatic v2-to-v3 migration preserving agent memory, shadow data, and project metadata.
+      changed:
+        - >-
+          Project identity uses project_id from totopo.yaml instead of SHA-256 path hashing. Containers named
+          totopo-<project_id>.
+        - >-
+          ~/.totopo/projects/<id>/ reduced to a .lock file plus cache directories.
+        - >-
+          env_file in totopo.yaml replaces the global ~/.totopo/.env — points to a project-local env file.
+        - Dockerfiles assembled in memory from base template plus profile hook. No persisted Dockerfile.
+        - Onboarding simplified — no runtime mode, tool picker, or scope selection.
+        - Settings menu restructured into Profiles and Shadow paths submenus.
+        - Profile changes trigger image rebuild; shadow changes only recreate the container.
 releases:
   - version: 2.1.0
     date: "2026-03-29"
