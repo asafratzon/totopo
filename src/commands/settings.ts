@@ -172,7 +172,7 @@ async function removeShadowPatterns(ctx: ProjectContext): Promise<void> {
     if (!yaml?.shadow_paths?.length) return;
 
     const toRemove = await multiselect({
-        message: "Select patterns to remove:",
+        message: "Select patterns to remove: (space to toggle, enter to confirm)",
         options: yaml.shadow_paths.map((p) => ({ value: p, label: p })),
     });
 

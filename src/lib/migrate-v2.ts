@@ -54,16 +54,13 @@ function readV2ShadowPaths(dirPath: string): string[] {
     }
 }
 
-/** Read name and description from a v2-era totopo.yaml (no schema_version or project_id) */
-function readV2YamlFields(projectRoot: string): { name?: string; description?: string } | null {
+/** Read name from a v2-era totopo.yaml (no schema_version or project_id) */
+function readV2YamlName(projectRoot: string): string | null {
     try {
         const raw = loadYaml(readFileSync(join(projectRoot, "totopo.yaml"), "utf8"));
         if (typeof raw !== "object" || raw === null) return null;
         const obj = raw as Record<string, unknown>;
-        const result: { name?: string; description?: string } = {};
-        if (typeof obj.name === "string") result.name = obj.name;
-        if (typeof obj.description === "string") result.description = obj.description;
-        return result;
+        return typeof obj.name === "string" ? obj.name : null;
     } catch {
         return null;
     }
@@ -133,11 +130,11 @@ function migrateProject(v2: V2Project, existingIds: Set<string>): string | null 
     if (yaml) {
         projectId = yaml.project_id;
     } else {
-        // Read name/description from existing v2 totopo.yaml if present
-        const v2Name = readV2YamlFields(v2.projectRoot);
+        // Read name from existing v2 totopo.yaml if present
+        const v2Name = readV2YamlName(v2.projectRoot);
 
         projectId = generateUniqueProjectId(v2.displayName, existingIds);
-        yaml = buildDefaultTotopoYaml(projectId, v2Name?.name ?? v2.displayName, v2Name?.description);
+        yaml = buildDefaultTotopoYaml(projectId, v2Name ?? v2.displayName);
 
         // Carry over shadow paths from v2
         if (v2.shadowPaths.length > 0) {
