@@ -87,8 +87,16 @@ export function readTotopoYaml(dir: string): TotopoYamlConfig | null {
     // Validate against JSON Schema
     const validate = getValidator();
     if (!validate(raw)) {
-        const messages = (validate.errors ?? []).map((e) => `${e.instancePath || "/"} ${e.message}`).join("; ");
-        throw new Error(`${TOTOPO_YAML}: ${messages}`);
+        const messages = (validate.errors ?? [])
+            .map((e) => {
+                if (e.keyword === "additionalProperties" && e.params?.additionalProperty) {
+                    return `unknown property "${e.params.additionalProperty}"`;
+                }
+                const path = e.instancePath ? `"${e.instancePath.slice(1).replace(/\//g, ".")}"` : "";
+                return path ? `${path} ${e.message}` : (e.message ?? "validation error");
+            })
+            .join("; ");
+        throw new Error(`Invalid ${TOTOPO_YAML}: ${messages}`);
     }
 
     return raw as TotopoYamlConfig;
@@ -100,15 +108,12 @@ export function readTotopoYaml(dir: string): TotopoYamlConfig | null {
 const YAML_HEADER = `# yaml-language-server: $schema=https://raw.githubusercontent.com/asafratzon/totopo/main/schema/totopo.schema.json
 `;
 
-// Inline comments injected before specific YAML keys
+// Inline comments injected before specific YAML keys (preceded by a blank line)
 const YAML_COMMENTS: Record<string, string> = {
-    shadow_paths: [
-        "# Shadow patterns hide matching host paths from the agent.",
-        "# The container gets an empty, isolated copy instead.",
-        "# Patterns without '/' match at any depth (like .gitignore).",
-        "# Supports globs: * (any chars), ? (single char), {a,b} (alternatives).",
-    ].join("\n"),
-    profiles: "# Dockerfile profiles. Each profile's dockerfile_hook is appended to the base image.",
+    shadow_paths:
+        "# .gitignore-style patterns - the agent never sees matching host paths.\n# The container gets an empty, isolated copy instead.",
+    profiles:
+        "# Dockerfile profiles - each hook is appended to the base image (Debian + Node.js + git + AI CLIs).\n# Switch between profiles in the totopo settings menu.",
 };
 
 /** Write totopo.yaml to a directory with schema header and inline comments. */
@@ -120,12 +125,13 @@ export function writeTotopoYaml(dir: string, config: TotopoYamlConfig): void {
         forceQuotes: false,
     });
 
-    // Inject comments before known keys
+    // Inject blank lines and comments before known keys
     const lines = yamlContent.split("\n");
     const output: string[] = [];
     for (const line of lines) {
         const key = line.match(/^(\w[\w_]*):/)?.[1];
         if (key && YAML_COMMENTS[key]) {
+            output.push(""); // blank line before section
             output.push(YAML_COMMENTS[key]);
         }
         output.push(line);
@@ -138,11 +144,18 @@ export function writeTotopoYaml(dir: string, config: TotopoYamlConfig): void {
 
 const DEFAULT_SHADOW_PATHS = ["node_modules", ".env*"];
 
-const DEFAULT_PROFILE_HOOK = `# Add Dockerfile instructions here to install additional tools.
-# These are appended to the base image (Debian bookworm + Node.js + git + AI CLIs).
+const DEFAULT_PROFILE_HOOK = `# Installs Go and Java on top of the base image.
+RUN apt-get update && apt-get install -y --no-install-recommends \\
+    golang-go \\
+    default-jdk-headless \\
+  && rm -rf /var/lib/apt/lists/*
+`;
+
+const CUSTOM_PROFILE_HOOK = `# Add Dockerfile instructions here to install additional tools.
 # Examples:
-#   RUN apt-get update && apt-get install -y --no-install-recommends python3 && rm -rf /var/lib/apt/lists/*
 #   RUN curl -fsSL https://bun.sh/install | bash
+#   RUN curl -sSf https://sh.rustup.rs | sh -s -- -y
+#   COPY my-tool.sh /usr/local/bin/
 `;
 
 /** Create a default TotopoYamlConfig with sane defaults. */
@@ -154,6 +167,9 @@ export function buildDefaultTotopoYaml(projectId: string, name?: string, descrip
         profiles: {
             default: {
                 dockerfile_hook: DEFAULT_PROFILE_HOOK,
+            },
+            custom: {
+                dockerfile_hook: CUSTOM_PROFILE_HOOK,
             },
         },
     };

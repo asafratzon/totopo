@@ -169,7 +169,7 @@ async function addShadowPattern(ctx: ProjectContext): Promise<void> {
 
 async function removeShadowPatterns(ctx: ProjectContext): Promise<void> {
     const yaml = readTotopoYaml(ctx.projectRoot);
-    if (!yaml || !yaml.shadow_paths?.length) return;
+    if (!yaml?.shadow_paths?.length) return;
 
     const toRemove = await multiselect({
         message: "Select patterns to remove:",
