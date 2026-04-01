@@ -34,7 +34,7 @@ async function stopContainers(): Promise<void> {
         log.info(`Stopping ${running[0] ?? ""}...`);
     } else {
         const selected = await multiselect({
-            message: "Select containers to stop:",
+            message: "Select containers to stop: (space to toggle, enter to confirm)",
             options: running.map((name) => ({ value: name, label: name })),
             required: false,
         });
@@ -69,7 +69,7 @@ async function clearAgentMemory(): Promise<void> {
         log.info(`Clearing agent memory for ${p.displayName}...`);
     } else {
         const selected = await multiselect({
-            message: "Select projects to clear agent memory for:",
+            message: "Select projects to clear agent memory for: (space to toggle, enter to confirm)",
             options: projects.map((p) => ({ value: p.projectId, label: p.displayName, hint: p.projectRoot })),
             required: false,
         });
@@ -125,7 +125,7 @@ async function removeImages(): Promise<void> {
     });
 
     const selected = await multiselect({
-        message: "Select images to remove:",
+        message: "Select images to remove: (space to toggle, enter to confirm)",
         options: images.map((img) => ({ value: img.repo, label: img.repo, hint: img.id.slice(0, 12) })),
         required: false,
     });
@@ -166,7 +166,7 @@ async function uninstallProjects(currentProjectId?: string): Promise<boolean> {
         : projects;
 
     const selected = await multiselect({
-        message: "Select projects to uninstall:",
+        message: "Select projects to uninstall: (space to toggle, enter to confirm)",
         options: sorted.map((p) => ({
             value: p.projectId,
             label: p.displayName,

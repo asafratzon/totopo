@@ -2,7 +2,6 @@
 schema_version: 3
 project_id: totopo
 name: totopo
-description: Run AI coding agents safely in your local codebase
 # Shadow patterns hide matching host paths from the agent.
 # The container gets an empty, isolated copy instead.
 # Patterns without '/' match at any depth (like .gitignore).

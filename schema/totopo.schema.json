@@ -22,10 +22,6 @@
             "type": "string",
             "description": "Human-readable project name (shown in menus and welcome message)"
         },
-        "description": {
-            "type": "string",
-            "description": "Short project description (shown during onboarding)"
-        },
         "env_file": {
             "type": "string",
             "description": "Path to env file relative to totopo.yaml (e.g. '.env'). Injected into container at runtime via --env-file."

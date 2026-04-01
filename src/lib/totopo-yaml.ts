@@ -20,7 +20,6 @@ export interface TotopoYamlConfig {
     schema_version: 3;
     project_id: string;
     name?: string;
-    description?: string;
     env_file?: string;
     shadow_paths?: string[];
     profiles?: Record<string, ProfileConfig>;
@@ -159,7 +158,7 @@ const CUSTOM_PROFILE_HOOK = `# Add Dockerfile instructions here to install addit
 `;
 
 /** Create a default TotopoYamlConfig with sane defaults. */
-export function buildDefaultTotopoYaml(projectId: string, name?: string, description?: string): TotopoYamlConfig {
+export function buildDefaultTotopoYaml(projectId: string, name?: string): TotopoYamlConfig {
     const config: TotopoYamlConfig = {
         schema_version: 3,
         project_id: projectId,
@@ -174,12 +173,10 @@ export function buildDefaultTotopoYaml(projectId: string, name?: string, descrip
         },
     };
     if (name) config.name = name;
-    if (description) config.description = description;
 
-    // Reorder keys so name/description appear after project_id
-    const { schema_version, project_id, name: n, description: d, ...rest } = config;
+    // Reorder keys so name appears after project_id
+    const { schema_version, project_id, name: n, ...rest } = config;
     const ordered: Record<string, unknown> = { schema_version, project_id };
     if (n !== undefined) ordered.name = n;
-    if (d !== undefined) ordered.description = d;
     return Object.assign(ordered, rest) as unknown as TotopoYamlConfig;
 }

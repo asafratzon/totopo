@@ -27,6 +27,16 @@ import {
     writeTotopoYaml,
 } from "../lib/totopo-yaml.js";
 
+/** Derive a unique project_id, appending -2, -3, etc. if the base collides with another project. */
+function deriveUniqueProjectId(baseId: string, projectRoot: string): string {
+    if (checkCollision(baseId, projectRoot) === "ok") return baseId;
+    for (let i = 2; i <= 99; i++) {
+        const candidate = `${baseId}-${i}`;
+        if (checkCollision(candidate, projectRoot) === "ok") return candidate;
+    }
+    return baseId; // fallback (collision handled later in onboarding)
+}
+
 function tryGetGitRoot(cwd: string): string | null {
     try {
         return execSync("git rev-parse --show-toplevel", { encoding: "utf8", cwd, stdio: "pipe" }).trim();
@@ -71,9 +81,8 @@ export async function run(cwd: string): Promise<ProjectContext | null> {
         yaml = existing;
 
         // Show welcome message
-        if (yaml.name ?? yaml.description) {
-            const parts = [yaml.name ? `Welcome to ${yaml.name}.` : "", yaml.description ?? ""].filter(Boolean);
-            log.info(parts.join(" "));
+        if (yaml.name) {
+            log.info(yaml.name);
             process.stdout.write("\n");
         }
 
@@ -122,35 +131,24 @@ export async function run(cwd: string): Promise<ProjectContext | null> {
             projectRoot = rootChoice as string;
         }
 
-        // Prompt for project_id
-        const suggestedId = slugifyForProjectId(basename(projectRoot));
-        const idInput = await text({
-            message: "Project ID:",
-            placeholder: suggestedId,
-            defaultValue: suggestedId,
-            validate: (v) => validateProjectId((v ?? "").trim()),
+        // Ask for project name (used as display name, also derives project_id)
+        const defaultName = basename(projectRoot);
+        const nameInput = await text({
+            message: "Project name:",
+            placeholder: defaultName,
+            defaultValue: defaultName,
         });
-        if (isCancel(idInput)) {
+        if (isCancel(nameInput)) {
             cancel("Setup cancelled.");
             return null;
         }
-        const projectId = (idInput as string).trim();
+        const projectName = (nameInput as string).trim() || defaultName;
 
-        // Prompt for optional name/description
-        const nameInput = await text({
-            message: "Project name (optional):",
-            placeholder: basename(projectRoot),
-        });
-        const nameStr = isCancel(nameInput) ? "" : (nameInput as string).trim();
-
-        const descInput = await text({
-            message: "Short description (optional):",
-            placeholder: "e.g. Our AI coding sandbox",
-        });
-        const descStr = isCancel(descInput) ? "" : (descInput as string).trim();
+        // Derive project_id from name, auto-resolve collisions with numeric suffix
+        const projectId = deriveUniqueProjectId(slugifyForProjectId(projectName), projectRoot);
 
         // Build and write totopo.yaml
-        yaml = buildDefaultTotopoYaml(projectId, nameStr || undefined, descStr || undefined);
+        yaml = buildDefaultTotopoYaml(projectId, projectName);
         writeTotopoYaml(projectRoot, yaml);
         log.success(`Created ${toTildePath(join(projectRoot, "totopo.yaml"))}`);
     }
