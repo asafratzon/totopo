@@ -1,12 +1,21 @@
-# totopo.yaml — project anchor
-#
-# Place this file at your project root to enable one-click onboarding for contributors.
-# When a new contributor runs `npx totopo`, totopo reads this file to anchor the project
-# root and display a welcome message before prompting for setup.
-#
-# name        — shown as: "Welcome to <name>."
-# description — shown as: "<description>"
-#
-# Both fields are optional. Omit either to skip it.
+# yaml-language-server: $schema=https://raw.githubusercontent.com/asafratzon/totopo/main/schema/totopo.schema.json
+schema_version: 3
+project_id: totopo
 name: totopo
 description: Run AI coding agents safely in your local codebase
+# Shadow patterns hide matching host paths from the agent.
+# The container gets an empty, isolated copy instead.
+# Patterns without '/' match at any depth (like .gitignore).
+# Supports globs: * (any chars), ? (single char), {a,b} (alternatives).
+shadow_paths:
+  - node_modules
+  - .env*
+# Dockerfile profiles. Each profile's dockerfile_hook is appended to the base image.
+profiles:
+  default:
+    dockerfile_hook: |
+      # Add Dockerfile instructions here to install additional tools.
+      # These are appended to the base image (Debian bookworm + Node.js + git + AI CLIs).
+      # Examples:
+      #   RUN apt-get update && apt-get install -y --no-install-recommends python3 && rm -rf /var/lib/apt/lists/*
+      #   RUN curl -fsSL https://bun.sh/install | bash

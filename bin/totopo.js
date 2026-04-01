@@ -17,7 +17,7 @@ import { run as onboard } from "../dist/commands/onboard.js";
 import { run as rebuild } from "../dist/commands/rebuild.js";
 import { run as settings } from "../dist/commands/settings.js";
 import { run as stop } from "../dist/commands/stop.js";
-import { findTotopoYamlDir, listProjectIds, resolveProject } from "../dist/lib/project-identity.js";
+import { listProjectIds, resolveProject } from "../dist/lib/project-identity.js";
 
 // --- Guard: inside container -------------------------------------------------------------------------------------------------------------
 try {
@@ -57,49 +57,41 @@ try {
 }
 
 // --- Resolve project from CWD (walk-up looking for totopo.yaml) --------------------------------------------------------------------------
-let project = resolveProject(cwd);
+let project;
+try {
+    project = resolveProject(cwd);
+} catch (err) {
+    console.error("");
+    console.error(`  ${err instanceof Error ? err.message : err}`);
+    console.error("");
+    process.exit(1);
+}
 
 // --- Onboarding (if not in a registered project) -----------------------------------------------------------------------------------------
 if (!project) {
-    // Detect project context: git root or totopo.yaml present?
-    let gitRoot = null;
-    try {
-        gitRoot = execSync("git rev-parse --show-toplevel", { encoding: "utf8", stdio: "pipe" }).trim();
-    } catch {
-        // Not in a git repo - that's fine
-    }
-
-    const hasContext = gitRoot !== null || findTotopoYamlDir(cwd) !== null;
-
-    if (hasContext) {
-        // Has project context - if other projects already exist, let the user choose first
-        if (listProjectIds().length > 0) {
-            process.stdout.write("\n");
-            const choice = await select({
-                message: "What would you like to do?",
-                options: [
-                    { value: "setup", label: "Set up totopo for this directory" },
-                    { value: "manage", label: "Manage totopo →" },
-                ],
-            });
-            if (isCancel(choice)) {
-                cancel();
-                process.exit(0);
-            }
-            if (choice === "manage") {
-                await advanced();
-                process.exit(0);
-            }
+    // If other projects already exist, let the user choose setup vs manage
+    if (listProjectIds().length > 0) {
+        process.stdout.write("\n");
+        const choice = await select({
+            message: "What would you like to do?",
+            options: [
+                { value: "setup", label: "Set up totopo for this directory" },
+                { value: "manage", label: "Manage totopo →" },
+            ],
+        });
+        if (isCancel(choice)) {
+            cancel();
+            process.exit(0);
         }
-
-        const ctx = await onboard(cwd);
-        if (!ctx) process.exit(0);
-        project = ctx;
-    } else {
-        // No project context -> show Manage totopo menu directly
-        await advanced();
-        process.exit(0);
+        if (choice === "manage") {
+            await advanced();
+            process.exit(0);
+        }
     }
+
+    const ctx = await onboard(cwd);
+    if (!ctx) process.exit(0);
+    project = ctx;
 }
 
 // --- Doctor (silent pre-check) -----------------------------------------------------------------------------------------------------------
