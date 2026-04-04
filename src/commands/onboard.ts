@@ -8,6 +8,7 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { cancel, confirm, intro, isCancel, log, outro, select, text } from "@clack/prompts";
+import { safeRmSync } from "../lib/safe-rm.js";
 import {
     buildDefaultTotopoYaml,
     readTotopoYaml,
@@ -219,8 +220,7 @@ export async function run(cwd: string): Promise<WorkspaceContext | null> {
                 log.info(`Reverted workspace_id to "${orphanId}"`);
             } else {
                 // Clean slate - remove orphaned dir
-                const { rmSync } = await import("node:fs");
-                rmSync(getWorkspaceDir(orphanId), { recursive: true, force: true });
+                safeRmSync(getWorkspaceDir(orphanId), { recursive: true, force: true });
                 log.info(`Removed orphaned cache for "${orphanId}"`);
             }
         }

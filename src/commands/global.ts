@@ -1,16 +1,29 @@
 // =========================================================================================================================================
-// src/commands/advanced.ts - Manage totopo menu (global, all workspaces)
+// src/commands/global.ts - Manage totopo menu (global, all workspaces)
 // =========================================================================================================================================
 
 import { spawnSync } from "node:child_process";
-import { existsSync, rmSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { cancel, confirm, isCancel, log, multiselect, outro, select, text } from "@clack/prompts";
-import { listWorkspaces } from "../lib/workspace-identity.js";
+import { safeRmSync } from "../lib/safe-rm.js";
+import { listWorkspaces, TOTOPO_YAML } from "../lib/workspace-identity.js";
 import { run as runDoctor } from "./doctor.js";
 
 // --- Helpers -----------------------------------------------------------------------------------------------------------------------------
+
+/** Remove workspace cache dir and optionally totopo.yaml from the workspace root. Exported for testing. */
+export function removeWorkspaceFiles(workspaceRoot: string, workspaceDir: string, removeTotopoYaml: boolean): void {
+    safeRmSync(workspaceDir, { recursive: true, force: true });
+    if (removeTotopoYaml) {
+        const yamlPath = join(workspaceRoot, TOTOPO_YAML);
+        if (existsSync(yamlPath)) {
+            safeRmSync(yamlPath);
+        }
+    }
+}
+
 function stopAndRemoveContainer(name: string) {
     spawnSync("docker", ["stop", name], { stdio: "pipe" });
     spawnSync("docker", ["rm", name], { stdio: "pipe" });
@@ -100,7 +113,7 @@ async function clearAgentMemory(): Promise<void> {
         }
 
         const agentsDir = join(w.workspaceDir, "agents");
-        rmSync(agentsDir, { recursive: true, force: true });
+        safeRmSync(agentsDir, { recursive: true, force: true });
         log.success(`Cleared agent memory for ${w.displayName}.`);
     }
 }
@@ -199,8 +212,18 @@ async function uninstallWorkspaces(currentWorkspaceId?: string): Promise<boolean
         log.step(`Removing image ${w.containerName}...`);
         spawnSync("docker", ["rmi", w.containerName], { stdio: "inherit" });
 
-        // Delete workspace directory
-        rmSync(w.workspaceDir, { recursive: true, force: true });
+        // Ask whether to also remove totopo.yaml from the workspace root
+        const yamlPath = join(w.workspaceRoot, TOTOPO_YAML);
+        let removeTotopoYaml = false;
+        if (existsSync(yamlPath)) {
+            const ans = await confirm({
+                message: `Also remove totopo.yaml from ${w.workspaceRoot}?`,
+                initialValue: true,
+            });
+            removeTotopoYaml = !isCancel(ans) && (ans as boolean);
+        }
+
+        removeWorkspaceFiles(w.workspaceRoot, w.workspaceDir, removeTotopoYaml);
         log.success(`Uninstalled workspace ${w.displayName}.`);
     }
 
@@ -243,7 +266,7 @@ async function uninstallTotopo(): Promise<void> {
     const globalTotopoDir = join(homedir(), ".totopo");
     if (existsSync(globalTotopoDir)) {
         log.step("Deleting ~/.totopo/...");
-        rmSync(globalTotopoDir, { recursive: true, force: true });
+        safeRmSync(globalTotopoDir, { recursive: true, force: true });
     }
 
     outro("totopo uninstalled. Re-run npx totopo to set up again.");
@@ -259,7 +282,7 @@ export async function run(currentWorkspaceId?: string): Promise<"back" | undefin
                 { value: "clear-memory", label: "Clear agent memory", hint: "pick workspaces to clear" },
                 { value: "remove-images", label: "Remove images", hint: "pick images to remove" },
                 { value: "doctor", label: "Doctor", hint: "check Docker health" },
-                { value: "uninstall-workspace", label: "Uninstall workspace", hint: "pick workspaces to remove" },
+                { value: "uninstall-workspace", label: "Uninstall workspaces", hint: "pick workspaces to remove" },
                 { value: "uninstall", label: "Uninstall totopo", hint: "wipe ~/.totopo/ and all containers/images" },
                 { value: "back", label: "← Back" },
             ],

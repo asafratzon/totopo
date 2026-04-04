@@ -20,11 +20,12 @@
 // =========================================================================================================================================
 
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { log } from "@clack/prompts";
 import { load as loadYaml } from "js-yaml";
+import { safeRmSync } from "./safe-rm.js";
 import {
     buildDefaultTotopoYaml,
     readTotopoYaml,
@@ -178,7 +179,7 @@ function migrateSingleV2Workspace(v2: V2Project, existingIds: Set<string>): stri
         }
     }
 
-    rmSync(join(getWorkspacesBaseDir(), v2.hashId), { recursive: true, force: true });
+    safeRmSync(join(getWorkspacesBaseDir(), v2.hashId), { recursive: true, force: true });
 
     existingIds.add(workspaceId);
     return workspaceId;
@@ -200,7 +201,7 @@ function migrateProjectsDir(): void {
 
     const entries = readdirSync(oldDir);
     if (entries.length === 0) {
-        rmSync(oldDir, { recursive: true });
+        safeRmSync(oldDir, { recursive: true });
         return;
     }
 
@@ -230,7 +231,7 @@ function migrateProjectsDir(): void {
         moved++;
     }
 
-    rmSync(oldDir, { recursive: true });
+    safeRmSync(oldDir, { recursive: true });
 
     if (moved > 0) {
         log.success("Migrated ~/.totopo/projects/ to ~/.totopo/workspaces/");
@@ -309,7 +310,7 @@ function migrateGlobalEnv(): void {
         "Removed legacy ~/.totopo/.env - API keys are now declared per-workspace via env_file in totopo.yaml.\n" +
             "  Set env_file in totopo.yaml to point to an env file in your workspace.",
     );
-    rmSync(globalEnv);
+    safeRmSync(globalEnv);
 }
 
 // =========================================================================================================================================

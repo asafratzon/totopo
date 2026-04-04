@@ -38,25 +38,26 @@ bin/
                                  Imports compiled modules from dist/ - never imports from src/ directly.
 
 src/commands/                  - Command modules (compiled to dist/commands/ by pnpm build)
-  advanced.ts                  - "Manage totopo" menu: stop containers, clear memory, remove images, uninstall
   dev.ts                       - Session start: profile selection, shadow sync, container lifecycle, agent context
                                  Exports: StartContainerOpts, ContainerStartResult, startContainer()
   doctor.ts                    - Host readiness checks (Docker installed and running)
+  global.ts                    - "Manage totopo" menu: stop containers, clear memory, remove images, uninstall
   menu.ts                      - Workspace menu (per-workspace actions and status display)
   onboard.ts                   - First-time setup: workspace root, name, workspace_id, totopo.yaml creation
-  reset-image.ts               - Stop container + remove image so the next session rebuilds fresh
-  settings.ts                  - Manage Workspace submenu: profiles, shadow paths, rebuild, reset config
-  stop.ts                      - Stop and remove a workspace's container
+  workspace.ts                 - "Manage Workspace" submenu: profiles, shadow paths, rebuild, reset config
+                                 Exports: stop(), resetImage() for workspace container lifecycle
 
 src/lib/                       - Shared utilities (compiled to dist/lib/ by pnpm build)
   agent-context.ts             - AGENT_MOUNTS, buildAgentMountArgs, buildAgentContextDocs, injectAgentContext
   dockerfile-builder.ts        - Compose final Dockerfile from base template + profile hook
   migrate-to-latest.ts         - Startup migration: projects/ rename, v2 hash dirs, project_id key rename
+  safe-rm.ts                   - safeRmSync: path-allowlist guard wrapping rmSync (only deletes under ~/.totopo/ or totopo.yaml)
   shadows.ts                   - Pattern expansion, shadow sync, Docker mount args for shadow paths
   totopo-yaml.ts               - Read, write, validate, repair totopo.yaml; schema validation via ajv
   workspace-identity.ts        - Workspace registry: lock files, WorkspaceContext, resolveWorkspace
 
 scripts/                       - Release tooling (excluded from npm package, not compiled to dist/)
+  build.ts                     - Build script: runs tsc and prints clack success/failure output (pnpm build)
   check.ts                     - Pre-commit health checks: divider normalization, special char detection,
                                  changelog structure validation
   changelog.yaml               - Source of truth for all release notes; edit this, not CHANGELOG.md
@@ -76,7 +77,9 @@ tests/                         - Unit test suite (run via tsx, not compiled to d
   agent-context.test.ts        - Agent context template rendering and mount args
   changelog-utils.test.ts      - Version bumping, changelog validation, git tag checks
   dockerfile-builder.test.ts   - Dockerfile assembly and profile hook ordering
+  global.test.ts               - removeWorkspaceFiles: removes workspace dir and optional totopo.yaml
   migrate-to-latest.test.ts    - All migration steps with isolated HOME and DOCKER_HOST
+  safe-rm.test.ts              - safeRmSync: allowlist guard, path traversal, and temp dir coverage
   shadows.test.ts              - Shadow pattern expansion, sync, and Docker mount args
   totopo-yaml.test.ts          - YAML read/write/validate/repair and workspace ID slug
   workspace-identity.test.ts   - Container naming, lock files, collision and orphan detection
@@ -100,6 +103,7 @@ schema/
       .lock                    - Line 1: absolute workspace root path. Line 2: active profile name.
       agents/
         claude/                - Mounted as ~/.claude/ inside the container
+          .claude.json         - Mounted as ~/.claude.json (file mount - persists Claude Code settings)
         opencode/
           config/              - Mounted as ~/.config/opencode/ inside the container
           data/                - Mounted as ~/.local/share/opencode/ inside the container

@@ -9,7 +9,7 @@
 //   OpenCode:    https://github.com/opencode-ai/opencode
 //   Codex:       https://github.com/openai/codex
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -26,6 +26,14 @@ export interface AgentMount {
     hostSubpath: string; // relative to agents/ dir
     container: string; // absolute container path
     description: string; // human-readable, used in agent context docs
+}
+
+// Single-file mounts: individual files that must be bind-mounted to persist across container rebuilds.
+// The host file is created with initialContent if it does not exist yet.
+export interface AgentFileMount {
+    hostSubpath: string; // relative to agents/ dir
+    container: string; // absolute container path
+    initialContent: string; // written to host file on first use
 }
 
 export const AGENT_MOUNTS: readonly AgentMount[] = [
@@ -55,6 +63,16 @@ export const AGENT_MOUNTS: readonly AgentMount[] = [
     },
 ];
 
+export const AGENT_FILE_MOUNTS: readonly AgentFileMount[] = [
+    {
+        // .claude.json lives outside ~/.claude/ so it is not covered by the directory mount.
+        // Persisting it as a file mount avoids losing Claude Code settings on container rebuild.
+        hostSubpath: "claude/.claude.json",
+        container: "/home/devuser/.claude.json",
+        initialContent: "{}\n",
+    },
+];
+
 // --- Build agent mount args --------------------------------------------------------------------------------------------------------------
 
 /**
@@ -70,7 +88,20 @@ export function buildAgentMountArgs(workspaceDir: string): string[] {
     }));
 
     for (const { host } of mounts) mkdirSync(host, { recursive: true });
-    return mounts.flatMap(({ host, container }) => ["-v", `${host}:${container}`]);
+
+    const fileMounts = AGENT_FILE_MOUNTS.map((m) => ({
+        host: join(agentsDir, m.hostSubpath),
+        container: m.container,
+        initialContent: m.initialContent,
+    }));
+    for (const { host, initialContent } of fileMounts) {
+        if (!existsSync(host)) writeFileSync(host, initialContent);
+    }
+
+    return [
+        ...mounts.flatMap(({ host, container }) => ["-v", `${host}:${container}`]),
+        ...fileMounts.flatMap(({ host, container }) => ["-v", `${host}:${container}`]),
+    ];
 }
 
 // --- Template helpers --------------------------------------------------------------------------------------------------------------------

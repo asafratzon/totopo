@@ -1,10 +1,10 @@
 // =========================================================================================================================================
-// src/commands/settings.ts - Manage Workspace submenu: profiles, shadow paths, rebuild, reset
+// src/commands/workspace.ts - Manage Workspace submenu: profiles, shadow paths, rebuild, reset, stop, reset-image
 // =========================================================================================================================================
 
 import { spawnSync } from "node:child_process";
 import { relative } from "node:path";
-import { confirm, isCancel, log, multiselect, note, path, select, text } from "@clack/prompts";
+import { cancel, confirm, isCancel, log, multiselect, note, outro, path, select, text } from "@clack/prompts";
 import { countPatternHits } from "../lib/shadows.js";
 import { buildDefaultTotopoYaml, readTotopoYaml, writeTotopoYaml } from "../lib/totopo-yaml.js";
 import type { WorkspaceContext } from "../lib/workspace-identity.js";
@@ -199,8 +199,8 @@ async function promptStopContainer(ctx: WorkspaceContext): Promise<void> {
         return;
     }
 
-    const stop = await confirm({ message: "Stop the running container so changes apply on next session?" });
-    if (isCancel(stop) || !stop) {
+    const shouldStop = await confirm({ message: "Stop the running container so changes apply on next session?" });
+    if (isCancel(shouldStop) || !shouldStop) {
         log.warn("Container still running with old config — it will be recreated on next session.");
         return;
     }
@@ -236,7 +236,7 @@ async function resetTotopoYaml(ctx: WorkspaceContext): Promise<void> {
     await promptStopContainer(ctx);
 }
 
-// --- Manage Workspace submenu (main entry point) -----------------------------------------------------------------------------------------
+// --- Manage Workspace submenu ------------------------------------------------------------------------------------------------------------
 export async function run(ctx: WorkspaceContext): Promise<"back" | "rebuild" | "clean-rebuild" | undefined> {
     while (true) {
         const options: { value: string; label: string; hint?: string }[] = [
@@ -270,4 +270,47 @@ export async function run(ctx: WorkspaceContext): Promise<"back" | "rebuild" | "
                 break;
         }
     }
+}
+
+// --- Stop workspace container ------------------------------------------------------------------------------------------------------------
+export async function stop(containerName: string): Promise<void> {
+    const inspectResult = spawnSync("docker", ["inspect", "--type", "container", containerName], { encoding: "utf8" });
+
+    if (inspectResult.status !== 0) {
+        log.info(`Container ${containerName} is not running.`);
+        return;
+    }
+
+    const confirmed = await confirm({ message: `Stop ${containerName}?` });
+    if (isCancel(confirmed) || !confirmed) {
+        cancel();
+        return;
+    }
+
+    log.step(`Stopping ${containerName}...`);
+    spawnSync("docker", ["stop", containerName], { stdio: "pipe" });
+    spawnSync("docker", ["rm", containerName], { stdio: "pipe" });
+
+    outro(`${containerName} stopped and removed.`);
+}
+
+// --- Reset workspace image (stop container + remove image for fresh rebuild) -------------------------------------------------------------
+export async function resetImage(containerName: string): Promise<void> {
+    const inspectResult = spawnSync("docker", ["inspect", "--type", "container", containerName], {
+        encoding: "utf8",
+        stdio: "pipe",
+    });
+    if (inspectResult.status === 0) {
+        log.step(`Stopping container ${containerName}...`);
+        spawnSync("docker", ["stop", containerName], { stdio: "pipe" });
+        spawnSync("docker", ["rm", containerName], { stdio: "pipe" });
+    }
+
+    const imageResult = spawnSync("docker", ["images", "-q", containerName], { encoding: "utf8", stdio: "pipe" });
+    if ((imageResult.stdout ?? "").trim().length > 0) {
+        log.step(`Removing image ${containerName}...`);
+        spawnSync("docker", ["rmi", containerName], { stdio: "pipe" });
+    }
+
+    log.info("Image removed — starting fresh build…");
 }
