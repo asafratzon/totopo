@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import { buildAgentContextDocs, buildAgentMountArgs, injectAgentContext } from "../src/lib/agent-context.js";
@@ -64,8 +64,8 @@ describe("buildAgentMountArgs", () => {
     test("returns correct number of mount args", () => {
         const tmp = createTempDir();
         const args = buildAgentMountArgs(tmp);
-        // 4 mounts (claude, opencode config, opencode data, codex) = 8 args (-v + path each)
-        assert.equal(args.length, 8);
+        // 5 mounts (claude, opencode config, opencode data, codex, .claude.json file) = 10 args (-v + path each)
+        assert.equal(args.length, 10);
         cleanTempDir(tmp);
     });
 
@@ -77,6 +77,7 @@ describe("buildAgentMountArgs", () => {
         assert.ok(joined.includes("/home/devuser/.config/opencode"));
         assert.ok(joined.includes("/home/devuser/.local/share/opencode"));
         assert.ok(joined.includes("/home/devuser/.codex"));
+        assert.ok(joined.includes("/home/devuser/.claude.json"));
         cleanTempDir(tmp);
     });
 
@@ -85,6 +86,37 @@ describe("buildAgentMountArgs", () => {
         buildAgentMountArgs(tmp);
         assert.ok(existsSync(join(tmp, "agents", "claude")));
         assert.ok(existsSync(join(tmp, "agents", "codex")));
+        cleanTempDir(tmp);
+    });
+
+    test("creates .claude.json as empty JSON when missing", () => {
+        const tmp = createTempDir();
+        buildAgentMountArgs(tmp);
+        const claudeJson = join(tmp, "agents", "claude", ".claude.json");
+        assert.ok(existsSync(claudeJson), ".claude.json should be created");
+        assert.doesNotThrow(() => JSON.parse(readFileSync(claudeJson, "utf8")), "should be valid JSON");
+        cleanTempDir(tmp);
+    });
+
+    test("does not overwrite existing .claude.json", () => {
+        const tmp = createTempDir();
+        // First call creates the file
+        buildAgentMountArgs(tmp);
+        const claudeJson = join(tmp, "agents", "claude", ".claude.json");
+        const content = JSON.stringify({ hasExistingData: true });
+        writeFileSync(claudeJson, content);
+        // Second call must not overwrite it
+        buildAgentMountArgs(tmp);
+        assert.equal(readFileSync(claudeJson, "utf8"), content, "existing .claude.json should not be overwritten");
+        cleanTempDir(tmp);
+    });
+
+    test(".claude.json mount arg points to correct host and container paths", () => {
+        const tmp = createTempDir();
+        const args = buildAgentMountArgs(tmp);
+        const mountIndex = args.indexOf(`${join(tmp, "agents", "claude", ".claude.json")}:/home/devuser/.claude.json`);
+        assert.notEqual(mountIndex, -1, ".claude.json file mount should be present");
+        assert.equal(args[mountIndex - 1], "-v", "mount arg should be preceded by -v");
         cleanTempDir(tmp);
     });
 });

@@ -4,7 +4,8 @@
 
 Run AI coding agents in a secure local sandbox.
 
-![validate](https://github.com/asafratzon/totopo/actions/workflows/validate.yml/badge.svg)
+![build](https://github.com/asafratzon/totopo/actions/workflows/build.yml/badge.svg)
+![tests](https://github.com/asafratzon/totopo/actions/workflows/tests.yml/badge.svg)
 ![npm version](https://img.shields.io/npm/v/totopo)
 ![npm downloads](https://img.shields.io/npm/dm/totopo)
 ![license](https://img.shields.io/npm/l/totopo)
@@ -27,7 +28,7 @@ cd your-project
 npx totopo
 ```
 
-`npx totopo` always runs the latest published version — no install required. Alternatively, install globally to pin a specific version: `npm install -g totopo`.
+`npx totopo` always runs the latest stable version — no install required. Alternatively, install globally to pin a specific version: `npm install -g totopo`.
 
 > **Do not install totopo as a local project dependency.** totopo stores all workspace state in `~/.totopo/`, shared across all your workspaces. A local install means different projects could run different versions, which can break schema compatibility with shared config. Use `npx` or a global install.
 
@@ -37,10 +38,9 @@ totopo organises work around **workspaces** — any directory containing a `toto
 
 A few key concepts:
 
-- **workspace_id** — a unique slug declared in `totopo.yaml`. Drives container naming (`totopo-<id>`) and the local cache directory (`~/.totopo/workspaces/<id>/`).
-- **Auto-discovery** — totopo walks up from your current directory to find `totopo.yaml`. Run `npx totopo` from anywhere inside the workspace tree.
-- **Clear workspace boundary** — `npx totopo` always resolves to the nearest `totopo.yaml` going up the directory tree. Each directory tree has exactly one workspace root.
-- **One container per workspace** — totopo uses one Docker container per workspace, not one per session. Open as many terminals as you need — they all connect to the same running container, keeping resource use bounded and reconnections fast.
+- **Workspace ID** - a unique slug declared in `totopo.yaml`. Used for container naming (`totopo-<id>`) and the local cache directory (`~/.totopo/workspaces/<id>/`).
+- **Workspace Boundary** — `npx totopo` always resolves to the nearest `totopo.yaml` going up the directory tree. Each directory tree has exactly one workspace root.
+- **Single Workspace Container** — totopo uses one Docker container per workspace, not one per session. Open as many terminals as you need — they all connect to the same running container, keeping resource use bounded and reconnections fast.
 
 On every run, totopo shows the workspace menu:
 
@@ -51,7 +51,7 @@ On every run, totopo shows the workspace menu:
 
 ### Working directory
 
-The workspace is always mounted at `/workspace` inside the container. When you run totopo from a subdirectory, you get a quick prompt to start **here** or at the **workspace root**. If you're already at the workspace root, the session starts directly at `/workspace`.
+The workspace is always mounted at `/workspace` inside the container. When you run totopo from a subdirectory, you get a quick prompt to start **here** or at the **Workspace root**. If you're already at the workspace root, the session starts directly at `/workspace`.
 
 ## Core Features
 
@@ -62,12 +62,12 @@ Every session runs inside a Docker container. Your code is bind-mounted from the
 | Control | Implementation |
 |---|---|
 | Non-root user | All processes run as `devuser` (uid 1001) |
-| Filesystem isolation | Only the workspace directory is mounted; the rest of the host is not visible |
-| Git remote block | `protocol.allow = never` in `/etc/gitconfig` — push, pull, fetch, and clone are refused |
 | No host credentials | Host git credentials are never copied into the container |
 | No privilege escalation | `no-new-privileges:true` prevents any process from gaining elevated permissions |
-| Environment vars | Injected from a host file at session start (`env_file`) |
+| Filesystem isolation | Only the workspace directory is mounted; the rest of the host is not visible |
+| Git remote block | `protocol.allow = never` in `/etc/gitconfig` — push, pull, fetch, and clone are refused |
 | Shadow mounts | Selected paths overlaid with isolated container-local copies — see [Shadow Paths](#shadow-paths) |
+| Environment vars | Injected from a host file at session start (`env_file`) |
 
 Remote git operations are blocked inside the container. Run them from your host terminal.
 
@@ -80,17 +80,21 @@ Profiles let you define multiple container image variants for a workspace. Each 
 profiles:
   default:
     dockerfile_hook: |
-      RUN apt-get update && apt-get install -y --no-install-recommends golang-go default-jdk-headless \
-          && rm -rf /var/lib/apt/lists/*
+      # Installs Go and Java.
+      RUN apt-get update && apt-get install -y --no-install-recommends golang-go default-jdk-headless && rm -rf /var/lib/apt/lists/*
   slim:
-    dockerfile_hook: ""   # base image only -- Node.js + git + AI CLIs
+    dockerfile_hook: |
+      # No extras — uses the base image only (Node.js + git + AI CLIs).
   custom:
     dockerfile_hook: |
-      # Add your own instructions here
-      # RUN curl -fsSL https://bun.sh/install | bash
+      # Add your own Dockerfile instructions below, or ask the agent inside the container to help.
+      # e.g. Install Rust:
+      #   RUN curl -sSf https://sh.rustup.rs | sh -s -- -y
+  # Add more profiles here — or ask the agent inside the container to set one up for you.
+
 ```
 
-Three profiles are created by default. When multiple profiles are defined, totopo prompts you to pick one at session start (the choice is remembered). Switch any time in **Manage Workspace > Profiles** — a profile change triggers a container rebuild.
+Three profiles are set by default. When multiple profiles are defined, totopo prompts you to pick one at session start (the choice is remembered). Switch any time in **Manage Workspace > Profiles** — a profile change triggers a container rebuild.
 
 The base image is defined in [`templates/Dockerfile`](templates/Dockerfile) — inspect it to see what's already included before adding your own layers. To force a fully fresh build (no Docker layer cache), use **Manage Workspace > Clean rebuild**.
 
@@ -113,7 +117,7 @@ Common use cases:
 
 ### Environment Variables
 
-Point totopo at an env file relative to `totopo.yaml`:
+You can point totopo at an env file relative to `totopo.yaml`:
 
 ```yaml
 # totopo.yaml
@@ -122,7 +126,7 @@ env_file: .env
 
 The file is loaded into the container's environment at session start. If the file is not found, totopo skips it with a warning.
 
-### AI CLIs Included
+### AI CLIs
 
 The container comes with the major AI coding CLIs pre-installed and ready to use:
 
@@ -142,11 +146,12 @@ Agent session data (conversation history, settings) is stored per workspace and 
 
 ```
 ~/.totopo/workspaces/<id>/agents/
-├── claude/         # mounted as ~/.claude/ inside the container
+├── claude/             # mounted as ~/.claude/ inside the container
+│   └── .claude.json    # mounted as ~/.claude.json (persists Claude Code settings across rebuilds)
 ├── opencode/
-│   ├── config/     # mounted as ~/.config/opencode/ inside the container
-│   └── data/       # mounted as ~/.local/share/opencode/ inside the container
-└── codex/          # mounted as ~/.codex/ inside the container
+│   ├── config/         # mounted as ~/.config/opencode/ inside the container
+│   └── data/           # mounted as ~/.local/share/opencode/ inside the container
+└── codex/              # mounted as ~/.codex/ inside the container
 ```
 
 To clear memory: `npx totopo` → **Manage totopo > Clear agent memory**.
@@ -162,6 +167,7 @@ To clear memory: `npx totopo` → **Manage totopo > Clear agent memory**.
         ├── .lock       # workspace root path + active profile
         ├── agents/     # agent session data (persists across rebuilds)
         │   ├── claude/
+        │   │   └── .claude.json
         │   ├── opencode/
         │   │   ├── config/
         │   │   └── data/

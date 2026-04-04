@@ -22,7 +22,8 @@
     "pnpm": {
         "supportedArchitectures": {
             "cpu": [
-                "arm64"
+                "arm64",
+                "x64"
             ],
             "os": [
                 "linux",
@@ -32,7 +33,7 @@
     },
     "scripts": {
         "start": "node bin/totopo.js",
-        "build": "tsc -p tsconfig.build.json",
+        "build": "tsx scripts/build.ts",
         "re:build": "rm -rf dist && pnpm build",
         "prepare": "git config core.hooksPath .githooks",
         "typecheck": "tsc --noEmit",

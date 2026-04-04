@@ -20,8 +20,6 @@ Tracks current work in progress and upcoming planned items.
 
 ### High Priority / Must
 
-- nothing for now
-
 ### Nice to have / Raw Ideas
 
 - voice to text

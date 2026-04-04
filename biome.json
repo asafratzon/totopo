@@ -20,6 +20,19 @@
             "recommended": true,
             "complexity": {
                 "useOptionalChain": "error"
+            },
+            "style": {
+                "noRestrictedImports": {
+                    "level": "error",
+                    "options": {
+                        "paths": {
+                            "node:fs": {
+                                "importNames": ["rmSync"],
+                                "message": "Use safeRmSync from src/lib/safe-rm.ts instead of rmSync directly."
+                            }
+                        }
+                    }
+                }
             }
         }
     },

@@ -1,4 +1,4 @@
-name: validate
+name: build
 
 on:
   push:
@@ -7,14 +7,16 @@ on:
     branches: [main]
 
 jobs:
-  validate:
+  build:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
 
       - uses: pnpm/action-setup@v4
         with:
@@ -23,5 +25,5 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
-      - name: Validate
-        run: pnpm validate
+      - name: Build
+        run: pnpm re:build

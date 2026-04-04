@@ -3,9 +3,10 @@
 // Expands patterns like "node_modules", ".env*" into concrete paths, then syncs shadow directories.
 // =========================================================================================================================================
 
-import { existsSync, lstatSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import fg from "fast-glob";
+import { safeRmSync } from "./safe-rm.js";
 
 // --- Pattern expansion -------------------------------------------------------------------------------------------------------------------
 
@@ -67,7 +68,7 @@ export function ensureShadowsInSync(workspaceDir: string, expandedPaths: string[
         const shadowPath = join(shadowsDir, relPath);
 
         if (freshPaths?.has(relPath) && existsSync(shadowPath)) {
-            rmSync(shadowPath, { recursive: true, force: true });
+            safeRmSync(shadowPath, { recursive: true, force: true });
         }
 
         if (!existsSync(shadowPath)) {
@@ -122,16 +123,16 @@ function removeStaleEntries(baseDir: string, currentDir: string, expected: Set<s
                 removeStaleEntries(baseDir, fullPath, expected);
             } else {
                 // No expected paths under here - remove entirely
-                rmSync(fullPath, { recursive: true, force: true });
+                safeRmSync(fullPath, { recursive: true, force: true });
             }
         } else {
             // Stale file - remove
-            rmSync(fullPath, { force: true });
+            safeRmSync(fullPath, { force: true });
         }
     }
 
     // Prune if this directory is now empty (and is not the shadows root)
     if (currentDir !== baseDir && readdirSync(currentDir).length === 0) {
-        rmSync(currentDir, { recursive: true, force: true });
+        safeRmSync(currentDir, { recursive: true, force: true });
     }
 }

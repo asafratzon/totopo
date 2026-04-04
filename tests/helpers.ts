@@ -1,6 +1,7 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { safeRmSync } from "../src/lib/safe-rm.js";
 
 export function createTempDir(): string {
     return mkdtempSync(join(tmpdir(), "totopo-test-"));
@@ -12,7 +13,7 @@ export function cleanTempDir(dir: string): void {
     if (!resolve(dir).startsWith(TEMP_PREFIX)) {
         throw new Error(`cleanTempDir: refusing to delete '${dir}' — must be under ${TEMP_PREFIX}*`);
     }
-    rmSync(dir, { recursive: true, force: true });
+    safeRmSync(dir, { recursive: true, force: true });
 }
 
 /**

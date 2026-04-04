@@ -9,14 +9,12 @@ import { existsSync } from "node:fs";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { cancel, confirm, isCancel, log, select } from "@clack/prompts";
-import { run as advanced } from "../dist/commands/advanced.js";
 import { run as dev } from "../dist/commands/dev.js";
 import { run as doctor } from "../dist/commands/doctor.js";
+import { run as globalMenu } from "../dist/commands/global.js";
 import { run as menu } from "../dist/commands/menu.js";
 import { run as onboard } from "../dist/commands/onboard.js";
-import { run as resetImage } from "../dist/commands/reset-image.js";
-import { run as settings } from "../dist/commands/settings.js";
-import { run as stop } from "../dist/commands/stop.js";
+import { resetImage, stop, run as workspaceMenu } from "../dist/commands/workspace.js";
 import { repairTotopoYaml } from "../dist/lib/totopo-yaml.js";
 import { deriveContainerName, findTotopoYamlDir, listWorkspaceIds, resolveWorkspace } from "../dist/lib/workspace-identity.js";
 
@@ -119,7 +117,7 @@ if (!workspace) {
             process.exit(0);
         }
         if (choice === "manage") {
-            await advanced();
+            await globalMenu();
             process.exit(0);
         }
     }
@@ -161,7 +159,7 @@ while (showMenu) {
             await stop(workspace.containerName);
             break;
         case "settings": {
-            const settingsResult = await settings(workspace);
+            const settingsResult = await workspaceMenu(workspace);
             if (settingsResult === "rebuild") {
                 await resetImage(workspace.containerName);
                 await dev(packageDir, workspace);
@@ -174,7 +172,7 @@ while (showMenu) {
             break;
         }
         case "manage-totopo": {
-            const result = await advanced(workspace.workspaceId);
+            const result = await globalMenu(workspace.workspaceId);
             if (result === "back") showMenu = true;
             break;
         }
