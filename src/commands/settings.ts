@@ -1,18 +1,18 @@
 // =========================================================================================================================================
-// src/commands/settings.ts - Settings submenu: profiles, shadow paths
+// src/commands/settings.ts - Manage Workspace submenu: profiles, shadow paths, rebuild, reset
 // =========================================================================================================================================
 
 import { spawnSync } from "node:child_process";
 import { relative } from "node:path";
 import { confirm, isCancel, log, multiselect, note, path, select, text } from "@clack/prompts";
-import type { ProjectContext } from "../lib/project-identity.js";
-import { readActiveProfile, writeActiveProfile } from "../lib/project-identity.js";
 import { countPatternHits } from "../lib/shadows.js";
-import { readTotopoYaml, writeTotopoYaml } from "../lib/totopo-yaml.js";
+import { buildDefaultTotopoYaml, readTotopoYaml, writeTotopoYaml } from "../lib/totopo-yaml.js";
+import type { WorkspaceContext } from "../lib/workspace-identity.js";
+import { readActiveProfile, writeActiveProfile } from "../lib/workspace-identity.js";
 
 // --- Profile menu ------------------------------------------------------------------------------------------------------------------------
-async function profileMenu(ctx: ProjectContext): Promise<void> {
-    const yaml = readTotopoYaml(ctx.projectRoot);
+async function profileMenu(ctx: WorkspaceContext): Promise<void> {
+    const yaml = readTotopoYaml(ctx.workspaceRoot);
     if (!yaml) {
         log.error("totopo.yaml not found or invalid.");
         return;
@@ -26,7 +26,7 @@ async function profileMenu(ctx: ProjectContext): Promise<void> {
         return;
     }
 
-    const currentProfile = readActiveProfile(ctx.projectId) ?? "default";
+    const currentProfile = readActiveProfile(ctx.workspaceId) ?? "default";
     note(`Active profile: ${currentProfile}`, "Profiles");
 
     if (profileNames.length <= 1) {
@@ -54,7 +54,7 @@ async function profileMenu(ctx: ProjectContext): Promise<void> {
         return;
     }
 
-    writeActiveProfile(ctx.projectId, selected);
+    writeActiveProfile(ctx.workspaceId, selected);
     log.success(`Switched to profile "${selected}"`);
     log.info("Profile change requires a container rebuild. Stop and rebuild to apply.");
 
@@ -62,8 +62,8 @@ async function profileMenu(ctx: ProjectContext): Promise<void> {
 }
 
 // --- Shadow paths menu -------------------------------------------------------------------------------------------------------------------
-async function shadowPathsMenu(ctx: ProjectContext): Promise<void> {
-    const yaml = readTotopoYaml(ctx.projectRoot);
+async function shadowPathsMenu(ctx: WorkspaceContext): Promise<void> {
+    const yaml = readTotopoYaml(ctx.workspaceRoot);
     if (!yaml) {
         log.error("totopo.yaml not found or invalid.");
         return;
@@ -73,7 +73,7 @@ async function shadowPathsMenu(ctx: ProjectContext): Promise<void> {
 
     if (patterns.length > 0) {
         const lines = patterns.map((p) => {
-            const hits = countPatternHits(p, ctx.projectRoot);
+            const hits = countPatternHits(p, ctx.workspaceRoot);
             return `  ${p}  (${hits} ${hits === 1 ? "match" : "matches"})`;
         });
         note(lines.join("\n"), "Shadow patterns");
@@ -104,8 +104,8 @@ async function shadowPathsMenu(ctx: ProjectContext): Promise<void> {
     }
 }
 
-async function addShadowPattern(ctx: ProjectContext): Promise<void> {
-    const yaml = readTotopoYaml(ctx.projectRoot);
+async function addShadowPattern(ctx: WorkspaceContext): Promise<void> {
+    const yaml = readTotopoYaml(ctx.workspaceRoot);
     if (!yaml) return;
 
     const patterns = [...(yaml.shadow_paths ?? [])];
@@ -134,22 +134,22 @@ async function addShadowPattern(ctx: ProjectContext): Promise<void> {
         if (isCancel(input)) return;
 
         const pattern = (input as string).trim();
-        const hits = countPatternHits(pattern, ctx.projectRoot);
+        const hits = countPatternHits(pattern, ctx.workspaceRoot);
         patterns.push(pattern);
         log.info(`Added: ${pattern} (${hits} ${hits === 1 ? "match" : "matches"})`);
     } else {
         const selected = await path({
             message: "Path to shadow:",
-            root: ctx.projectRoot,
+            root: ctx.workspaceRoot,
             directory: true,
         });
         if (isCancel(selected)) return;
 
         const absPath = (selected as string).trim();
-        const rel = relative(ctx.projectRoot, absPath);
+        const rel = relative(ctx.workspaceRoot, absPath);
 
         if (!rel || rel.startsWith("..")) {
-            log.warn("Path must be inside the project directory. Skipped.");
+            log.warn("Path must be inside the workspace directory. Skipped.");
             return;
         }
 
@@ -163,12 +163,12 @@ async function addShadowPattern(ctx: ProjectContext): Promise<void> {
     }
 
     yaml.shadow_paths = patterns;
-    writeTotopoYaml(ctx.projectRoot, yaml);
+    writeTotopoYaml(ctx.workspaceRoot, yaml);
     await promptStopContainer(ctx);
 }
 
-async function removeShadowPatterns(ctx: ProjectContext): Promise<void> {
-    const yaml = readTotopoYaml(ctx.projectRoot);
+async function removeShadowPatterns(ctx: WorkspaceContext): Promise<void> {
+    const yaml = readTotopoYaml(ctx.workspaceRoot);
     if (!yaml?.shadow_paths?.length) return;
 
     const toRemove = await multiselect({
@@ -180,13 +180,13 @@ async function removeShadowPatterns(ctx: ProjectContext): Promise<void> {
 
     const removeSet = new Set(toRemove as string[]);
     yaml.shadow_paths = yaml.shadow_paths.filter((p) => !removeSet.has(p));
-    writeTotopoYaml(ctx.projectRoot, yaml);
+    writeTotopoYaml(ctx.workspaceRoot, yaml);
     log.success(`Removed ${removeSet.size} pattern(s).`);
     await promptStopContainer(ctx);
 }
 
 // --- Prompt to stop container ------------------------------------------------------------------------------------------------------------
-async function promptStopContainer(ctx: ProjectContext): Promise<void> {
+async function promptStopContainer(ctx: WorkspaceContext): Promise<void> {
     const containerName = ctx.containerName;
     const inspect = spawnSync("docker", ["inspect", "--format", "{{.State.Status}}", containerName], {
         encoding: "utf8",
@@ -211,16 +211,44 @@ async function promptStopContainer(ctx: ProjectContext): Promise<void> {
     log.info("Container removed. Open a new session to apply changes.");
 }
 
-// --- Settings submenu (main entry point) -------------------------------------------------------------------------------------------------
-export async function run(ctx: ProjectContext): Promise<"back" | undefined> {
+// --- Reset totopo.yaml -------------------------------------------------------------------------------------------------------------------
+async function resetTotopoYaml(ctx: WorkspaceContext): Promise<void> {
+    const yaml = readTotopoYaml(ctx.workspaceRoot);
+    if (!yaml) {
+        log.error("totopo.yaml not found or invalid.");
+        return;
+    }
+
+    note(
+        "This will reset totopo.yaml to factory defaults.\n" +
+            "Your workspace_id and name will be preserved.\n" +
+            "Shadow paths, profiles, and env_file will be reset to defaults.",
+        "Reset totopo.yaml",
+    );
+
+    const confirmed = await confirm({ message: "Reset totopo.yaml to defaults?" });
+    if (isCancel(confirmed) || !confirmed) return;
+
+    const freshYaml = buildDefaultTotopoYaml(yaml.workspace_id, yaml.name);
+    writeTotopoYaml(ctx.workspaceRoot, freshYaml);
+    log.success("totopo.yaml reset to defaults.");
+
+    await promptStopContainer(ctx);
+}
+
+// --- Manage Workspace submenu (main entry point) -----------------------------------------------------------------------------------------
+export async function run(ctx: WorkspaceContext): Promise<"back" | "rebuild" | "clean-rebuild" | undefined> {
     while (true) {
         const options: { value: string; label: string; hint?: string }[] = [
             { value: "profiles", label: "Profiles", hint: "switch active Dockerfile profile" },
             { value: "shadow-paths", label: "Shadow paths", hint: "manage shadow patterns" },
+            { value: "rebuild", label: "Rebuild container", hint: "force a fresh image build" },
+            { value: "clean-rebuild", label: "Clean rebuild", hint: "fresh build, no cache" },
+            { value: "reset", label: "Reset config", hint: "restore totopo.yaml to defaults" },
             { value: "back", label: "← Back" },
         ];
 
-        const action = await select({ message: "Settings:", options });
+        const action = await select({ message: "Manage Workspace:", options });
 
         if (isCancel(action) || action === "back") {
             return "back";
@@ -232,6 +260,13 @@ export async function run(ctx: ProjectContext): Promise<"back" | undefined> {
                 break;
             case "shadow-paths":
                 await shadowPathsMenu(ctx);
+                break;
+            case "rebuild":
+                return "rebuild";
+            case "clean-rebuild":
+                return "clean-rebuild";
+            case "reset":
+                await resetTotopoYaml(ctx);
                 break;
         }
     }

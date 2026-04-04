@@ -1,13 +1,13 @@
 // =========================================================================================================================================
-// sync-github-releases.ts — keep GitHub releases in sync with npm and changelog.yaml
+// sync-github-releases.ts - keep GitHub releases in sync with npm and changelog.yaml
 // Usage: pnpm sync-releases
 //        or import { syncGithubReleases } from "./sync-github-releases.ts"
 //
 // For every version published on npm:
-//   - Missing GitHub release          → created via `gh release create`
-//   - Existing release with no notes  → updated via `gh release edit`
-//     (detects blank body or our own placeholder string — never overwrites hand-written notes)
-//   - rc versions                     → created as pre-release with a generic note; never updated
+//   - Missing GitHub release          -> created via `gh release create`
+//   - Existing release with no notes  -> updated via `gh release edit`
+//     (detects blank body or our own placeholder string - never overwrites hand-written notes)
+//   - rc versions                     -> created as pre-release with a generic note; never updated
 //
 // Release notes come from changelog.yaml via getReleaseNotes(). Falls back to
 // placeholderNotes() when no entry exists, which doubles as the stale-detection string.
@@ -20,7 +20,7 @@ import { readFileSync } from "node:fs";
 import { log } from "@clack/prompts";
 import { getReleaseNotes } from "./changelog-utils.ts";
 
-// Fallback notes used when changelog.yaml has no entry for a version — also used to detect stale placeholders
+// Fallback notes used when changelog.yaml has no entry for a version - also used to detect stale placeholders
 function placeholderNotes(tag: string): string {
     return `Release ${tag}`;
 }
@@ -36,7 +36,7 @@ function run(cmd: string, args: string[]): { stdout: string; stderr: string; ok:
 }
 
 export async function syncGithubReleases(packageName: string): Promise<void> {
-    // ── Check gh availability ────────────────────────────────────────────────────────────────────────────────────────────────────────────
+    // -- Check gh availability ------------------------------------------------------------------------------------------------------------
     const ghCheck = run("gh", ["--version"]);
     if (!ghCheck.ok) {
         log.warn("gh CLI not found — skipping GitHub release sync");
@@ -44,7 +44,7 @@ export async function syncGithubReleases(packageName: string): Promise<void> {
         return;
     }
 
-    // ── Fetch npm versions ───────────────────────────────────────────────────────────────────────────────────────────────────────────────
+    // -- Fetch npm versions ---------------------------------------------------------------------------------------------------------------
     const npmResult = run("npm", ["view", packageName, "versions", "--json"]);
     let npmVersions: string[] = [];
     try {
@@ -55,7 +55,7 @@ export async function syncGithubReleases(packageName: string): Promise<void> {
         return;
     }
 
-    // ── Fetch existing GitHub releases ───────────────────────────────────────────────────────────────────────────────────────────────────
+    // -- Fetch existing GitHub releases ---------------------------------------------------------------------------------------------------
     const ghResult = run("gh", ["release", "list", "--limit", "100", "--json", "tagName"]);
     let ghTags = new Set<string>();
     try {
@@ -66,13 +66,13 @@ export async function syncGithubReleases(packageName: string): Promise<void> {
         return;
     }
 
-    // ── Create missing releases / update releases with empty or placeholder notes ─────────────────────────────────────────────────────────
+    // -- Create missing releases / update releases with empty or placeholder notes ---------------------------------------------------------
     const missing = npmVersions.filter((v) => !ghTags.has(`v${v}`));
 
     // For existing stable releases, fetch body individually to check if notes need updating
     const needsNotes: string[] = [];
     for (const version of npmVersions) {
-        if (!ghTags.has(`v${version}`)) continue; // missing — handled above
+        if (!ghTags.has(`v${version}`)) continue; // missing - handled above
         if (/-rc-\d+$/.test(version)) continue; // rc notes are intentionally generic
         const bodyResult = run("gh", ["release", "view", `v${version}`, "--json", "body"]);
         let body = "";
@@ -121,7 +121,7 @@ export async function syncGithubReleases(packageName: string): Promise<void> {
     }
 }
 
-// ── Standalone entrypoint ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// -- Standalone entrypoint ----------------------------------------------------------------------------------------------------------------
 const pkg = JSON.parse(readFileSync("package.json", "utf8")) as {
     name: string;
 };

@@ -1,10 +1,10 @@
-// =============================================================================
-// check.ts — pre-release health checks
+// =========================================================================================================================================
+// check.ts - pre-release health checks
 // Usage: pnpm check
 //
 // Runs before every commit (via .githooks/pre-commit) and before pnpm rc.
 // Add new checks here as the project grows.
-// =============================================================================
+// =========================================================================================================================================
 
 import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -21,9 +21,9 @@ const fail = (label: string, detail: string) => {
 
 console.log("\n\x1b[1mtotopo — pre-release checks\x1b[0m\n");
 
-// =============================================================================
+// =========================================================================================================================================
 // Helpers: file collection
-// =============================================================================
+// =========================================================================================================================================
 
 // Collects all files with the given extensions recursively under a directory
 function collectSourceFiles(dir: string, exts: string[]): string[] {
@@ -40,14 +40,19 @@ function collectSourceFiles(dir: string, exts: string[]): string[] {
     return results;
 }
 
-const sourceFiles = [...collectSourceFiles("src", [".ts", ".js"]), ...collectSourceFiles("bin", [".ts", ".js"])];
+const sourceFiles = [
+    ...collectSourceFiles("src", [".ts", ".js"]),
+    ...collectSourceFiles("bin", [".ts", ".js"]),
+    ...collectSourceFiles("scripts", [".ts", ".js"]),
+    ...collectSourceFiles("tests", [".ts", ".js"]),
+];
 
-// =============================================================================
+// =========================================================================================================================================
 // Check: divider line normalization (auto-fix)
 // Detects comment lines that are purely decorative dividers (---, ===, etc.),
 // normalizes special box-drawing chars to plain ASCII, and pads to 140 chars.
 // Auto-fixes in place, then fails the check so diffs can be reviewed.
-// =============================================================================
+// =========================================================================================================================================
 
 // Returns true if a comment line is a divider (starts or ends with 3+ dash/equals chars)
 function isDividerLine(line: string): boolean {
@@ -154,9 +159,9 @@ if (specialCharViolations.length > 0) {
     pass("special chars in comments", "all clean");
 }
 
-// =============================================================================
+// =========================================================================================================================================
 // Check: changelog.yaml structure
-// =============================================================================
+// =========================================================================================================================================
 
 try {
     const data = readChangelog();
@@ -167,9 +172,9 @@ try {
     fail("changelog.yaml structure", e instanceof Error ? e.message : String(e));
 }
 
-// =============================================================================
+// =========================================================================================================================================
 // Check: no rc versions in releases
-// =============================================================================
+// =========================================================================================================================================
 
 try {
     const data = readChangelog();
@@ -184,9 +189,9 @@ try {
     fail("no rc versions in releases", e instanceof Error ? e.message : String(e));
 }
 
-// =============================================================================
+// =========================================================================================================================================
 // Summary
-// =============================================================================
+// =========================================================================================================================================
 
 if (errors === 0) {
     console.log(`\n\x1b[32m\u25cf\x1b[0m \x1b[1mAll checks passed.\x1b[0m\n`);

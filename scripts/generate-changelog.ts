@@ -1,8 +1,8 @@
 // =========================================================================================================================================
-// generate-changelog.ts — regenerate CHANGELOG.md from scripts/changelog.yaml
+// generate-changelog.ts - regenerate CHANGELOG.md from scripts/changelog.yaml
 // Usage: pnpm generate-changelog
 //
-// CHANGELOG.md is a generated artifact — edit scripts/changelog.yaml instead.
+// CHANGELOG.md is a generated artifact - edit scripts/changelog.yaml instead.
 // =========================================================================================================================================
 
 import { writeFileSync } from "node:fs";

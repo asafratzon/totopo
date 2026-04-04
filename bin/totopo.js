@@ -1,23 +1,24 @@
 #!/usr/bin/env node
 // =========================================================================================================================================
 // bin/totopo.js - totopo entry point
-// Run this from your project directory (or via npx totopo).
+// Run this from your workspace directory (or via npx totopo).
 // =========================================================================================================================================
 
 import { execSync, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { cancel, isCancel, select } from "@clack/prompts";
+import { cancel, confirm, isCancel, log, select } from "@clack/prompts";
 import { run as advanced } from "../dist/commands/advanced.js";
 import { run as dev } from "../dist/commands/dev.js";
 import { run as doctor } from "../dist/commands/doctor.js";
 import { run as menu } from "../dist/commands/menu.js";
 import { run as onboard } from "../dist/commands/onboard.js";
-import { run as rebuild } from "../dist/commands/rebuild.js";
+import { run as resetImage } from "../dist/commands/reset-image.js";
 import { run as settings } from "../dist/commands/settings.js";
 import { run as stop } from "../dist/commands/stop.js";
-import { listProjectIds, resolveProject } from "../dist/lib/project-identity.js";
+import { repairTotopoYaml } from "../dist/lib/totopo-yaml.js";
+import { deriveContainerName, findTotopoYamlDir, listWorkspaceIds, resolveWorkspace } from "../dist/lib/workspace-identity.js";
 
 // --- Guard: inside container -------------------------------------------------------------------------------------------------------------
 try {
@@ -26,7 +27,7 @@ try {
         console.error("  You are running totopo from inside the dev container.");
         console.error("  Open a terminal on your host machine and run:");
         console.error("");
-        console.error("    totopo  (or npx totopo from your project directory)");
+        console.error("    totopo  (or npx totopo from your workspace directory)");
         console.error("");
         process.exit(1);
     }
@@ -50,16 +51,50 @@ if (!existsSync(new URL("../dist/commands/dev.js", import.meta.url))) {
 
 // --- v2 migration check ------------------------------------------------------------------------------------------------------------------
 try {
-    const { runMigration } = await import("../dist/lib/migrate-v2.js");
-    await runMigration();
+    const { runMigration } = await import("../dist/lib/migrate-to-latest.js");
+    runMigration(process.cwd());
 } catch {
-    // migrate-v2 module may not exist yet during development - that's fine
+    // Non-fatal - migration failure should not block startup
 }
 
-// --- Resolve project from CWD (walk-up looking for totopo.yaml) --------------------------------------------------------------------------
-let project;
+// --- Auto-repair totopo.yaml if needed ---------------------------------------------------------------------------------------------------
+const yamlDir = findTotopoYamlDir(cwd);
+if (yamlDir) {
+    const result = repairTotopoYaml(yamlDir);
+    if (result.error) {
+        console.error("");
+        console.error(`  ${result.error}`);
+        console.error("");
+        process.exit(1);
+    }
+    if (result.repairedYaml) {
+        log.info(result.message);
+
+        // Prompt to stop container if running (config changed)
+        const cn = deriveContainerName(result.repairedYaml.workspace_id);
+        const inspect = spawnSync("docker", ["inspect", "--format", "{{.State.Status}}", cn], {
+            encoding: "utf8",
+            stdio: "pipe",
+        });
+        if (inspect.status === 0 && inspect.stdout.trim() === "running") {
+            const shouldStop = await confirm({
+                message: "Stop the running container so repaired config applies on next session?",
+            });
+            if (isCancel(shouldStop) || !shouldStop) {
+                log.warn("Container still running with old config.");
+            } else {
+                spawnSync("docker", ["stop", cn], { stdio: "pipe" });
+                spawnSync("docker", ["rm", cn], { stdio: "pipe" });
+                log.info("Container stopped. Changes will apply on next session.");
+            }
+        }
+    }
+}
+
+// --- Resolve workspace from CWD (walk-up looking for totopo.yaml) ------------------------------------------------------------------------
+let workspace;
 try {
-    project = resolveProject(cwd);
+    workspace = resolveWorkspace(cwd);
 } catch (err) {
     console.error("");
     console.error(`  ${err instanceof Error ? err.message : err}`);
@@ -67,10 +102,10 @@ try {
     process.exit(1);
 }
 
-// --- Onboarding (if not in a registered project) -----------------------------------------------------------------------------------------
-if (!project) {
-    // If other projects already exist, let the user choose setup vs manage
-    if (listProjectIds().length > 0) {
+// --- Onboarding (if not in a registered workspace) ---------------------------------------------------------------------------------------
+if (!workspace) {
+    // If other workspaces already exist, let the user choose setup vs manage
+    if (listWorkspaceIds().length > 0) {
         process.stdout.write("\n");
         const choice = await select({
             message: "What would you like to do?",
@@ -91,7 +126,7 @@ if (!project) {
 
     const ctx = await onboard(cwd);
     if (!ctx) process.exit(0);
-    project = ctx;
+    workspace = ctx;
 }
 
 // --- Doctor (silent pre-check) -----------------------------------------------------------------------------------------------------------
@@ -102,40 +137,44 @@ if (!doctorResult.ok) {
     process.exit(1);
 }
 
-// --- Gather container state for menu -----------------------------------------------------------------------------------------------------
-const { containerName } = project;
-
-const dockerResult = spawnSync("docker", ["ps", "--filter", "name=totopo-", "--format", "{{.Names}}"], {
-    encoding: "utf8",
-});
-const activeNames = dockerResult.stdout ? dockerResult.stdout.trim().split("\n").filter(Boolean) : [];
-const activeCount = activeNames.length;
-const projectRunning = activeNames.some((n) => n === containerName);
-
 // --- Interactive menu loop ---------------------------------------------------------------------------------------------------------------
+const { containerName } = workspace;
 let showMenu = true;
 while (showMenu) {
     showMenu = false;
 
-    const action = await menu({ ctx: project, activeCount, projectRunning });
+    // Refresh container state on each loop iteration
+    const dockerResult = spawnSync("docker", ["ps", "--filter", "name=totopo-", "--format", "{{.Names}}"], {
+        encoding: "utf8",
+    });
+    const activeNames = dockerResult.stdout ? dockerResult.stdout.trim().split("\n").filter(Boolean) : [];
+    const activeCount = activeNames.length;
+    const workspaceRunning = activeNames.some((n) => n === containerName);
+
+    const action = await menu({ ctx: workspace, activeCount, workspaceRunning });
 
     switch (action) {
         case "dev":
-            await dev(packageDir, project);
-            break;
-        case "rebuild":
-            await rebuild(project.containerName);
-            await dev(packageDir, project);
+            await dev(packageDir, workspace);
             break;
         case "stop":
-            await stop(project.containerName);
+            await stop(workspace.containerName);
             break;
-        case "settings":
-            await settings(project);
-            showMenu = true;
+        case "settings": {
+            const settingsResult = await settings(workspace);
+            if (settingsResult === "rebuild") {
+                await resetImage(workspace.containerName);
+                await dev(packageDir, workspace);
+            } else if (settingsResult === "clean-rebuild") {
+                await resetImage(workspace.containerName);
+                await dev(packageDir, workspace, { noCache: true });
+            } else {
+                showMenu = true;
+            }
             break;
+        }
         case "manage-totopo": {
-            const result = await advanced(project.projectId);
+            const result = await advanced(workspace.workspaceId);
             if (result === "back") showMenu = true;
             break;
         }

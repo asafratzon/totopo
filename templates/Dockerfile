@@ -11,6 +11,9 @@
 FROM debian:bookworm-slim
 LABEL totopo.managed=true
 
+# Enable 24-bit color support for AI CLIs (suppresses color upgrade prompts)
+ENV COLORTERM=truecolor
+
 # ---------------------------------------------------------------------------
 # Layer 1 — System packages
 # ---------------------------------------------------------------------------
@@ -83,7 +86,11 @@ RUN npm install -g \
 RUN groupadd --gid 1001 devuser && \
     useradd --uid 1001 --gid devuser --shell /bin/bash --create-home devuser && \
     mkdir -p /home/devuser/.local/state /home/devuser/.local/share /home/devuser/.local/bin && \
-    chown -R devuser:devuser /home/devuser
+    chown -R devuser:devuser /home/devuser && \
+    # .claude/ is mounted from the host (agents/claude/) so it persists across rebuilds.
+    # .claude.json sits one level above that mount and would normally be ephemeral.
+    # This symlink makes .claude.json resolve into the mounted directory so it persists too.
+    ln -sf /home/devuser/.claude/.claude.json /home/devuser/.claude.json
 
 # ---------------------------------------------------------------------------
 # Layer 9 — Bake post-start script into image

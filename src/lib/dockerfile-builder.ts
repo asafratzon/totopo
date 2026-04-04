@@ -56,14 +56,21 @@ export function buildDockerfile(baseTemplatePath: string, profileHook?: string):
  * Write Dockerfile content to a temp file, run docker build, then clean up.
  * Build context is always the templates directory so COPY instructions resolve correctly.
  */
-export function buildImageWithTempfile(dockerfileContent: string, buildContextDir: string, imageName: string): { status: number } {
+export function buildImageWithTempfile(
+    dockerfileContent: string,
+    buildContextDir: string,
+    imageName: string,
+    noCache = false,
+    quiet = false,
+): { status: number } {
     const tmpFile = join(tmpdir(), `totopo-Dockerfile-${randomBytes(8).toString("hex")}`);
 
     try {
         writeFileSync(tmpFile, dockerfileContent);
-        const result = spawnSync("docker", ["build", "--label", "totopo.managed=true", "-f", tmpFile, "-t", imageName, buildContextDir], {
-            stdio: "inherit",
-        });
+        const buildArgs = ["build", "--label", "totopo.managed=true", "-f", tmpFile, "-t", imageName];
+        if (noCache) buildArgs.push("--no-cache");
+        buildArgs.push(buildContextDir);
+        const result = spawnSync("docker", buildArgs, { stdio: quiet ? "pipe" : "inherit" });
         return { status: result.status ?? 1 };
     } finally {
         try {

@@ -1,20 +1,35 @@
-# yaml-language-server: $schema=https://raw.githubusercontent.com/asafratzon/totopo/main/schema/totopo.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/asafratzon/totopo/v3.0.0-rc-3/schema/totopo.schema.json
 schema_version: 3
-project_id: totopo
+
+# totopo workspace config — run 'npx totopo' from anywhere under this directory tree to start your dev container.
+# Ask the AI agent inside the container to help you edit this file if needed.
+# This file may be rewritten by totopo (repair, reset, settings changes). Custom comments will not be preserved.
+workspace_id: totopo
 name: totopo
-# Shadow patterns hide matching host paths from the agent.
-# The container gets an empty, isolated copy instead.
-# Patterns without '/' match at any depth (like .gitignore).
-# Supports globs: * (any chars), ? (single char), {a,b} (alternatives).
+
+# .gitignore-style patterns — agents see an empty, isolated copy instead of the real host data.
 shadow_paths:
   - node_modules
   - .env*
-# Dockerfile profiles. Each profile's dockerfile_hook is appended to the base image.
+
+# Dockerfile profiles — each adds on top of the totopo base image (Debian + Node.js + git + AI CLIs).
+# Base Dockerfile: https://raw.githubusercontent.com/asafratzon/totopo/v3.0.0-rc-3/templates/Dockerfile
+# Switch profiles in the totopo settings menu, or ask the agent inside the container to help you add a new one.
 profiles:
   default:
     dockerfile_hook: |
-      # Add Dockerfile instructions here to install additional tools.
-      # These are appended to the base image (Debian bookworm + Node.js + git + AI CLIs).
-      # Examples:
-      #   RUN apt-get update && apt-get install -y --no-install-recommends python3 && rm -rf /var/lib/apt/lists/*
+      # Installs Go and Java.
+      RUN apt-get update && apt-get install -y --no-install-recommends golang-go default-jdk-headless && rm -rf /var/lib/apt/lists/*
+  slim:
+    dockerfile_hook: |
+      # No extras — uses the base image only (Node.js + git + AI CLIs).
+  custom:
+    dockerfile_hook: |
+      # Add your own Dockerfile instructions below, or ask the agent inside the container to help.
+      # Install Bun:
       #   RUN curl -fsSL https://bun.sh/install | bash
+      # Install Rust:
+      #   RUN curl -sSf https://sh.rustup.rs | sh -s -- -y
+      # Copy a local script into the image:
+      #   COPY my-tool.sh /usr/local/bin/my-tool.sh
+  # Add more profiles here — or ask the agent inside the container to set one up for you.

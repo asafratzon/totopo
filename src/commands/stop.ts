@@ -1,5 +1,5 @@
 // =========================================================================================================================================
-// src/commands/stop.ts - Stop and remove THIS project's dev container
+// src/commands/stop.ts - Stop and remove this workspace's dev container
 // Invoked by bin/totopo.js - do not run directly.
 // =========================================================================================================================================
 

@@ -1,6 +1,6 @@
 // =========================================================================================================================================
-// src/commands/onboard.ts - First-time project setup
-// Creates totopo.yaml, registers the project, and returns ProjectContext (or null if cancelled).
+// src/commands/onboard.ts - First-time workspace setup
+// Creates totopo.yaml, registers the workspace, and returns WorkspaceContext (or null if cancelled).
 // =========================================================================================================================================
 
 import { execSync } from "node:child_process";
@@ -8,31 +8,31 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { cancel, confirm, intro, isCancel, log, outro, select, text } from "@clack/prompts";
-import type { ProjectContext } from "../lib/project-identity.js";
-import {
-    checkCollision,
-    deriveContainerName,
-    findOrphanProjectDir,
-    findTotopoYamlDir,
-    getProjectDir,
-    initProjectDir,
-    readLockFile,
-} from "../lib/project-identity.js";
 import {
     buildDefaultTotopoYaml,
     readTotopoYaml,
-    slugifyForProjectId,
+    slugifyForWorkspaceId,
     type TotopoYamlConfig,
-    validateProjectId,
+    validateWorkspaceId,
     writeTotopoYaml,
 } from "../lib/totopo-yaml.js";
+import type { WorkspaceContext } from "../lib/workspace-identity.js";
+import {
+    checkCollision,
+    deriveContainerName,
+    findOrphanWorkspaceDir,
+    findTotopoYamlDir,
+    getWorkspaceDir,
+    initWorkspaceDir,
+    readLockFile,
+} from "../lib/workspace-identity.js";
 
-/** Derive a unique project_id, appending -2, -3, etc. if the base collides with another project. */
-function deriveUniqueProjectId(baseId: string, projectRoot: string): string {
-    if (checkCollision(baseId, projectRoot) === "ok") return baseId;
+/** Derive a unique workspace_id, appending -2, -3, etc. if the base collides with another workspace. */
+function deriveUniqueWorkspaceId(baseId: string, workspaceRoot: string): string {
+    if (checkCollision(baseId, workspaceRoot) === "ok") return baseId;
     for (let i = 2; i <= 99; i++) {
         const candidate = `${baseId}-${i}`;
-        if (checkCollision(candidate, projectRoot) === "ok") return candidate;
+        if (checkCollision(candidate, workspaceRoot) === "ok") return candidate;
     }
     return baseId; // fallback (collision handled later in onboarding)
 }
@@ -45,7 +45,7 @@ function tryGetGitRoot(cwd: string): string | null {
     }
 }
 
-export async function run(cwd: string): Promise<ProjectContext | null> {
+export async function run(cwd: string): Promise<WorkspaceContext | null> {
     const toTildePath = (p: string) => (p.startsWith(homedir()) ? p.replace(homedir(), "~") : p);
 
     // --- Detect context ------------------------------------------------------------------------------------------------------------------
@@ -55,10 +55,10 @@ export async function run(cwd: string): Promise<ProjectContext | null> {
 
     // --- Intro ---------------------------------------------------------------------------------------------------------------------------
     process.stdout.write("\n");
-    intro("totopo · new project");
+    intro("totopo · new workspace");
     process.stdout.write("\n");
 
-    let projectRoot: string;
+    let workspaceRoot: string;
     let yaml: TotopoYamlConfig;
 
     if (yamlDir) {
@@ -77,7 +77,7 @@ export async function run(cwd: string): Promise<ProjectContext | null> {
             return null;
         }
 
-        projectRoot = yamlDir;
+        workspaceRoot = yamlDir;
         yaml = existing;
 
         // Show welcome message
@@ -86,7 +86,7 @@ export async function run(cwd: string): Promise<ProjectContext | null> {
             process.stdout.write("\n");
         }
 
-        const ok = await confirm({ message: `Set up totopo for: ${toTildePath(projectRoot)}?` });
+        const ok = await confirm({ message: `Set up totopo for: ${toTildePath(workspaceRoot)}?` });
         if (isCancel(ok) || !ok) {
             cancel("Setup cancelled.");
             return null;
@@ -94,7 +94,7 @@ export async function run(cwd: string): Promise<ProjectContext | null> {
     } else {
         // --- No totopo.yaml: create one interactively ------------------------------------------------------------------------------------
 
-        // Choose project root
+        // Choose workspace root
         const suggestedRoot = gitRoot ?? cwd;
         type RootOption = { value: string; label: string; hint?: string };
         const options: RootOption[] = [
@@ -105,7 +105,7 @@ export async function run(cwd: string): Promise<ProjectContext | null> {
         }
         options.push({ value: "__custom__", label: "Enter a different path…" });
 
-        const rootChoice = await select({ message: "Project root:", options });
+        const rootChoice = await select({ message: "Workspace root:", options });
         if (isCancel(rootChoice)) {
             cancel("Setup cancelled.");
             return null;
@@ -113,7 +113,7 @@ export async function run(cwd: string): Promise<ProjectContext | null> {
 
         if (rootChoice === "__custom__") {
             const customPath = await text({
-                message: "Project root path:",
+                message: "Workspace root path:",
                 placeholder: `e.g. ${suggestedRoot}`,
                 validate: (v) => {
                     const p = (v ?? "").trim();
@@ -126,15 +126,15 @@ export async function run(cwd: string): Promise<ProjectContext | null> {
                 cancel("Setup cancelled.");
                 return null;
             }
-            projectRoot = (customPath as string).trim();
+            workspaceRoot = (customPath as string).trim();
         } else {
-            projectRoot = rootChoice as string;
+            workspaceRoot = rootChoice as string;
         }
 
-        // Ask for project name (used as display name, also derives project_id)
-        const defaultName = basename(projectRoot);
+        // Ask for workspace name (used as display name, also derives workspace_id)
+        const defaultName = basename(workspaceRoot);
         const nameInput = await text({
-            message: "Project name:",
+            message: "Workspace name:",
             placeholder: defaultName,
             defaultValue: defaultName,
         });
@@ -142,19 +142,19 @@ export async function run(cwd: string): Promise<ProjectContext | null> {
             cancel("Setup cancelled.");
             return null;
         }
-        const projectName = (nameInput as string).trim() || defaultName;
+        const workspaceName = (nameInput as string).trim() || defaultName;
 
-        // Derive project_id from name, auto-resolve collisions with numeric suffix
-        const projectId = deriveUniqueProjectId(slugifyForProjectId(projectName), projectRoot);
+        // Derive workspace_id from name, auto-resolve collisions with numeric suffix
+        const workspaceId = deriveUniqueWorkspaceId(slugifyForWorkspaceId(workspaceName), workspaceRoot);
 
         // Build and write totopo.yaml
-        yaml = buildDefaultTotopoYaml(projectId, projectName);
-        writeTotopoYaml(projectRoot, yaml);
-        log.success(`Created ${toTildePath(join(projectRoot, "totopo.yaml"))}`);
+        yaml = buildDefaultTotopoYaml(workspaceId, workspaceName);
+        writeTotopoYaml(workspaceRoot, yaml);
+        log.success(`Created ${toTildePath(join(workspaceRoot, "totopo.yaml"))}`);
     }
 
     // --- Non-git warning -----------------------------------------------------------------------------------------------------------------
-    const isNonGit = tryGetGitRoot(projectRoot) === null;
+    const isNonGit = tryGetGitRoot(workspaceRoot) === null;
     if (isNonGit) {
         log.warn("No version control detected. Agent changes won't be tracked.");
         const ack = await confirm({ message: "Continue without git?" });
@@ -165,24 +165,24 @@ export async function run(cwd: string): Promise<ProjectContext | null> {
     }
 
     // --- Collision / orphan check --------------------------------------------------------------------------------------------------------
-    const projectId = yaml.project_id;
-    const collision = checkCollision(projectId, projectRoot);
+    const workspaceId = yaml.workspace_id;
+    const collision = checkCollision(workspaceId, workspaceRoot);
 
     if (collision === "collision") {
-        const existingLock = readLockFile(projectId);
+        const existingLock = readLockFile(workspaceId);
         log.error(
-            `Project ID "${projectId}" is already used by another project:\n` +
+            `Workspace ID "${workspaceId}" is already used by another workspace:\n` +
                 `  ${existingLock}\n\n` +
-                `Choose a different project_id in totopo.yaml.`,
+                `Choose a different workspace_id in totopo.yaml.`,
         );
 
         const newId = await text({
-            message: "New project ID:",
+            message: "New workspace ID:",
             validate: (v) => {
                 const id = (v ?? "").trim();
-                const err = validateProjectId(id);
+                const err = validateWorkspaceId(id);
                 if (err) return err;
-                const c = checkCollision(id, projectRoot);
+                const c = checkCollision(id, workspaceRoot);
                 if (c === "collision") return `"${id}" is also taken`;
                 return undefined;
             },
@@ -192,19 +192,19 @@ export async function run(cwd: string): Promise<ProjectContext | null> {
             return null;
         }
 
-        yaml.project_id = (newId as string).trim();
-        writeTotopoYaml(projectRoot, yaml);
-        log.info(`Updated project_id to "${yaml.project_id}"`);
+        yaml.workspace_id = (newId as string).trim();
+        writeTotopoYaml(workspaceRoot, yaml);
+        log.info(`Updated workspace_id to "${yaml.workspace_id}"`);
     } else {
-        // Check for orphan (project_id changed in yaml but old dir still points here)
-        const orphanId = findOrphanProjectDir(projectRoot);
-        if (orphanId && orphanId !== projectId) {
-            log.warn(`Found orphaned project cache "${orphanId}" pointing to this project.`);
+        // Check for orphan (workspace_id changed in yaml but old dir still points here)
+        const orphanId = findOrphanWorkspaceDir(workspaceRoot);
+        if (orphanId && orphanId !== workspaceId) {
+            log.warn(`Found orphaned workspace cache "${orphanId}" pointing to this workspace.`);
             const action = await select({
                 message: "How to handle the orphaned cache?",
                 options: [
-                    { value: "realign", label: `Revert project_id to "${orphanId}"`, hint: "keeps existing cache" },
-                    { value: "clean", label: `Use "${projectId}" (clean slate)`, hint: "deletes old cache" },
+                    { value: "realign", label: `Revert workspace_id to "${orphanId}"`, hint: "keeps existing cache" },
+                    { value: "clean", label: `Use "${workspaceId}" (clean slate)`, hint: "deletes old cache" },
                 ],
             });
 
@@ -214,30 +214,30 @@ export async function run(cwd: string): Promise<ProjectContext | null> {
             }
 
             if (action === "realign") {
-                yaml.project_id = orphanId;
-                writeTotopoYaml(projectRoot, yaml);
-                log.info(`Reverted project_id to "${orphanId}"`);
+                yaml.workspace_id = orphanId;
+                writeTotopoYaml(workspaceRoot, yaml);
+                log.info(`Reverted workspace_id to "${orphanId}"`);
             } else {
                 // Clean slate - remove orphaned dir
                 const { rmSync } = await import("node:fs");
-                rmSync(getProjectDir(orphanId), { recursive: true, force: true });
+                rmSync(getWorkspaceDir(orphanId), { recursive: true, force: true });
                 log.info(`Removed orphaned cache for "${orphanId}"`);
             }
         }
     }
 
-    // --- Initialize project dir ----------------------------------------------------------------------------------------------------------
-    const finalId = yaml.project_id;
-    initProjectDir(finalId, projectRoot);
+    // --- Initialize workspace dir --------------------------------------------------------------------------------------------------------
+    const finalId = yaml.workspace_id;
+    initWorkspaceDir(finalId, workspaceRoot);
 
-    log.success(`Config written to ${toTildePath(getProjectDir(finalId))}`);
+    log.success(`Config written to ${toTildePath(getWorkspaceDir(finalId))}`);
     outro("Setup complete.");
 
     return {
-        projectId: finalId,
-        projectRoot,
+        workspaceId: finalId,
+        workspaceRoot,
         containerName: deriveContainerName(finalId),
-        projectDir: getProjectDir(finalId),
+        workspaceDir: getWorkspaceDir(finalId),
         displayName: yaml.name || finalId,
     };
 }

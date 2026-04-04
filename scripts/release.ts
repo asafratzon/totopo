@@ -1,5 +1,5 @@
 // =========================================================================================================================================
-// release.ts — promote rc to latest
+// release.ts - promote rc to latest
 // Usage: pnpm rc:promote  (run from host, not inside container)
 //
 // Reads the current rc version from the npm registry, strips the -rc-N
@@ -35,7 +35,7 @@ log.message("Make sure you are logged in to npm before proceeding (npm whoami)."
 
 let stashedBeforeRelease = false;
 
-// ─── Phase 0: uncommitted changes guard ──────────────────────────────────────────────────────────────────────────────────────────────────
+// --- Phase 0: uncommitted changes guard --------------------------------------------------------------------------------------------------
 const porcelainResult = spawnSync("git", ["status", "--porcelain"], { encoding: "utf8", stdio: "pipe" });
 const porcelainLines = porcelainResult.stdout.trim().split("\n").filter(Boolean);
 
@@ -45,7 +45,7 @@ if (porcelainLines.length > 0) {
     const packagedDirty = changedPaths.filter((p) => PACKAGED.some((prefix) => p === prefix || p.startsWith(prefix)));
 
     if (packagedDirty.length > 0) {
-        // Case A — stop, explain, exit
+        // Case A - stop, explain, exit
         log.warn("Uncommitted changes overlap with packaged files:");
         for (const p of packagedDirty) log.message(`  ${p}`);
         log.error("These files are included in the published npm package. Publishing with them uncommitted would corrupt the release.");
@@ -55,7 +55,7 @@ if (porcelainLines.length > 0) {
         cancel("Resolve uncommitted changes and re-run.");
         process.exit(1);
     } else {
-        // Case B — offer automated options
+        // Case B - offer automated options
         log.warn("Uncommitted changes detected (none overlap with packaged files):");
         for (const p of changedPaths) log.message(`  ${p}`);
         const choice = await select({
@@ -82,11 +82,11 @@ if (porcelainLines.length > 0) {
     }
 }
 
-// ─── Sync GitHub releases ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// --- Sync GitHub releases ----------------------------------------------------------------------------------------------------------------
 log.step("Syncing GitHub releases with npm...");
 await syncGithubReleases(name);
 
-// ─── Fetch rc from registry ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// --- Fetch rc from registry --------------------------------------------------------------------------------------------------------------
 log.step("Checking npm registry for rc...");
 
 const probe = spawnSync("npm", ["view", name, "dist-tags", "--json"], {
@@ -119,7 +119,7 @@ if (baseVersion === latestRcVersion) {
 
 log.success(`rc: ${latestRcVersion} → will release as ${baseVersion}`);
 
-// ─── Validate changelog entries ──────────────────────────────────────────────────────────────────────────────────────────────────────────
+// --- Validate changelog entries ----------------------------------------------------------------------------------------------------------
 log.step("Validating changelog.yaml...");
 const changelog = readChangelog();
 try {
@@ -129,7 +129,7 @@ try {
     process.exit(1);
 }
 
-// squashAndPromote advances base_version to bumpPatch(baseVersion) after squashing —
+// squashAndPromote advances base_version to bumpPatch(baseVersion) after squashing -
 // if we see that on re-run with empty entries, squash already completed successfully.
 const nextBase = bumpPatch(baseVersion);
 const squashAlreadyDone = changelog.in_progress.base_version === nextBase && changelog.in_progress.entries.length === 0;
@@ -143,7 +143,7 @@ if (!squashAlreadyDone && changelog.in_progress.base_version !== baseVersion) {
 
 if (!squashAlreadyDone) log.success(`Found rc-${changelog.in_progress.entries.length} to qualify as ${baseVersion}`);
 
-// ─── Confirm ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// --- Confirm -----------------------------------------------------------------------------------------------------------------------------
 const ok = await confirm({
     message: `Publish ${name}@${baseVersion} as latest?`,
 });
@@ -153,7 +153,7 @@ if (isCancel(ok) || !ok) {
     process.exit(0);
 }
 
-// ─── Phase 7: Squash rc entries + update changelog.yaml ──────────────────────────────────────────────────────────────────────────────────
+// --- Phase 7: Squash rc entries + update changelog.yaml ----------------------------------------------------------------------------------
 const today = new Date().toISOString().slice(0, 10);
 if (squashAlreadyDone) {
     log.info("Skipping changelog squash — already done");
@@ -163,7 +163,7 @@ if (squashAlreadyDone) {
     log.success("changelog.yaml updated");
 }
 
-// ─── Phase 8: Regenerate CHANGELOG.md ────────────────────────────────────────────────────────────────────────────────────────────────────
+// --- Phase 8: Regenerate CHANGELOG.md ----------------------------------------------------------------------------------------------------
 if (squashAlreadyDone) {
     log.info("Skipping CHANGELOG.md regen — squash already done");
 } else {
@@ -172,7 +172,7 @@ if (squashAlreadyDone) {
     log.success("CHANGELOG.md regenerated");
 }
 
-// ─── Phase 9: Update package.json ────────────────────────────────────────────────────────────────────────────────────────────────────────
+// --- Phase 9: Update package.json --------------------------------------------------------------------------------------------------------
 const pkgNow = JSON.parse(readFileSync(pkgPath, "utf8")) as { version: string };
 if (pkgNow.version === baseVersion) {
     log.info(`Skipping package.json — already at ${baseVersion}`);
@@ -182,7 +182,7 @@ if (pkgNow.version === baseVersion) {
     log.success(`package.json → ${baseVersion}`);
 }
 
-// ─── Phase 10: Commit ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// --- Phase 10: Commit --------------------------------------------------------------------------------------------------------------------
 const tag = `v${baseVersion}`;
 const releaseCommitMsg = `chore: release ${tag}`;
 const releaseDirtyCheck = spawnSync("git", ["status", "--porcelain", pkgPath, "CHANGELOG.md", "scripts/changelog.yaml"], {
@@ -197,7 +197,7 @@ if (releaseDirtyCheck.stdout.trim().length === 0) {
     execSync(`git commit -m "${releaseCommitMsg}"`, { stdio: "inherit" });
 }
 
-// ─── Phase 11: Push ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// --- Phase 11: Push ----------------------------------------------------------------------------------------------------------------------
 const releasePushStatus = spawnSync("git", ["status", "-sb"], { encoding: "utf8", stdio: "pipe" });
 const releasePushLine = releasePushStatus.stdout.split("\n")[0] ?? "";
 const releaseHasUpstream = releasePushLine.includes("...");
@@ -209,7 +209,7 @@ if (releaseAlreadyPushed) {
     execSync("git push", { stdio: "inherit" });
 }
 
-// ─── Phase 12: Publish to npm ────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// --- Phase 12: Publish to npm ------------------------------------------------------------------------------------------------------------
 // Re-fetch dist-tags (may have changed since Phase 2)
 const freshDistTagsProbe = spawnSync("npm", ["view", name, "dist-tags", "--json"], { encoding: "utf8", stdio: "pipe" });
 let freshDistTags: Record<string, string> = {};
@@ -223,7 +223,7 @@ if (freshDistTags.latest === baseVersion) {
     execSync("pnpm publish --access public", { stdio: "inherit" });
 }
 
-// ─── Phase 13: Remove rc dist-tag ────────────────────────────────────────────────────────────────────────────────────────────────────────
+// --- Phase 13: Remove rc dist-tag --------------------------------------------------------------------------------------------------------
 // Re-fetch dist-tags after publish
 const freshRcTagProbe = spawnSync("npm", ["view", name, "dist-tags", "--json"], { encoding: "utf8", stdio: "pipe" });
 let freshRcDistTags: Record<string, string> = {};
@@ -240,7 +240,7 @@ if (!rcStillPointsHere) {
     log.success("rc tag removed — npx totopo@rc will no longer resolve");
 }
 
-// ─── Phase 14: Tag + push to GitHub (only after npm publish succeeded) ───────────────────────────────────────────────────────────────────
+// --- Phase 14: Tag + push to GitHub (only after npm publish succeeded) -------------------------------------------------------------------
 const releaseTagLocal = gitTagExistsLocally(tag);
 const releaseTagRemote = gitTagExistsOnRemote(tag);
 if (releaseTagLocal) {
@@ -256,15 +256,15 @@ if (releaseTagRemote) {
     execSync("git push --tags", { stdio: "inherit" });
 }
 
-// ─── Wait for npm registry to propagate ──────────────────────────────────────────────────────────────────────────────────────────────────
+// --- Wait for npm registry to propagate --------------------------------------------------------------------------------------------------
 log.step(`Waiting for ${name}@${baseVersion} to appear in npm registry...`);
 await waitForNpmVersion(name, baseVersion);
 log.success("npm registry updated");
 
-// ─── Sync GitHub releases (register the new release) ─────────────────────────────────────────────────────────────────────────────────────
+// --- Sync GitHub releases (register the new release) -------------------------------------------------------------------------------------
 await syncGithubReleases(name);
 
-// ─── Unstash if we stashed before release ────────────────────────────────────────────────────────────────────────────────────────────────
+// --- Unstash if we stashed before release ------------------------------------------------------------------------------------------------
 if (stashedBeforeRelease) {
     log.step("git stash pop");
     const popResult = spawnSync("git", ["stash", "pop"], { encoding: "utf8", stdio: "pipe" });
@@ -275,7 +275,7 @@ if (stashedBeforeRelease) {
     }
 }
 
-// ─── Done ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// --- Done --------------------------------------------------------------------------------------------------------------------------------
 outro(`${name}@${baseVersion} published as latest`);
 console.log(`  Verify: https://www.npmjs.com/package/${name}`);
 console.log(`  Test:   npx ${name}`);

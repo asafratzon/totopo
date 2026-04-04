@@ -9,8 +9,9 @@
 //   OpenCode:    https://github.com/opencode-ai/opencode
 //   Codex:       https://github.com/openai/codex
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 // --- Types -------------------------------------------------------------------------------------------------------------------------------
 
@@ -57,11 +58,11 @@ export const AGENT_MOUNTS: readonly AgentMount[] = [
 // --- Build agent mount args --------------------------------------------------------------------------------------------------------------
 
 /**
- * Creates agents/ subdirectories in the project dir on the host (lazily) and
+ * Creates agents/ subdirectories in the workspace cache dir on the host (lazily) and
  * returns volume mount args for all supported agent tools.
  */
-export function buildAgentMountArgs(projectDir: string): string[] {
-    const agentsDir = join(projectDir, "agents");
+export function buildAgentMountArgs(workspaceDir: string): string[] {
+    const agentsDir = join(workspaceDir, "agents");
 
     const mounts = AGENT_MOUNTS.map((m) => ({
         host: join(agentsDir, m.hostSubpath),
@@ -72,72 +73,43 @@ export function buildAgentMountArgs(projectDir: string): string[] {
     return mounts.flatMap(({ host, container }) => ["-v", `${host}:${container}`]);
 }
 
+// --- Template helpers --------------------------------------------------------------------------------------------------------------------
+
+const packageRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
+
+function loadTemplate(name: string): string {
+    return readFileSync(join(packageRoot, "templates", "context", `${name}.md`), "utf8").trimEnd();
+}
+
+function renderTemplate(template: string, vars: Record<string, string>): string {
+    return template.replace(/\{\{(\w+)\}\}/g, (_, key: string) => vars[key] ?? `{{${key}}}`);
+}
+
 // --- Build agent context documents -------------------------------------------------------------------------------------------------------
 
 /**
  * Assembles the agent context markdown injected into each supported agent's config dir at session start.
  */
 export function buildAgentContextDocs(hasGit: boolean, shadowPatterns?: string[]): AgentContextDocs {
-    // -- Git section ----------------------------------------------------------------------------------------------------------------------
-    let gitSection: string;
-    if (hasGit) {
-        gitSection = `## Git availability
+    const gitSection = loadTemplate(hasGit ? "git-available" : "git-unavailable");
 
-Git is fully available for local operations (commit, branch, log, diff, status, etc.).
+    const shadowSection =
+        shadowPatterns && shadowPatterns.length > 0
+            ? renderTemplate(loadTemplate("shadow-paths"), {
+                  pattern_list: shadowPatterns.map((p) => `- \`${p}\``).join("\n"),
+              })
+            : null;
 
-Remote access (push, pull, fetch, clone) is **blocked at the system level** by design — \`protocol.allow = never\` is enforced in \`/etc/gitconfig\` and cannot be overridden without root. This is a deliberate security boundary: the container has no access to remote repositories. Ask the user to run any remote git operations from the host.`;
-    } else {
-        gitSection = `## Git availability
-
-Git is **not available** — no \`.git\` directory was found in the project root.
-
-Remote access is also **blocked container-wide** by design (\`protocol.allow = never\` in \`/etc/gitconfig\`).
-
-If git operations are needed, ask the user to run them on the host.`;
-    }
-
-    // -- Responsibilities section ---------------------------------------------------------------------------------------------------------
-    const responsibilitiesSection = `## Your responsibilities at session start
-
-At the start of every session:
-- Briefly tell the user they are in a totopo sandbox and mention key limitations (git remote block, no host filesystem access outside the project).`;
-
-    // -- Shadow paths section ----------------------------------------------------------------------------------------------------------------
-    let shadowSection = "";
-    if (shadowPatterns && shadowPatterns.length > 0) {
-        const patternList = shadowPatterns.map((p) => `- \`${p}\``).join("\n");
-        shadowSection = `## Shadow paths
-
-The following patterns are overlaid with container-local storage and do not reflect
-the host filesystem:
-
-${patternList}
-
-Matching paths are initialized empty on first use. The container may accumulate
-content in them over time (for example, a shadowed \`node_modules\` gets
-populated when you run \`npm install\` inside the container). Do not assume they
-are empty, and do not attempt to sync or restore their host contents.`;
-    }
-
-    // -- Assemble per-tool - only the self-referencing path differs -----------------------------------------------------------------------
     function build(toolPath: string): string {
-        const constraintsSection = `## Constraints
-
-- Files outside mounted paths cannot be read, written, or executed.
-- If a command fails because of missing files or permissions, tell the user: "This requires running on the host — please run \`<command>\` outside the container."
-- This file (\`${toolPath}\`) is managed by totopo and overwritten on every session start. Do not edit it.`;
-
         const sections = [
-            "# totopo Workspace Context\n\nYou are running inside a totopo dev container.\n",
-            `## Workspace
-
-You have access to the full project directory at \`/workspace\`. Some operations (git push, system-level changes) require running on the host.`,
+            loadTemplate("header"),
+            loadTemplate("workspace"),
+            loadTemplate("totopo-yaml"),
             ...(shadowSection ? [shadowSection] : []),
             gitSection,
-            constraintsSection,
-            responsibilitiesSection,
+            renderTemplate(loadTemplate("constraints"), { tool_path: toolPath }),
+            loadTemplate("responsibilities"),
         ];
-
         return `${sections.join("\n\n")}\n`;
     }
 
@@ -151,10 +123,10 @@ You have access to the full project directory at \`/workspace\`. Some operations
 // --- Inject agent context ----------------------------------------------------------------------------------------------------------------
 
 /**
- * Writes agent context markdown files into the project's agents/ directory.
+ * Writes agent context markdown files into the workspace's agents/ directory.
  */
-export function injectAgentContext(projectDir: string, docs: AgentContextDocs): void {
-    const a = join(projectDir, "agents");
+export function injectAgentContext(workspaceDir: string, docs: AgentContextDocs): void {
+    const a = join(workspaceDir, "agents");
 
     const files = [
         { path: join(a, "claude", "CLAUDE.md"), content: docs.claude },

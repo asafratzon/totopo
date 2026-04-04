@@ -86,8 +86,8 @@ Two tags are maintained:
 
 | Tag | Points to | Used by |
 | --- | --- | --- |
-| `latest` | last stable release (e.g. `2.0.0`) | `npx totopo` |
-| `rc` | current release candidate (e.g. `2.0.1-rc-1`) | `npx totopo@rc` |
+| `latest` | last stable release (e.g. `3.0.0`) | `npx totopo` |
+| `rc` | current release candidate (e.g. `3.0.1-rc-1`) | `npx totopo@rc` |
 
 ### Maintaining agent mount definitions
 
