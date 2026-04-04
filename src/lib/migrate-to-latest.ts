@@ -20,7 +20,7 @@
 // =========================================================================================================================================
 
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { log } from "@clack/prompts";
@@ -198,8 +198,9 @@ function migrateProjectsDir(): void {
 
     if (!existsSync(oldDir)) return;
 
-    if (existsSync(newDir)) {
-        log.warn("Both ~/.totopo/projects/ and ~/.totopo/workspaces/ exist. Skipping directory rename.");
+    const entries = readdirSync(oldDir);
+    if (entries.length === 0) {
+        rmSync(oldDir, { recursive: true });
         return;
     }
 
@@ -218,8 +219,22 @@ function migrateProjectsDir(): void {
         log.info("Containers stopped - they will be recreated on next session.");
     }
 
-    renameSync(oldDir, newDir);
-    log.success("Migrated ~/.totopo/projects/ to ~/.totopo/workspaces/");
+    mkdirSync(newDir, { recursive: true });
+
+    let moved = 0;
+    for (const entry of entries) {
+        const src = join(oldDir, entry);
+        const dest = join(newDir, entry);
+        if (existsSync(dest)) continue; // already migrated, skip
+        renameSync(src, dest);
+        moved++;
+    }
+
+    rmSync(oldDir, { recursive: true });
+
+    if (moved > 0) {
+        log.success("Migrated ~/.totopo/projects/ to ~/.totopo/workspaces/");
+    }
 }
 
 /**
