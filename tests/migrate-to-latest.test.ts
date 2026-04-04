@@ -51,15 +51,33 @@ describe("migrate-to-latest", () => {
         // No error thrown
     });
 
-    test("skips rename if both dirs exist", () => {
-        mkdirSync(join(fakeHome, ".totopo", "projects"), { recursive: true });
-        mkdirSync(join(fakeHome, ".totopo", "workspaces"), { recursive: true });
+    test("merges projects/ into existing workspaces/, removes projects/", () => {
+        const projectsDir = join(fakeHome, ".totopo", "projects");
+        const workspacesDir = join(fakeHome, ".totopo", "workspaces");
+        mkdirSync(join(projectsDir, "new-workspace"), { recursive: true });
+        writeFileSync(join(projectsDir, "new-workspace", ".lock"), "/some/path\ndefault\n");
+        mkdirSync(join(workspacesDir, "existing-workspace"), { recursive: true });
 
         runMigration(tmp);
 
-        // Both should still exist
-        assert.ok(existsSync(join(fakeHome, ".totopo", "projects")));
-        assert.ok(existsSync(join(fakeHome, ".totopo", "workspaces")));
+        assert.ok(!existsSync(projectsDir), "projects/ should be removed");
+        assert.ok(existsSync(join(workspacesDir, "new-workspace")), "new entry should be moved");
+        assert.ok(existsSync(join(workspacesDir, "existing-workspace")), "existing entry should be preserved");
+    });
+
+    test("skips collision entries when merging projects/ into workspaces/", () => {
+        const projectsDir = join(fakeHome, ".totopo", "projects");
+        const workspacesDir = join(fakeHome, ".totopo", "workspaces");
+        mkdirSync(join(projectsDir, "my-workspace"), { recursive: true });
+        writeFileSync(join(projectsDir, "my-workspace", ".lock"), "/old/path\ndefault\n");
+        mkdirSync(join(workspacesDir, "my-workspace"), { recursive: true });
+        writeFileSync(join(workspacesDir, "my-workspace", ".lock"), "/new/path\ndefault\n");
+
+        runMigration(tmp);
+
+        assert.ok(!existsSync(projectsDir), "projects/ should be removed");
+        // workspaces/ version should win (not overwritten)
+        assert.equal(readFileSync(join(workspacesDir, "my-workspace", ".lock"), "utf8"), "/new/path\ndefault\n");
     });
 
     // ---- migrateGlobalEnv ---------------------------------------------------------------------------------------------------------------
