@@ -13,10 +13,10 @@ import fg from "fast-glob";
  * Expand gitignore-style patterns into concrete relative paths.
  *
  * Patterns without a directory separator are treated as recursive (prepended with **&#47;)
- * following gitignore convention. Patterns with a / are matched relative to the project root.
+ * following gitignore convention. Patterns with a / are matched relative to the workspace root.
  * Matched directories are not recursed into (e.g. node_modules matches once, not its children).
  */
-export function expandShadowPatterns(patterns: string[], projectRoot: string): string[] {
+export function expandShadowPatterns(patterns: string[], workspaceRoot: string): string[] {
     if (patterns.length === 0) return [];
 
     // Convert gitignore-style patterns to fast-glob patterns
@@ -26,7 +26,7 @@ export function expandShadowPatterns(patterns: string[], projectRoot: string): s
     const ignorePatterns = ["**/.git", ...globPatterns.map((p) => `${p}/**/*`)];
 
     const results = fg.sync(globPatterns, {
-        cwd: projectRoot,
+        cwd: workspaceRoot,
         onlyFiles: false,
         dot: true,
         ignore: ignorePatterns,
@@ -37,23 +37,23 @@ export function expandShadowPatterns(patterns: string[], projectRoot: string): s
 
 // --- Hit counting (for menu UX) ----------------------------------------------------------------------------------------------------------
 
-/** Count how many paths a pattern would match in the project. */
-export function countPatternHits(pattern: string, projectRoot: string): number {
-    return expandShadowPatterns([pattern], projectRoot).length;
+/** Count how many paths a pattern would match in the workspace. */
+export function countPatternHits(pattern: string, workspaceRoot: string): number {
+    return expandShadowPatterns([pattern], workspaceRoot).length;
 }
 
 // --- Shadow sync -------------------------------------------------------------------------------------------------------------------------
 
 /**
  * Ensures the shadows/ directory matches the given expanded paths.
- * - Creates missing shadow entries (empty dir or empty file, matching project path type)
+ * - Creates missing shadow entries (empty dir or empty file, matching source path type)
  * - If `freshPaths` is provided, those entries are deleted and recreated (clean slate)
  * - Removes shadow entries not in the expanded set
  * - Cleans up empty parent directories
  */
-export function ensureShadowsInSync(projectDir: string, expandedPaths: string[], projectRoot: string, freshPaths?: Set<string>): void {
+export function ensureShadowsInSync(workspaceDir: string, expandedPaths: string[], workspaceRoot: string, freshPaths?: Set<string>): void {
     const expected = new Set(expandedPaths);
-    const shadowsDir = join(projectDir, "shadows");
+    const shadowsDir = join(workspaceDir, "shadows");
 
     // Create shadows/ root if needed
     mkdirSync(shadowsDir, { recursive: true });
@@ -63,7 +63,7 @@ export function ensureShadowsInSync(projectDir: string, expandedPaths: string[],
 
     // Create or refresh expected entries
     for (const relPath of expected) {
-        const projectPath = join(projectRoot, relPath);
+        const sourcePath = join(workspaceRoot, relPath);
         const shadowPath = join(shadowsDir, relPath);
 
         if (freshPaths?.has(relPath) && existsSync(shadowPath)) {
@@ -71,7 +71,7 @@ export function ensureShadowsInSync(projectDir: string, expandedPaths: string[],
         }
 
         if (!existsSync(shadowPath)) {
-            createShadowEntry(projectPath, shadowPath);
+            createShadowEntry(sourcePath, shadowPath);
         }
     }
 }
@@ -79,18 +79,18 @@ export function ensureShadowsInSync(projectDir: string, expandedPaths: string[],
 // --- Mount args --------------------------------------------------------------------------------------------------------------------------
 
 /** Build -v args for shadow mounts from expanded paths. */
-export function buildShadowMountArgs(projectDir: string, expandedPaths: string[]): string[] {
+export function buildShadowMountArgs(workspaceDir: string, expandedPaths: string[]): string[] {
     const args: string[] = [];
     for (const relPath of expandedPaths) {
-        args.push("-v", `${join(projectDir, "shadows", relPath)}:/workspace/${relPath}`);
+        args.push("-v", `${join(workspaceDir, "shadows", relPath)}:/workspace/${relPath}`);
     }
     return args;
 }
 
 // --- Helpers -----------------------------------------------------------------------------------------------------------------------------
 
-function createShadowEntry(projectPath: string, shadowPath: string): void {
-    if (existsSync(projectPath) && !lstatSync(projectPath).isDirectory()) {
+function createShadowEntry(sourcePath: string, shadowPath: string): void {
+    if (existsSync(sourcePath) && !lstatSync(sourcePath).isDirectory()) {
         mkdirSync(dirname(shadowPath), { recursive: true });
         writeFileSync(shadowPath, "");
     } else {

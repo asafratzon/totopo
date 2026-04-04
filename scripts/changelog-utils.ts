@@ -1,5 +1,5 @@
 // =========================================================================================================================================
-// changelog-utils.ts — read/write/query scripts/changelog.yaml
+// changelog-utils.ts - read/write/query scripts/changelog.yaml
 // =========================================================================================================================================
 
 import { readFileSync, writeFileSync } from "node:fs";
@@ -12,7 +12,7 @@ const __dirname = path.dirname(__filename);
 
 const CHANGELOG_PATH = path.join(__dirname, "changelog.yaml");
 
-// ─── Types ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// --- Types -------------------------------------------------------------------------------------------------------------------------------
 
 export interface ReleaseEntry {
     version: string;
@@ -42,7 +42,7 @@ export interface Changelog {
     in_progress: InProgress;
 }
 
-// ─── Read / Write ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// --- Read / Write ------------------------------------------------------------------------------------------------------------------------
 
 export function readChangelog(): Changelog {
     const raw = readFileSync(CHANGELOG_PATH, "utf8");
@@ -59,7 +59,7 @@ export function writeChangelog(data: Changelog): void {
     writeFileSync(CHANGELOG_PATH, out, "utf8");
 }
 
-// ─── Validate changelog structure ────────────────────────────────────────────────────────────────────────────────────────────────────────
+// --- Validate changelog structure --------------------------------------------------------------------------------------------------------
 
 const CATEGORIES = ["added", "changed", "fixed", "security"] as const;
 
@@ -67,7 +67,7 @@ const CATEGORIES = ["added", "changed", "fixed", "security"] as const;
 export function validateChangelog(data: Changelog): void {
     const errors: string[] = [];
 
-    // Validate in_progress.entries is an array (not a map — a common mis-edit)
+    // Validate in_progress.entries is an array (not a map - a common mis-edit)
     if (!Array.isArray(data.in_progress.entries)) {
         errors.push(
             `in_progress.entries must be an array of RcEntry objects (each with rc_version, date, and category fields), got ${typeof data.in_progress.entries}. ` +
@@ -118,7 +118,7 @@ export function validateChangelog(data: Changelog): void {
     }
 }
 
-// ─── Append rc notes ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// --- Append rc notes ---------------------------------------------------------------------------------------------------------------------
 
 export interface RcNotes {
     added?: string[];
@@ -134,7 +134,7 @@ export function appendRcNotes(rcVersion: string, date: string, notes: RcNotes): 
     writeChangelog(data);
 }
 
-// ─── Squash rc entries and promote ───────────────────────────────────────────────────────────────────────────────────────────────────────
+// --- Squash rc entries and promote -------------------------------------------------------------------------------------------------------
 
 export function squashAndPromote(baseVersion: string, date: string): ReleaseEntry {
     const data = readChangelog();
@@ -173,7 +173,7 @@ export function squashAndPromote(baseVersion: string, date: string): ReleaseEntr
     return promoted;
 }
 
-// ─── Get release notes for a specific version ────────────────────────────────────────────────────────────────────────────────────────────
+// --- Get release notes for a specific version --------------------------------------------------------------------------------------------
 
 // Returns Markdown-formatted release notes for the given version, or a bare fallback string if not found
 export function getReleaseNotes(version: string): string {
@@ -205,7 +205,7 @@ export function getReleaseNotes(version: string): string {
     return lines.join("\n").trim();
 }
 
-// ─── npm registry polling ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// --- npm registry polling ----------------------------------------------------------------------------------------------------------------
 
 import { spawnSync } from "node:child_process";
 
@@ -229,16 +229,16 @@ export async function waitForNpmVersion(
             const versions: string[] = Array.isArray(parsed) ? parsed : [parsed];
             if (versions.includes(version)) return;
         } catch {
-            // registry temporarily unreachable — keep polling
+            // registry temporarily unreachable - keep polling
         }
         await new Promise((res) => setTimeout(res, intervalMs));
     }
     throw new Error(`Timed out waiting for ${packageName}@${version} to appear in npm registry`);
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+// --- Helpers -----------------------------------------------------------------------------------------------------------------------------
 
-// Increments the patch segment of a semver string (e.g. "0.1.4" → "0.1.5")
+// Increments the patch segment of a semver string (e.g. "0.1.4" -> "0.1.5")
 export function bumpPatch(v: string): string {
     const parts = v.split(".");
     parts[2] = String(Number(parts[2]) + 1);

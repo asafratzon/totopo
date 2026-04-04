@@ -59,13 +59,46 @@ Write the entry to `scripts/changelog.yaml` under `in_progress.entries`.
 
 **Before writing**, present the draft to the user and explicitly call out any items you chose to omit (and why) so they can confirm.
 
-## Step 5 — Lint and fix
+## Step 5 — Review test coverage
 
-Run `pnpm fix:all` to auto-fix formatting and lint issues across the codebase. This ensures everything is clean before committing.
+Review the changes included in this RC and assess whether any new unit or integration tests should be added before releasing.
+
+For each significant change (new feature, behaviour change, bug fix):
+1. Check whether the change is already covered by an existing test in `tests/` or `tests/docker/`.
+2. If not, decide whether the gap is worth filling before this RC or can be deferred. Flag untested changes explicitly so the user can make the call.
+
+If all changes are adequately covered, say so and move on.
+
+## Step 6 — Check for missing migrations
+
+Review the changes included in this RC and check whether any of them alter the on-disk structure that existing users would have from a previous version. Specifically, look for changes to:
+
+- `totopo.yaml` schema (new required keys, renamed keys, removed keys)
+- `~/.totopo/workspaces/<id>/` layout (new files, renamed files, changed `.lock` format)
+- Container naming conventions (`deriveContainerName`)
+- Any file or directory that totopo writes to the user's machine
+
+If a structural change is found, check `src/lib/migrate-to-latest.ts` for a corresponding migration step in the `MIGRATIONS` registry. If no migration handles the change, **warn the user** and suggest what migration step is needed.
+
+If no structural changes are found, say so explicitly and move on.
+
+## Step 7 — Review docs for staleness
+
+Review these three areas and flag anything that needs updating before the release:
+
+1. **`README.md`** — does the description, feature list, and any command or path references still match the current codebase? Check for stale terminology, removed features, or new features not yet documented.
+2. **`AGENTS.md`** — does the file structure, command list, and rules section reflect the current state of the repo?
+3. **Agent context templates** (`templates/context/*.md`) — do the sandbox constraints, git policy, and workspace guidance still accurately describe what the container provides?
+
+For each: if no changes are needed, say so explicitly. If changes are needed, make them and include them in the upcoming commit.
+
+## Step 8 — Lint and fix
+
+Run `pnpm lint:fix` to auto-fix formatting and lint issues across the codebase. This ensures everything is clean before committing.
 
 If the command fails or reports unfixable issues, stop and show the output to the user.
 
-## Step 6 — Stage and commit
+## Step 9 — Stage and commit
 
 Ask the user: **"Stage all changes and commit?"**
 
@@ -75,7 +108,7 @@ If yes:
 
 If no, skip this step.
 
-## Step 7 — Remind about host commands and testing
+## Step 10 — Remind about host commands and testing
 
 Print this reminder:
 

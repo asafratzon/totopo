@@ -16,7 +16,7 @@ function commandExists(cmd: string): boolean {
     return r.status === 0;
 }
 
-export async function run(_projectDir: string | null, verbose: boolean): Promise<{ ok: boolean }> {
+export async function run(_workspaceDir: string | null, verbose: boolean): Promise<{ ok: boolean }> {
     const errors: string[] = [];
 
     function check(label: string, ok: boolean, detail?: string): void {
