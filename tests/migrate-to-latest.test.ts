@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, test } from "node:test";
-import { LOCK_FILE } from "../src/lib/constants.js";
+import { LOCK_FILE, TOTOPO_DIR, WORKSPACES_DIR } from "../src/lib/constants.js";
 import { runMigration } from "../src/lib/migrate-to-latest.js";
+import { LOCK_KEYS } from "../src/lib/workspace-identity.js";
 import { cleanTempDir, createTempDir, overrideEnv } from "./helpers.js";
 
 let tmp: string;
@@ -40,7 +41,7 @@ describe("migrate-to-latest", () => {
 
         runMigration(tmp);
 
-        const workspacesDir = join(fakeHome, ".totopo", "workspaces");
+        const workspacesDir = join(fakeHome, TOTOPO_DIR, WORKSPACES_DIR);
         assert.ok(existsSync(workspacesDir), "workspaces/ should exist after migration");
         assert.ok(!existsSync(projectsDir), "projects/ should be gone after migration");
         assert.ok(existsSync(join(workspacesDir, "marker.txt")), "contents should be preserved");
@@ -54,7 +55,7 @@ describe("migrate-to-latest", () => {
 
     test("merges projects/ into existing workspaces/, removes projects/", () => {
         const projectsDir = join(fakeHome, ".totopo", "projects");
-        const workspacesDir = join(fakeHome, ".totopo", "workspaces");
+        const workspacesDir = join(fakeHome, TOTOPO_DIR, WORKSPACES_DIR);
         mkdirSync(join(projectsDir, "new-workspace"), { recursive: true });
         writeFileSync(join(projectsDir, "new-workspace", LOCK_FILE), "/some/path\ndefault\n");
         mkdirSync(join(workspacesDir, "existing-workspace"), { recursive: true });
@@ -68,7 +69,7 @@ describe("migrate-to-latest", () => {
 
     test("skips collision entries when merging projects/ into workspaces/", () => {
         const projectsDir = join(fakeHome, ".totopo", "projects");
-        const workspacesDir = join(fakeHome, ".totopo", "workspaces");
+        const workspacesDir = join(fakeHome, TOTOPO_DIR, WORKSPACES_DIR);
         mkdirSync(join(projectsDir, "my-workspace"), { recursive: true });
         writeFileSync(join(projectsDir, "my-workspace", LOCK_FILE), "/old/path\ndefault\n");
         mkdirSync(join(workspacesDir, "my-workspace"), { recursive: true });
@@ -79,14 +80,14 @@ describe("migrate-to-latest", () => {
         assert.ok(!existsSync(projectsDir), "projects/ should be removed");
         // workspaces/ version should win (not overwritten); format is upgraded to key=value by migrateLockFileFormat
         const lockContent = readFileSync(join(workspacesDir, "my-workspace", LOCK_FILE), "utf8");
-        assert.ok(lockContent.includes("yaml=/new/path"), "workspace root should be preserved");
-        assert.ok(lockContent.includes("profile=default"), "profile should be preserved");
+        assert.ok(lockContent.includes(`${LOCK_KEYS.workspaceRoot}=/new/path`), "workspace root should be preserved");
+        assert.ok(lockContent.includes(`${LOCK_KEYS.activeProfile}=default`), "profile should be preserved");
     });
 
     // ---- migrateGlobalEnv ---------------------------------------------------------------------------------------------------------------
 
     test("removes legacy ~/.totopo/.env", () => {
-        mkdirSync(join(fakeHome, ".totopo"), { recursive: true });
+        mkdirSync(join(fakeHome, TOTOPO_DIR), { recursive: true });
         writeFileSync(join(fakeHome, ".totopo", ".env"), "API_KEY=secret");
 
         runMigration(tmp);
@@ -95,7 +96,7 @@ describe("migrate-to-latest", () => {
     });
 
     test("no-op when ~/.totopo/.env does not exist", () => {
-        mkdirSync(join(fakeHome, ".totopo"), { recursive: true });
+        mkdirSync(join(fakeHome, TOTOPO_DIR), { recursive: true });
 
         runMigration(tmp);
         // No error thrown
@@ -108,7 +109,7 @@ describe("migrate-to-latest", () => {
         writeFileSync(join(tmp, "totopo.yaml"), "schema_version: 3\nproject_id: legacy-ws\n");
 
         // Need workspace dir to exist for readTotopoYaml after rename
-        mkdirSync(join(fakeHome, ".totopo", "workspaces"), { recursive: true });
+        mkdirSync(join(fakeHome, TOTOPO_DIR, WORKSPACES_DIR), { recursive: true });
 
         runMigration(tmp);
 
@@ -119,7 +120,7 @@ describe("migrate-to-latest", () => {
 
     test("no-op when totopo.yaml already has workspace_id", () => {
         writeFileSync(join(tmp, "totopo.yaml"), "schema_version: 3\nworkspace_id: modern-ws\n");
-        mkdirSync(join(fakeHome, ".totopo", "workspaces"), { recursive: true });
+        mkdirSync(join(fakeHome, TOTOPO_DIR, WORKSPACES_DIR), { recursive: true });
 
         runMigration(tmp);
 
@@ -131,7 +132,7 @@ describe("migrate-to-latest", () => {
 
     test("migrates v2 hash-based workspace", () => {
         // Set up a fake v2 hash directory with meta.json
-        const wsBase = join(fakeHome, ".totopo", "workspaces");
+        const wsBase = join(fakeHome, TOTOPO_DIR, WORKSPACES_DIR);
         const hashDir = join(wsBase, "abc123hash");
         mkdirSync(join(hashDir, "agents", "claude"), { recursive: true });
         mkdirSync(join(hashDir, "shadows"), { recursive: true });
@@ -160,7 +161,7 @@ describe("migrate-to-latest", () => {
     });
 
     test("skips v2 workspace when project root no longer exists", () => {
-        const wsBase = join(fakeHome, ".totopo", "workspaces");
+        const wsBase = join(fakeHome, TOTOPO_DIR, WORKSPACES_DIR);
         const hashDir = join(wsBase, "deadhash");
         mkdirSync(hashDir, { recursive: true });
 
@@ -183,15 +184,15 @@ describe("migrate-to-latest", () => {
         runMigration(tmp);
 
         const content = readFileSync(join(wsDir, LOCK_FILE), "utf8");
-        assert.ok(content.includes("yaml=/some/path"), "workspace root should be preserved");
-        assert.ok(content.includes("profile=slim"), "profile should be preserved");
-        assert.ok(content.includes("last-cli-update="), "last-cli-update key should be present");
+        assert.ok(content.includes(`${LOCK_KEYS.workspaceRoot}=/some/path`), "workspace root should be preserved");
+        assert.ok(content.includes(`${LOCK_KEYS.activeProfile}=slim`), "profile should be preserved");
+        assert.ok(content.includes(`${LOCK_KEYS.lastCliUpdate}=`), "last-cli-update key should be present");
     });
 
     test("skips .lock files already in key=value format", () => {
         const wsDir = join(fakeHome, ".totopo", "workspaces", "my-ws");
         mkdirSync(wsDir, { recursive: true });
-        const original = "yaml=/some/path\nprofile=slim\nlast-cli-update=2026-04-05T10:00:00.000Z\n";
+        const original = `${LOCK_KEYS.workspaceRoot}=/some/path\n${LOCK_KEYS.activeProfile}=slim\n${LOCK_KEYS.lastCliUpdate}=2026-04-05T10:00:00.000Z\n`;
         writeFileSync(join(wsDir, LOCK_FILE), original);
 
         runMigration(tmp);
@@ -200,6 +201,37 @@ describe("migrate-to-latest", () => {
     });
 
     test("migrateLockFileFormat is a no-op when workspaces/ does not exist", () => {
+        // fakeHome has no .totopo/ dir at all -- should not throw
+        runMigration(tmp);
+    });
+
+    // ---- migrateLockKeyYamlToRoot --------------------------------------------------------------------------------------------------------
+
+    test("renames yaml= key to root= in .lock files", () => {
+        const wsDir = join(fakeHome, ".totopo", "workspaces", "my-ws");
+        mkdirSync(wsDir, { recursive: true });
+        writeFileSync(join(wsDir, LOCK_FILE), `yaml=/some/path\n${LOCK_KEYS.activeProfile}=slim\n${LOCK_KEYS.lastCliUpdate}=\n`);
+
+        runMigration(tmp);
+
+        const content = readFileSync(join(wsDir, LOCK_FILE), "utf8");
+        assert.ok(content.includes(`${LOCK_KEYS.workspaceRoot}=/some/path`), "yaml= should be renamed to root=");
+        assert.ok(!content.includes("yaml="), "yaml= key should be gone");
+        assert.ok(content.includes(`${LOCK_KEYS.activeProfile}=slim`), "profile should be preserved");
+    });
+
+    test("skips .lock files already using root= key", () => {
+        const wsDir = join(fakeHome, ".totopo", "workspaces", "my-ws");
+        mkdirSync(wsDir, { recursive: true });
+        const original = `${LOCK_KEYS.workspaceRoot}=/some/path\n${LOCK_KEYS.activeProfile}=slim\n${LOCK_KEYS.lastCliUpdate}=\n`;
+        writeFileSync(join(wsDir, LOCK_FILE), original);
+
+        runMigration(tmp);
+
+        assert.equal(readFileSync(join(wsDir, LOCK_FILE), "utf8"), original);
+    });
+
+    test("migrateLockKeyYamlToRoot is a no-op when workspaces/ does not exist", () => {
         // fakeHome has no .totopo/ dir at all -- should not throw
         runMigration(tmp);
     });

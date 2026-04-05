@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, test } from "node:test";
+import { TOTOPO_DIR, WORKSPACES_DIR } from "../src/lib/constants.js";
 import { safeRmSync } from "../src/lib/safe-rm.js";
 import { cleanTempDir, createTempDir, overrideEnv } from "./helpers.js";
 
@@ -25,22 +26,22 @@ describe("safeRmSync", () => {
     // --- Allowed: ~/.totopo/ paths -------------------------------------------------------------------------------------------------------
 
     test("deletes a directory under ~/.totopo/", () => {
-        const dir = join(fakeHome, ".totopo", "workspaces", "my-project");
+        const dir = join(fakeHome, TOTOPO_DIR, WORKSPACES_DIR, "my-project");
         mkdirSync(dir, { recursive: true });
         safeRmSync(dir, { recursive: true });
         assert.ok(!existsSync(dir));
     });
 
     test("deletes ~/.totopo/ itself", () => {
-        const totopoHome = join(fakeHome, ".totopo");
+        const totopoHome = join(fakeHome, TOTOPO_DIR);
         mkdirSync(totopoHome, { recursive: true });
         safeRmSync(totopoHome, { recursive: true });
         assert.ok(!existsSync(totopoHome));
     });
 
     test("deletes a file under ~/.totopo/", () => {
-        const file = join(fakeHome, ".totopo", ".env");
-        mkdirSync(join(fakeHome, ".totopo"), { recursive: true });
+        const file = join(fakeHome, TOTOPO_DIR, ".env");
+        mkdirSync(join(fakeHome, TOTOPO_DIR), { recursive: true });
         writeFileSync(file, "KEY=value");
         safeRmSync(file);
         assert.ok(!existsSync(file));

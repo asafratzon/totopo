@@ -130,6 +130,12 @@ schema/
 
 **Migration (`migrate-to-latest.ts`):** Ordered registry of idempotent migrations that run on every startup. Each handles a specific legacy structure (v2 hash dirs, rc-era renames, etc.).
 
+**Migration path rule:** Every migration transforms an old structure (A) into the current one (B).
+- **A paths** (source, being migrated away from) — hardcode as string literals. If a constant changes later, the migration must still find the old location unchanged.
+- **B paths** (destination, current structure) — use constants from `constants.ts`, so they stay in sync if the structure evolves.
+
+Example: `migrateProjectsDir` uses `".totopo"` and `"projects"` for the old dir (A), and `TOTOPO_DIR`/`WORKSPACES_DIR` for the new dir (B).
+
 **Shadow paths (`shadows.ts`):** Patterns expanded via fast-glob. Matched paths get overlaid with empty container-local directories via Docker bind mounts.
 
 ## Coding conventions

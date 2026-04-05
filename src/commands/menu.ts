@@ -7,6 +7,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { styleText } from "node:util";
 import { box, cancel, isCancel, select } from "@clack/prompts";
+import { PROFILE } from "../lib/constants.js";
 import type { WorkspaceContext } from "../lib/workspace-identity.js";
 import { readActiveProfile } from "../lib/workspace-identity.js";
 
@@ -20,7 +21,7 @@ export async function run(args: MenuArgs): Promise<string> {
     const { ctx, workspaceRunning } = args;
 
     // --- Read workspace config -----------------------------------------------------------------------------------------------------------
-    const activeProfile = readActiveProfile(ctx.workspaceId) ?? "default";
+    const activeProfile = readActiveProfile(ctx.workspaceId) ?? PROFILE.default;
     const hasGit = existsSync(join(ctx.workspaceRoot, ".git"));
 
     // --- Status box ----------------------------------------------------------------------------------------------------------------------

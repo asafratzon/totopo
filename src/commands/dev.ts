@@ -8,7 +8,7 @@ import { existsSync } from "node:fs";
 import { join, relative } from "node:path";
 import { cancel, isCancel, log, outro, select } from "@clack/prompts";
 import { buildAgentContextDocs, buildAgentMountArgs, injectAgentContext } from "../lib/agent-context.js";
-import { CONTAINER_POST_START, CONTAINER_WORKSPACE, LABEL_MANAGED, LABEL_PROFILE, LABEL_SHADOWS } from "../lib/constants.js";
+import { CONTAINER_POST_START, CONTAINER_WORKSPACE, LABEL_MANAGED, LABEL_PROFILE, LABEL_SHADOWS, PROFILE } from "../lib/constants.js";
 import { buildDockerfile, buildImageWithTempfile } from "../lib/dockerfile-builder.js";
 import { buildShadowMountArgs, ensureShadowsInSync, expandShadowPatterns } from "../lib/shadows.js";
 import { readTotopoYaml } from "../lib/totopo-yaml.js";
@@ -39,10 +39,10 @@ async function promptWorkdir(workspaceDir: string, cwd: string): Promise<string>
 async function selectProfile(ctx: WorkspaceContext, profiles: Record<string, unknown>): Promise<string> {
     const profileNames = Object.keys(profiles);
     if (profileNames.length <= 1) {
-        return profileNames[0] ?? "default";
+        return profileNames[0] ?? PROFILE.default;
     }
 
-    const currentProfile = readActiveProfile(ctx.workspaceId) ?? "default";
+    const currentProfile = readActiveProfile(ctx.workspaceId) ?? PROFILE.default;
 
     const choice = await select({
         message: "Profile:",

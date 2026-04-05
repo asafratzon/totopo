@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, test } from "node:test";
-import { LOCK_FILE } from "../src/lib/constants.js";
+import { LOCK_FILE, PROFILE } from "../src/lib/constants.js";
 import {
     checkCollision,
     deriveContainerName,
@@ -10,6 +10,7 @@ import {
     findTotopoYamlDir,
     getWorkspaceDir,
     initWorkspaceDir,
+    LOCK_KEYS,
     listWorkspaceIds,
     readActiveProfile,
     readLastCliUpdate,
@@ -108,7 +109,7 @@ describe("with isolated home", () => {
         test("readActiveProfile returns default on fresh init", () => {
             const tmp = createTempDir();
             initWorkspaceDir("test-ws", tmp);
-            assert.equal(readActiveProfile("test-ws"), "default");
+            assert.equal(readActiveProfile("test-ws"), PROFILE.default);
             cleanTempDir(tmp);
         });
 
@@ -119,8 +120,8 @@ describe("with isolated home", () => {
         test("writeActiveProfile updates profile without changing path", () => {
             const tmp = createTempDir();
             initWorkspaceDir("test-ws", tmp);
-            writeActiveProfile("test-ws", "slim");
-            assert.equal(readActiveProfile("test-ws"), "slim");
+            writeActiveProfile("test-ws", PROFILE.slim);
+            assert.equal(readActiveProfile("test-ws"), PROFILE.slim);
             assert.equal(readLockFile("test-ws"), tmp);
             cleanTempDir(tmp);
         });
@@ -138,8 +139,8 @@ describe("with isolated home", () => {
 
         test("initWorkspaceDir with custom profile", () => {
             const tmp = createTempDir();
-            initWorkspaceDir("test-ws", tmp, "slim");
-            assert.equal(readActiveProfile("test-ws"), "slim");
+            initWorkspaceDir("test-ws", tmp, PROFILE.slim);
+            assert.equal(readActiveProfile("test-ws"), PROFILE.slim);
             cleanTempDir(tmp);
         });
 
@@ -147,9 +148,9 @@ describe("with isolated home", () => {
             const tmp = createTempDir();
             initWorkspaceDir("test-ws", tmp);
             const raw = readFileSync(join(getWorkspaceDir("test-ws"), LOCK_FILE), "utf8");
-            assert.ok(raw.includes("yaml="), "should contain yaml= key");
-            assert.ok(raw.includes("profile="), "should contain profile= key");
-            assert.ok(raw.includes("last-cli-update="), "should contain last-cli-update= key");
+            assert.ok(raw.includes(`${LOCK_KEYS.workspaceRoot}=`), "should contain root= key");
+            assert.ok(raw.includes(`${LOCK_KEYS.activeProfile}=`), "should contain profile= key");
+            assert.ok(raw.includes(`${LOCK_KEYS.lastCliUpdate}=`), "should contain last-cli-update= key");
             cleanTempDir(tmp);
         });
 
@@ -162,11 +163,11 @@ describe("with isolated home", () => {
 
         test("writeLastCliUpdate persists timestamp and preserves other fields", () => {
             const tmp = createTempDir();
-            initWorkspaceDir("test-ws", tmp, "slim");
+            initWorkspaceDir("test-ws", tmp, PROFILE.slim);
             writeLastCliUpdate("test-ws", "2026-04-05T10:00:00.000Z");
             assert.equal(readLastCliUpdate("test-ws"), "2026-04-05T10:00:00.000Z");
             assert.equal(readLockFile("test-ws"), tmp);
-            assert.equal(readActiveProfile("test-ws"), "slim");
+            assert.equal(readActiveProfile("test-ws"), PROFILE.slim);
             cleanTempDir(tmp);
         });
     });
