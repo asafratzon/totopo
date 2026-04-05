@@ -20,6 +20,9 @@ Tracks current work in progress and upcoming planned items.
 
 ### High Priority / Must
 
+- update release skill: I probably need to work on RCs in a branchs, so README.md on main would represenet latest version.
+  otherwise its very misleading for users.
+
 ### Nice to have / Raw Ideas
 
 - voice to text
