@@ -51,7 +51,7 @@ On every run, totopo shows the workspace menu:
 
 ### Working directory
 
-The workspace is always mounted at `/workspace` inside the container. When you run totopo from a subdirectory, you get a quick prompt to start **here** or at the **Workspace root**. If you're already at the workspace root, the session starts directly at `/workspace`.
+The workspace is always mounted at `/workspace` inside the container. When you run totopo from a subdirectory, you get a quick prompt to start **here** or at the **workspace root**. If you're already at the workspace root, the session starts directly at `/workspace`.
 
 ## Core Features
 
