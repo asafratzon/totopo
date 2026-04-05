@@ -1,385 +1,53 @@
 in_progress:
-  base_version: 3.0.0
-  entries:
-    - rc_version: 3.0.0-rc-1
-      date: "2026-03-31"
-      added:
-        - >-
-          Major simplification of project configuration and container lifecycle.
-        - >-
-          totopo.yaml is the single source of truth — declares project identity, shadow patterns, env file, and
-          Dockerfile profiles. Replaces settings.json, meta.json, and hash-based project directories.
-        - >-
-          JSON Schema for totopo.yaml with IDE autocomplete, plus runtime validation via ajv.
-        - >-
-          Dockerfile profiles — named profiles with dockerfile_hook for extending the base image with custom
-          instructions (e.g. Go, Rust, Bun). Base image stripped to essentials; optional runtimes move to profile hooks.
-        - >-
-          Gitignore-style shadow path patterns powered by fast-glob — patterns without '/' match at any depth. Inline
-          documentation in generated totopo.yaml explains the concept.
-        - >-
-          Automatic v2-to-v3 migration preserving agent memory, shadow data, and project metadata.
-      changed:
-        - >-
-          Project identity uses project_id from totopo.yaml instead of SHA-256 path hashing. Containers named
-          totopo-<project_id>.
-        - >-
-          ~/.totopo/projects/<id>/ reduced to a .lock file plus cache directories.
-        - >-
-          env_file in totopo.yaml replaces the global ~/.totopo/.env — points to a project-local env file.
-        - Dockerfiles assembled in memory from base template plus profile hook. No persisted Dockerfile.
-        - Onboarding simplified — no runtime mode, tool picker, or scope selection.
-        - Settings menu restructured into Profiles and Shadow paths submenus.
-        - Profile changes trigger image rebuild; shadow changes only recreate the container.
-    - rc_version: 3.0.0-rc-2
-      date: "2026-04-01"
-      added:
-        - >-
-          Major simplification of project configuration and container lifecycle.
-        - >-
-          totopo.yaml is the single source of truth — declares project identity, shadow patterns, env file, and
-          Dockerfile profiles. Replaces settings.json, meta.json, and hash-based project directories.
-        - >-
-          JSON Schema for totopo.yaml with IDE autocomplete, plus runtime validation via ajv with
-          user-friendly error messages (e.g. unknown properties are named explicitly).
-        - >-
-          Dockerfile profiles — named profiles with dockerfile_hook for extending the base image with custom
-          instructions. Default profile installs Go and Java; a custom profile provides commented examples
-          for Rust, Bun, and other tools.
-        - >-
-          Gitignore-style shadow path patterns powered by fast-glob — patterns without '/' match at any depth.
-        - >-
-          Automatic v2-to-v3 migration preserving agent memory, shadow data, and project metadata.
-      changed:
-        - >-
-          Project identity uses project_id from totopo.yaml instead of SHA-256 path hashing. Containers named
-          totopo-<project_id>.
-        - >-
-          ~/.totopo/projects/<id>/ reduced to a .lock file plus cache directories.
-        - >-
-          env_file in totopo.yaml replaces the global ~/.totopo/.env — points to a project-local env file.
-        - Dockerfiles assembled in memory from base template plus profile hook. No persisted Dockerfile.
-        - Onboarding simplified — no runtime mode, tool picker, or scope selection.
-        - Settings menu restructured into Profiles and Shadow paths submenus.
-        - Profile changes trigger image rebuild; shadow changes only recreate the container.
-        - >-
-          Generated totopo.yaml uses blank-line-separated sections with concise inline documentation.
-    - rc_version: 3.0.0-rc-3
-      date: "2026-04-01"
-      added:
-        - >-
-          Major simplification of project configuration and container lifecycle.
-        - >-
-          totopo.yaml is the single source of truth — declares project identity, shadow patterns, env file, and
-          Dockerfile profiles. Replaces settings.json, meta.json, and hash-based project directories.
-        - >-
-          JSON Schema for totopo.yaml with IDE autocomplete, plus runtime validation via ajv with
-          user-friendly error messages (e.g. unknown properties are named explicitly).
-        - >-
-          Dockerfile profiles — named profiles with dockerfile_hook for extending the base image with custom
-          instructions. Default profile installs Go and Java; a custom profile provides commented examples
-          for Rust, Bun, and other tools.
-        - >-
-          Gitignore-style shadow path patterns powered by fast-glob — patterns without '/' match at any depth.
-        - >-
-          Automatic v2-to-v3 migration preserving agent memory, shadow data, and project metadata.
-      changed:
-        - >-
-          Project identity uses project_id from totopo.yaml instead of SHA-256 path hashing. Containers named
-          totopo-<project_id>.
-        - >-
-          ~/.totopo/projects/<id>/ reduced to a .lock file plus cache directories.
-        - >-
-          env_file in totopo.yaml replaces the global ~/.totopo/.env — points to a project-local env file.
-        - Dockerfiles assembled in memory from base template plus profile hook. No persisted Dockerfile.
-        - >-
-          Onboarding asks for a project name and auto-derives the project_id. Collisions resolved
-          automatically with numeric suffix. No mode, tool, or scope selection.
-        - Settings menu restructured into Profiles and Shadow paths submenus.
-        - Profile changes trigger image rebuild; shadow changes only recreate the container.
-        - >-
-          Generated totopo.yaml uses blank-line-separated sections with concise inline documentation.
-        - Removed description field from totopo.yaml — name is sufficient for project identity.
-        - Multi-select prompts include usage hints (space to toggle, enter to confirm).
-    - rc_version: 3.0.0-rc-4
-      date: "2026-04-04"
-      added:
-        - >-
-          Major simplification of project configuration and container lifecycle.
-        - >-
-          totopo.yaml is the single source of truth — declares workspace identity, shadow patterns, env file, and
-          Dockerfile profiles. Replaces settings.json, meta.json, and hash-based project directories.
-        - >-
-          JSON Schema for totopo.yaml with runtime validation via ajv and user-friendly error messages
-          (e.g. unknown properties are named explicitly).
-        - >-
-          Dockerfile profiles — named profiles with dockerfile_hook for extending the base image with custom
-          instructions. Default profile installs Go and Java; a custom profile provides commented examples
-          for Rust, Bun, and other tools.
-        - >-
-          Gitignore-style shadow path patterns powered by fast-glob — patterns without '/' match at any depth.
-        - >-
-          Automatic migration from v2 and prior v3 RCs — preserves agent memory, shadow data, and project
-          metadata. totopo.yaml is auto-repaired on startup if needed.
-        - AI CLIs (Claude Code, opencode, Codex) updated to latest on each container start or resume.
-        - Claude Code settings (.claude.json) now persist across image rebuilds.
-      changed:
-        - >-
-          Workspace identity uses workspace_id from totopo.yaml instead of SHA-256 path hashing. Containers
-          named totopo-<workspace_id>.
-        - ~/.totopo/workspaces/<id>/ reduced to a .lock file plus cache directories.
-        - >-
-          env_file in totopo.yaml replaces the global ~/.totopo/.env — points to a project-local env file.
-        - Dockerfiles assembled in memory from base template plus profile hook. No persisted Dockerfile.
-        - >-
-          Onboarding asks for a workspace name and auto-derives the workspace_id. Collisions resolved
-          automatically with numeric suffix.
-        - >-
-          Settings menu renamed to "Manage Workspace" — includes profiles, shadow paths, rebuild, clean
-          rebuild, and config reset.
-        - Profile changes trigger image rebuild; shadow changes only recreate the container.
-        - Generated totopo.yaml uses blank-line-separated sections with concise inline documentation.
-        - Removed description field from totopo.yaml — name is sufficient for workspace identity.
-        - Multi-select prompts include usage hints (space to toggle, enter to confirm).
-    - rc_version: 3.0.0-rc-5
-      date: "2026-04-04"
-      added:
-        - >-
-          Major simplification of project configuration and container lifecycle.
-        - >-
-          totopo.yaml is the single source of truth — declares workspace identity, shadow patterns, env file, and
-          Dockerfile profiles. Replaces settings.json, meta.json, and hash-based project directories.
-        - >-
-          JSON Schema for totopo.yaml with runtime validation via ajv and user-friendly error messages
-          (e.g. unknown properties are named explicitly).
-        - >-
-          Dockerfile profiles — named profiles with dockerfile_hook for extending the base image with custom
-          instructions. Default profile installs Go and Java; a custom profile provides commented examples
-          for Rust, Bun, and other tools.
-        - >-
-          Gitignore-style shadow path patterns powered by fast-glob — patterns without '/' match at any depth.
-        - >-
-          Automatic migration from v2 and prior v3 RCs — preserves agent memory, shadow data, and project
-          metadata. totopo.yaml is auto-repaired on startup if needed.
-        - AI CLIs (Claude Code, opencode, Codex) updated to latest on each container start or resume.
-        - Claude Code settings (.claude.json) now persist across image rebuilds.
-      changed:
-        - >-
-          Workspace identity uses workspace_id from totopo.yaml instead of SHA-256 path hashing. Containers
-          named totopo-<workspace_id>.
-        - ~/.totopo/workspaces/<id>/ reduced to a .lock file plus cache directories.
-        - >-
-          env_file in totopo.yaml replaces the global ~/.totopo/.env — points to a project-local env file.
-        - Dockerfiles assembled in memory from base template plus profile hook. No persisted Dockerfile.
-        - >-
-          Onboarding asks for a workspace name and auto-derives the workspace_id. Collisions resolved
-          automatically with numeric suffix.
-        - >-
-          Settings menu renamed to "Manage Workspace" — includes profiles, shadow paths, rebuild, clean
-          rebuild, and config reset.
-        - Profile changes trigger image rebuild; shadow changes only recreate the container.
-        - Generated totopo.yaml uses blank-line-separated sections with concise inline documentation.
-        - Removed description field from totopo.yaml — name is sufficient for workspace identity.
-        - Multi-select prompts include usage hints (space to toggle, enter to confirm).
-      fixed:
-        - >-
-          Migration now correctly moves entries from ~/.totopo/projects/ into ~/.totopo/workspaces/ even when
-          both directories exist, then removes the old directory. Previously skipped when workspaces/ was present.
-    - rc_version: 3.0.0-rc-7
-      date: "2026-04-05"
-      added:
-        - >-
-          Major simplification of project configuration and container lifecycle.
-        - >-
-          totopo.yaml is the single source of truth — declares workspace identity, shadow patterns, env file, and
-          Dockerfile profiles. Replaces settings.json, meta.json, and hash-based project directories.
-        - >-
-          JSON Schema for totopo.yaml with runtime validation via ajv and user-friendly error messages
-          (e.g. unknown properties are named explicitly).
-        - >-
-          Dockerfile profiles — named profiles with dockerfile_hook for extending the base image with custom
-          instructions. Default profile installs Go and Java; a custom profile provides commented examples
-          for Rust, Bun, and other tools.
-        - >-
-          Gitignore-style shadow path patterns powered by fast-glob — patterns without '/' match at any depth.
-        - >-
-          Automatic migration from v2 and prior v3 RCs — preserves agent memory, shadow data, and project
-          metadata. totopo.yaml is auto-repaired on startup if needed.
-        - AI CLIs (Claude Code, opencode, Codex) updated to latest on each container start or resume.
-        - Claude Code settings (.claude.json) now persist across image rebuilds.
-      changed:
-        - >-
-          Workspace identity uses workspace_id from totopo.yaml instead of SHA-256 path hashing. Containers
-          named totopo-<workspace_id>.
-        - ~/.totopo/workspaces/<id>/ reduced to a .lock file plus cache directories.
-        - >-
-          env_file in totopo.yaml replaces the global ~/.totopo/.env — points to a project-local env file.
-        - Dockerfiles assembled in memory from base template plus profile hook. No persisted Dockerfile.
-        - >-
-          Onboarding asks for a workspace name and auto-derives the workspace_id. Collisions resolved
-          automatically with numeric suffix.
-        - >-
-          Settings menu renamed to "Manage Workspace" — includes profiles, shadow paths, rebuild, clean
-          rebuild, and config reset.
-        - Profile changes trigger image rebuild; shadow changes only recreate the container.
-        - Generated totopo.yaml uses blank-line-separated sections with concise inline documentation.
-        - Removed description field from totopo.yaml — name is sufficient for workspace identity.
-        - Multi-select prompts include usage hints (space to toggle, enter to confirm).
-        - >-
-          Workspace uninstall now prompts to also remove totopo.yaml from the workspace root (defaults to yes).
-        - Status box in the workspace menu simplified — shows workspace name, active profile, and container status only.
-        - Container readiness message now displays the workspace name and a hint for adjusting settings via totopo.yaml.
-      fixed:
-        - >-
-          Migration now correctly moves entries from ~/.totopo/projects/ into ~/.totopo/workspaces/ even when
-          both directories exist, then removes the old directory. Previously skipped when workspaces/ was present.
-    - rc_version: 3.0.0-rc-6
-      date: "2026-04-04"
-      added:
-        - >-
-          Major simplification of project configuration and container lifecycle.
-        - >-
-          totopo.yaml is the single source of truth — declares workspace identity, shadow patterns, env file, and
-          Dockerfile profiles. Replaces settings.json, meta.json, and hash-based project directories.
-        - >-
-          JSON Schema for totopo.yaml with runtime validation via ajv and user-friendly error messages
-          (e.g. unknown properties are named explicitly).
-        - >-
-          Dockerfile profiles — named profiles with dockerfile_hook for extending the base image with custom
-          instructions. Default profile installs Go and Java; a custom profile provides commented examples
-          for Rust, Bun, and other tools.
-        - >-
-          Gitignore-style shadow path patterns powered by fast-glob — patterns without '/' match at any depth.
-        - >-
-          Automatic migration from v2 and prior v3 RCs — preserves agent memory, shadow data, and project
-          metadata. totopo.yaml is auto-repaired on startup if needed.
-        - AI CLIs (Claude Code, opencode, Codex) updated to latest on each container start or resume.
-        - Claude Code settings (.claude.json) now persist across image rebuilds.
-      changed:
-        - >-
-          Workspace identity uses workspace_id from totopo.yaml instead of SHA-256 path hashing. Containers
-          named totopo-<workspace_id>.
-        - ~/.totopo/workspaces/<id>/ reduced to a .lock file plus cache directories.
-        - >-
-          env_file in totopo.yaml replaces the global ~/.totopo/.env — points to a project-local env file.
-        - Dockerfiles assembled in memory from base template plus profile hook. No persisted Dockerfile.
-        - >-
-          Onboarding asks for a workspace name and auto-derives the workspace_id. Collisions resolved
-          automatically with numeric suffix.
-        - >-
-          Settings menu renamed to "Manage Workspace" — includes profiles, shadow paths, rebuild, clean
-          rebuild, and config reset.
-        - Profile changes trigger image rebuild; shadow changes only recreate the container.
-        - Generated totopo.yaml uses blank-line-separated sections with concise inline documentation.
-        - Removed description field from totopo.yaml — name is sufficient for workspace identity.
-        - Multi-select prompts include usage hints (space to toggle, enter to confirm).
-        - >-
-          Workspace uninstall now prompts to also remove totopo.yaml from the workspace root (defaults to yes).
-      fixed:
-        - >-
-          Migration now correctly moves entries from ~/.totopo/projects/ into ~/.totopo/workspaces/ even when
-          both directories exist, then removes the old directory. Previously skipped when workspaces/ was present.
-    - rc_version: 3.0.0-rc-9
-      date: "2026-04-05"
-      added:
-        - >-
-          Major simplification of project configuration and container lifecycle.
-        - >-
-          totopo.yaml is the single source of truth — declares workspace identity, shadow patterns, env file, and
-          Dockerfile profiles. Replaces settings.json, meta.json, and hash-based project directories.
-        - >-
-          JSON Schema for totopo.yaml with runtime validation via ajv and user-friendly error messages
-          (e.g. unknown properties are named explicitly).
-        - >-
-          Dockerfile profiles — named profiles with dockerfile_hook for extending the base image with custom
-          instructions. Default profile installs Go and Java; a custom profile provides commented examples
-          for Rust, Bun, and other tools.
-        - >-
-          Gitignore-style shadow path patterns powered by fast-glob — patterns without '/' match at any depth.
-        - >-
-          Automatic migration from v2 and prior v3 RCs — preserves agent memory, shadow data, and project
-          metadata. totopo.yaml is auto-repaired on startup if needed.
-        - >-
-          AI CLIs (Claude Code, opencode, Codex) updated to latest at most once per 24 hours per workspace —
-          subsequent starts within the same day skip the update step.
-        - Claude Code settings (.claude.json) now persist across image rebuilds.
-      changed:
-        - >-
-          Workspace identity uses workspace_id from totopo.yaml instead of SHA-256 path hashing. Containers
-          named totopo-<workspace_id>.
-        - ~/.totopo/workspaces/<id>/ reduced to a .lock file plus cache directories.
-        - >-
-          env_file in totopo.yaml replaces the global ~/.totopo/.env — points to a project-local env file.
-        - Dockerfiles assembled in memory from base template plus profile hook. No persisted Dockerfile.
-        - >-
-          Onboarding asks for a workspace name and auto-derives the workspace_id. Collisions resolved
-          automatically with numeric suffix.
-        - >-
-          Settings menu renamed to "Manage Workspace" — includes profiles, shadow paths, rebuild, clean
-          rebuild, and config reset.
-        - Profile changes trigger image rebuild; shadow changes only recreate the container.
-        - Generated totopo.yaml uses blank-line-separated sections with concise inline documentation.
-        - Removed description field from totopo.yaml — name is sufficient for workspace identity.
-        - Multi-select prompts include usage hints (space to toggle, enter to confirm).
-        - >-
-          Workspace uninstall now prompts to also remove totopo.yaml from the workspace root (defaults to yes).
-        - Status box in the workspace menu simplified — shows workspace name, active profile, and container status only.
-        - Container readiness message now displays the workspace name and a hint for adjusting settings via totopo.yaml.
-      fixed:
-        - >-
-          Migration now correctly moves entries from ~/.totopo/projects/ into ~/.totopo/workspaces/ even when
-          both directories exist, then removes the old directory. Previously skipped when workspaces/ was present.
-    - rc_version: 3.0.0-rc-8
-      date: "2026-04-05"
-      added:
-        - >-
-          Major simplification of project configuration and container lifecycle.
-        - >-
-          totopo.yaml is the single source of truth — declares workspace identity, shadow patterns, env file, and
-          Dockerfile profiles. Replaces settings.json, meta.json, and hash-based project directories.
-        - >-
-          JSON Schema for totopo.yaml with runtime validation via ajv and user-friendly error messages
-          (e.g. unknown properties are named explicitly).
-        - >-
-          Dockerfile profiles — named profiles with dockerfile_hook for extending the base image with custom
-          instructions. Default profile installs Go and Java; a custom profile provides commented examples
-          for Rust, Bun, and other tools.
-        - >-
-          Gitignore-style shadow path patterns powered by fast-glob — patterns without '/' match at any depth.
-        - >-
-          Automatic migration from v2 and prior v3 RCs — preserves agent memory, shadow data, and project
-          metadata. totopo.yaml is auto-repaired on startup if needed.
-        - >-
-          AI CLIs (Claude Code, opencode, Codex) updated to latest at most once per 24 hours per workspace —
-          subsequent starts within the same day skip the update step.
-        - Claude Code settings (.claude.json) now persist across image rebuilds.
-      changed:
-        - >-
-          Workspace identity uses workspace_id from totopo.yaml instead of SHA-256 path hashing. Containers
-          named totopo-<workspace_id>.
-        - ~/.totopo/workspaces/<id>/ reduced to a .lock file plus cache directories.
-        - >-
-          env_file in totopo.yaml replaces the global ~/.totopo/.env — points to a project-local env file.
-        - Dockerfiles assembled in memory from base template plus profile hook. No persisted Dockerfile.
-        - >-
-          Onboarding asks for a workspace name and auto-derives the workspace_id. Collisions resolved
-          automatically with numeric suffix.
-        - >-
-          Settings menu renamed to "Manage Workspace" — includes profiles, shadow paths, rebuild, clean
-          rebuild, and config reset.
-        - Profile changes trigger image rebuild; shadow changes only recreate the container.
-        - Generated totopo.yaml uses blank-line-separated sections with concise inline documentation.
-        - Removed description field from totopo.yaml — name is sufficient for workspace identity.
-        - Multi-select prompts include usage hints (space to toggle, enter to confirm).
-        - >-
-          Workspace uninstall now prompts to also remove totopo.yaml from the workspace root (defaults to yes).
-        - Status box in the workspace menu simplified — shows workspace name, active profile, and container status only.
-        - Container readiness message now displays the workspace name and a hint for adjusting settings via totopo.yaml.
-      fixed:
-        - >-
-          Migration now correctly moves entries from ~/.totopo/projects/ into ~/.totopo/workspaces/ even when
-          both directories exist, then removes the old directory. Previously skipped when workspaces/ was present.
+  base_version: 3.0.1
+  entries: []
 releases:
+  - version: 3.0.0
+    date: "2026-04-05"
+    added:
+      - Major simplification of project configuration and container lifecycle.
+      - >-
+        totopo.yaml is the single source of truth — declares workspace identity, shadow patterns, env file, and
+        Dockerfile profiles. Replaces settings.json, meta.json, and hash-based project directories.
+      - >-
+        JSON Schema for totopo.yaml with runtime validation via ajv and user-friendly error messages (e.g. unknown
+        properties are named explicitly).
+      - >-
+        Dockerfile profiles — named profiles with dockerfile_hook for extending the base image with custom instructions.
+        Default profile installs Go and Java; a custom profile provides commented examples for Rust, Bun, and other
+        tools.
+      - Gitignore-style shadow path patterns powered by fast-glob — patterns without '/' match at any depth.
+      - >-
+        Automatic migration from v2 and prior v3 RCs — preserves agent memory, shadow data, and project metadata.
+        totopo.yaml is auto-repaired on startup if needed.
+      - >-
+        AI CLIs (Claude Code, opencode, Codex) updated to latest at most once per 24 hours per workspace — subsequent
+        starts within the same day skip the update step.
+      - Claude Code settings (.claude.json) now persist across image rebuilds.
+    changed:
+      - >-
+        Workspace identity uses workspace_id from totopo.yaml instead of SHA-256 path hashing. Containers named
+        totopo-<workspace_id>.
+      - ~/.totopo/workspaces/<id>/ reduced to a .lock file plus cache directories.
+      - env_file in totopo.yaml replaces the global ~/.totopo/.env — points to a project-local env file.
+      - Dockerfiles assembled in memory from base template plus profile hook. No persisted Dockerfile.
+      - >-
+        Onboarding asks for a workspace name and auto-derives the workspace_id. Collisions resolved automatically with
+        numeric suffix.
+      - >-
+        Settings menu renamed to "Manage Workspace" — includes profiles, shadow paths, rebuild, clean rebuild, and
+        config reset.
+      - Profile changes trigger image rebuild; shadow changes only recreate the container.
+      - Generated totopo.yaml uses blank-line-separated sections with concise inline documentation.
+      - Removed description field from totopo.yaml — name is sufficient for workspace identity.
+      - Multi-select prompts include usage hints (space to toggle, enter to confirm).
+      - Workspace uninstall now prompts to also remove totopo.yaml from the workspace root (defaults to yes).
+      - Status box in the workspace menu simplified — shows workspace name, active profile, and container status only.
+      - Container readiness message now displays the workspace name and a hint for adjusting settings via totopo.yaml.
+    fixed:
+      - >-
+        Migration now correctly moves entries from ~/.totopo/projects/ into ~/.totopo/workspaces/ even when both
+        directories exist, then removes the old directory. Previously skipped when workspaces/ was present.
   - version: 2.1.0
     date: "2026-03-29"
     added:
