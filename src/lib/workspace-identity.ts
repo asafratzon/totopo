@@ -6,7 +6,16 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { AGENTS_DIR, CONTAINER_NAME_PREFIX, LOCK_FILE, SHADOWS_DIR, TOTOPO_DIR, TOTOPO_YAML, WORKSPACES_DIR } from "./constants.js";
+import {
+    AGENTS_DIR,
+    CONTAINER_NAME_PREFIX,
+    LOCK_FILE,
+    PROFILE,
+    SHADOWS_DIR,
+    TOTOPO_DIR,
+    TOTOPO_YAML,
+    WORKSPACES_DIR,
+} from "./constants.js";
 import { readTotopoYaml } from "./totopo-yaml.js";
 
 // --- Interfaces --------------------------------------------------------------------------------------------------------------------------
@@ -20,8 +29,8 @@ export interface WorkspaceContext {
 }
 
 /** Maps LockFile field names to their corresponding keys written in the .lock file. */
-const LOCK_KEYS = {
-    workspaceRoot: "yaml",
+export const LOCK_KEYS = {
+    workspaceRoot: "root",
     activeProfile: "profile",
     lastCliUpdate: "last-cli-update",
 } as const;
@@ -76,7 +85,7 @@ function parseLockFile(workspaceId: string): LockFile | null {
         if (!partial.workspaceRoot) return null;
         return {
             workspaceRoot: partial.workspaceRoot,
-            activeProfile: partial.activeProfile ?? "default",
+            activeProfile: partial.activeProfile ?? PROFILE.default,
             lastCliUpdate: partial.lastCliUpdate ?? "",
         };
     } catch {
@@ -102,7 +111,7 @@ export function writeLockFile(workspaceId: string, workspaceRoot: string): void 
     const existing = parseLockFile(workspaceId);
     writeLockFileInternal(workspaceId, {
         workspaceRoot,
-        activeProfile: existing?.activeProfile ?? "default",
+        activeProfile: existing?.activeProfile ?? PROFILE.default,
         lastCliUpdate: existing?.lastCliUpdate ?? "",
     });
 }
@@ -134,7 +143,7 @@ export function writeLastCliUpdate(workspaceId: string, timestamp: string): void
 // --- Workspace directory initialization --------------------------------------------------------------------------------------------------
 
 /** Initialize ~/.totopo/workspaces/<workspace_id>/ with lock file and subdirs. */
-export function initWorkspaceDir(workspaceId: string, workspaceRoot: string, activeProfile = "default"): void {
+export function initWorkspaceDir(workspaceId: string, workspaceRoot: string, activeProfile: string = PROFILE.default): void {
     const dir = getWorkspaceDir(workspaceId);
     mkdirSync(join(dir, AGENTS_DIR), { recursive: true });
     mkdirSync(join(dir, SHADOWS_DIR), { recursive: true });

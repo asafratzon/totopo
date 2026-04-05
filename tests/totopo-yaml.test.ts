@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, test } from "node:test";
+import { PROFILE } from "../src/lib/constants.js";
 import {
     buildDefaultTotopoYaml,
     readTotopoYaml,
@@ -155,7 +156,7 @@ describe("buildDefaultTotopoYaml", () => {
     test("includes three default profiles", () => {
         const config = buildDefaultTotopoYaml("test-ws");
         const profileNames = Object.keys(config.profiles ?? {});
-        assert.deepEqual(profileNames, ["default", "slim", "custom"]);
+        assert.deepEqual(profileNames, [PROFILE.default, PROFILE.slim, PROFILE.custom]);
     });
 
     test("includes name when provided", () => {

@@ -5,6 +5,7 @@
 import { spawnSync } from "node:child_process";
 import { relative } from "node:path";
 import { cancel, confirm, isCancel, log, multiselect, note, outro, path, select, text } from "@clack/prompts";
+import { PROFILE } from "../lib/constants.js";
 import { countPatternHits } from "../lib/shadows.js";
 import { buildDefaultTotopoYaml, readTotopoYaml, writeTotopoYaml } from "../lib/totopo-yaml.js";
 import type { WorkspaceContext } from "../lib/workspace-identity.js";
@@ -26,7 +27,7 @@ async function profileMenu(ctx: WorkspaceContext): Promise<void> {
         return;
     }
 
-    const currentProfile = readActiveProfile(ctx.workspaceId) ?? "default";
+    const currentProfile = readActiveProfile(ctx.workspaceId) ?? PROFILE.default;
     note(`Active profile: ${currentProfile}`, "Profiles");
 
     if (profileNames.length <= 1) {

@@ -12,6 +12,7 @@ import { join } from "node:path";
 import { after, afterEach, before, beforeEach, describe, test } from "node:test";
 import type { StartContainerOpts } from "../../src/commands/dev.js";
 import { startContainer } from "../../src/commands/dev.js";
+import { PROFILE } from "../../src/lib/constants.js";
 import { buildDockerfile, buildImageWithTempfile } from "../../src/lib/dockerfile-builder.js";
 import { expandShadowPatterns } from "../../src/lib/shadows.js";
 import {
@@ -67,7 +68,7 @@ function makeOpts(
         workspaceRoot,
         cacheDir,
         templatesDir: TEMPLATES_DIR,
-        activeProfile: "default",
+        activeProfile: PROFILE.default,
         profileHook: undefined,
         expandedShadows: [],
         envFilePath: undefined,
@@ -108,7 +109,7 @@ describe("session lifecycle", () => {
     });
 
     test("container has totopo labels set", () => {
-        startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { activeProfile: "slim" }));
+        startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { activeProfile: PROFILE.slim }));
         assert.equal(dockerContainerLabel(containerName, "totopo.managed"), "true");
         assert.equal(dockerContainerLabel(containerName, "totopo.profile"), "slim");
         assert.equal(dockerContainerLabel(containerName, "totopo.shadows"), "");
@@ -163,10 +164,10 @@ describe("session lifecycle", () => {
     });
 
     test("profile change triggers image rebuild and container recreation", () => {
-        startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { activeProfile: "default" }));
+        startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { activeProfile: PROFILE.default }));
         assert.equal(dockerContainerLabel(containerName, "totopo.profile"), "default");
 
-        const result = startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { activeProfile: "slim" }));
+        const result = startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { activeProfile: PROFILE.slim }));
         assert.equal(result, "created", "container should be recreated after profile change");
         assert.equal(dockerContainerLabel(containerName, "totopo.profile"), "slim");
     });
