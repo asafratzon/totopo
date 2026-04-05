@@ -73,6 +73,7 @@ function makeOpts(
         envFilePath: undefined,
         hasGit: false,
         shadowPatterns: [],
+        workspaceName: "test-workspace",
         quiet: true,
         ...overrides,
     };
