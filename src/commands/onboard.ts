@@ -8,6 +8,7 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { cancel, confirm, intro, isCancel, log, outro, select, text } from "@clack/prompts";
+import { TOTOPO_YAML } from "../lib/constants.js";
 import { safeRmSync } from "../lib/safe-rm.js";
 import {
     buildDefaultTotopoYaml,
@@ -68,12 +69,12 @@ export async function run(cwd: string): Promise<WorkspaceContext | null> {
         try {
             existing = readTotopoYaml(yamlDir);
         } catch (err) {
-            log.error(`Found ${join(yamlDir, "totopo.yaml")} but it is invalid: ${err instanceof Error ? err.message : err}`);
+            log.error(`Found ${join(yamlDir, TOTOPO_YAML)} but it is invalid: ${err instanceof Error ? err.message : err}`);
             cancel("Setup cancelled.");
             return null;
         }
         if (!existing) {
-            log.error(`Could not read ${join(yamlDir, "totopo.yaml")}.`);
+            log.error(`Could not read ${join(yamlDir, TOTOPO_YAML)}.`);
             cancel("Setup cancelled.");
             return null;
         }
@@ -151,7 +152,7 @@ export async function run(cwd: string): Promise<WorkspaceContext | null> {
         // Build and write totopo.yaml
         yaml = buildDefaultTotopoYaml(workspaceId, workspaceName);
         writeTotopoYaml(workspaceRoot, yaml);
-        log.success(`Created ${toTildePath(join(workspaceRoot, "totopo.yaml"))}`);
+        log.success(`Created ${toTildePath(join(workspaceRoot, TOTOPO_YAML))}`);
     }
 
     // --- Non-git warning -----------------------------------------------------------------------------------------------------------------

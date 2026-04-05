@@ -6,9 +6,8 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { readTotopoYaml, TOTOPO_YAML } from "./totopo-yaml.js";
-
-export { TOTOPO_YAML };
+import { AGENTS_DIR, CONTAINER_NAME_PREFIX, LOCK_FILE, SHADOWS_DIR, TOTOPO_DIR, TOTOPO_YAML, WORKSPACES_DIR } from "./constants.js";
+import { readTotopoYaml } from "./totopo-yaml.js";
 
 // --- Interfaces --------------------------------------------------------------------------------------------------------------------------
 
@@ -20,11 +19,30 @@ export interface WorkspaceContext {
     displayName: string; // human-readable name from totopo.yaml, falls back to workspaceId
 }
 
+/** Maps LockFile field names to their corresponding keys written in the .lock file. */
+const LOCK_KEYS = {
+    workspaceRoot: "yaml",
+    activeProfile: "profile",
+    lastCliUpdate: "last-cli-update",
+} as const;
+
+/** Parsed representation of a workspace .lock file. All fields are strings; lastCliUpdate is empty when never set. */
+export type LockFile = { -readonly [K in keyof typeof LOCK_KEYS]: string };
+
+/** Reverse lookup: file key → LockFile field name, used during parsing. */
+const FILE_KEY_TO_FIELD = Object.fromEntries(Object.entries(LOCK_KEYS).map(([field, key]) => [key, field])) as Record<
+    string,
+    keyof typeof LOCK_KEYS
+>;
+
+/** Pre-computed entries for writing — avoids re-casting on every write. */
+const LOCK_ENTRIES = Object.entries(LOCK_KEYS) as [keyof LockFile, string][];
+
 // --- Path helpers ------------------------------------------------------------------------------------------------------------------------
 
 /** Base directory for all workspace caches — ~/.totopo/workspaces/ */
 export function getWorkspacesBaseDir(): string {
-    return join(homedir(), ".totopo", "workspaces");
+    return join(homedir(), TOTOPO_DIR, WORKSPACES_DIR);
 }
 
 /** Cache directory for a specific workspace — ~/.totopo/workspaces/<workspace_id>/ */
@@ -34,33 +52,44 @@ export function getWorkspaceDir(workspaceId: string): string {
 
 /** Derive container and image name from workspace ID */
 export function deriveContainerName(workspaceId: string): string {
-    return `totopo-${workspaceId}`;
+    return `${CONTAINER_NAME_PREFIX}${workspaceId}`;
 }
 
-// --- Lock file (stores workspace root path and active profile) ---------------------------------------------------------------------------
-// Format: line 1 = absolute workspace root path, line 2 = active profile name
+// --- Lock file ---------------------------------------------------------------------------------------------------------------------------
 
-const LOCK_FILE = ".lock";
-
-/** Parse a lock file into its two fields. */
-function parseLockFile(workspaceId: string): { workspaceRoot: string; activeProfile: string } | null {
+/** Parse a workspace .lock file into a LockFile object. Returns null if the file is missing or malformed. */
+function parseLockFile(workspaceId: string): LockFile | null {
     const lockPath = join(getWorkspaceDir(workspaceId), LOCK_FILE);
-    if (!existsSync(lockPath)) return null;
     try {
-        const lines = readFileSync(lockPath, "utf8").trimEnd().split("\n");
-        const workspaceRoot = lines[0]?.trim();
-        if (!workspaceRoot) return null;
-        return { workspaceRoot, activeProfile: lines[1]?.trim() || "default" };
+        const lines = readFileSync(lockPath, "utf8")
+            .trimEnd()
+            .split("\n")
+            .map((l) => l.trim())
+            .filter(Boolean);
+        const partial: Partial<LockFile> = {};
+        for (const line of lines) {
+            const eq = line.indexOf("=");
+            if (eq === -1) continue;
+            const field = FILE_KEY_TO_FIELD[line.slice(0, eq)];
+            if (field) partial[field] = line.slice(eq + 1);
+        }
+        if (!partial.workspaceRoot) return null;
+        return {
+            workspaceRoot: partial.workspaceRoot,
+            activeProfile: partial.activeProfile ?? "default",
+            lastCliUpdate: partial.lastCliUpdate ?? "",
+        };
     } catch {
         return null;
     }
 }
 
-/** Write lock file with workspace root path and active profile. */
-function writeLockFileInternal(workspaceId: string, workspaceRoot: string, activeProfile: string): void {
+/** Write a LockFile to disk, always writing all keys. Creates the workspace dir if needed. */
+function writeLockFileInternal(workspaceId: string, data: LockFile): void {
     const dir = getWorkspaceDir(workspaceId);
     mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, LOCK_FILE), `${workspaceRoot}\n${activeProfile}\n`);
+    const content = `${LOCK_ENTRIES.map(([field, key]) => `${key}=${data[field]}`).join("\n")}\n`;
+    writeFileSync(join(dir, LOCK_FILE), content);
 }
 
 /** Read a workspace's lock file. Returns the absolute workspace root path, or null if missing. */
@@ -68,10 +97,14 @@ export function readLockFile(workspaceId: string): string | null {
     return parseLockFile(workspaceId)?.workspaceRoot ?? null;
 }
 
-/** Write a workspace's lock file with the owning workspace root path. Preserves active profile if already set. */
+/** Write a workspace's lock file with the owning workspace root path. Preserves active profile and lastCliUpdate. */
 export function writeLockFile(workspaceId: string, workspaceRoot: string): void {
     const existing = parseLockFile(workspaceId);
-    writeLockFileInternal(workspaceId, workspaceRoot, existing?.activeProfile ?? "default");
+    writeLockFileInternal(workspaceId, {
+        workspaceRoot,
+        activeProfile: existing?.activeProfile ?? "default",
+        lastCliUpdate: existing?.lastCliUpdate ?? "",
+    });
 }
 
 /** Read the active profile name. Returns null if lock file is missing. */
@@ -79,11 +112,23 @@ export function readActiveProfile(workspaceId: string): string | null {
     return parseLockFile(workspaceId)?.activeProfile ?? null;
 }
 
-/** Write the active profile name. Preserves workspace root path. */
+/** Write the active profile name. Preserves workspace root path and lastCliUpdate. */
 export function writeActiveProfile(workspaceId: string, profile: string): void {
     const existing = parseLockFile(workspaceId);
     if (!existing) return;
-    writeLockFileInternal(workspaceId, existing.workspaceRoot, profile);
+    writeLockFileInternal(workspaceId, { ...existing, activeProfile: profile });
+}
+
+/** Read the last CLI update timestamp. Returns empty string if lock file is missing or field was never set. */
+export function readLastCliUpdate(workspaceId: string): string {
+    return parseLockFile(workspaceId)?.lastCliUpdate ?? "";
+}
+
+/** Write the last CLI update timestamp. Preserves all other fields. No-op if lock file is missing. */
+export function writeLastCliUpdate(workspaceId: string, timestamp: string): void {
+    const existing = parseLockFile(workspaceId);
+    if (!existing) return;
+    writeLockFileInternal(workspaceId, { ...existing, lastCliUpdate: timestamp });
 }
 
 // --- Workspace directory initialization --------------------------------------------------------------------------------------------------
@@ -91,9 +136,9 @@ export function writeActiveProfile(workspaceId: string, profile: string): void {
 /** Initialize ~/.totopo/workspaces/<workspace_id>/ with lock file and subdirs. */
 export function initWorkspaceDir(workspaceId: string, workspaceRoot: string, activeProfile = "default"): void {
     const dir = getWorkspaceDir(workspaceId);
-    mkdirSync(join(dir, "agents"), { recursive: true });
-    mkdirSync(join(dir, "shadows"), { recursive: true });
-    writeLockFileInternal(workspaceId, workspaceRoot, activeProfile);
+    mkdirSync(join(dir, AGENTS_DIR), { recursive: true });
+    mkdirSync(join(dir, SHADOWS_DIR), { recursive: true });
+    writeLockFileInternal(workspaceId, { workspaceRoot, activeProfile, lastCliUpdate: "" });
 }
 
 // --- Listing -----------------------------------------------------------------------------------------------------------------------------

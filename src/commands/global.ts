@@ -7,8 +7,9 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { cancel, confirm, isCancel, log, multiselect, outro, select, text } from "@clack/prompts";
+import { AGENTS_DIR, CONTAINER_NAME_PREFIX, LABEL_MANAGED, TOTOPO_DIR, TOTOPO_YAML } from "../lib/constants.js";
 import { safeRmSync } from "../lib/safe-rm.js";
-import { listWorkspaces, TOTOPO_YAML } from "../lib/workspace-identity.js";
+import { listWorkspaces } from "../lib/workspace-identity.js";
 import { run as runDoctor } from "./doctor.js";
 
 // --- Helpers -----------------------------------------------------------------------------------------------------------------------------
@@ -31,7 +32,7 @@ function stopAndRemoveContainer(name: string) {
 
 // --- Stop containers (multi-select across all workspaces) --------------------------------------------------------------------------------
 async function stopContainers(): Promise<void> {
-    const listResult = spawnSync("docker", ["ps", "--filter", "name=totopo-", "--format", "{{.Names}}"], {
+    const listResult = spawnSync("docker", ["ps", "--filter", `name=${CONTAINER_NAME_PREFIX}`, "--format", "{{.Names}}"], {
         encoding: "utf8",
     });
     const running = (listResult.stdout ?? "").trim().split("\n").filter(Boolean);
@@ -67,7 +68,7 @@ async function stopContainers(): Promise<void> {
 
 // --- Clear agent memory (multi-select across all workspaces) -----------------------------------------------------------------------------
 async function clearAgentMemory(): Promise<void> {
-    const workspaces = listWorkspaces().filter((w) => existsSync(join(w.workspaceDir, "agents")));
+    const workspaces = listWorkspaces().filter((w) => existsSync(join(w.workspaceDir, AGENTS_DIR)));
 
     if (workspaces.length === 0) {
         log.info("No agent memory found.");
@@ -112,7 +113,7 @@ async function clearAgentMemory(): Promise<void> {
             stopAndRemoveContainer(w.containerName);
         }
 
-        const agentsDir = join(w.workspaceDir, "agents");
+        const agentsDir = join(w.workspaceDir, AGENTS_DIR);
         safeRmSync(agentsDir, { recursive: true, force: true });
         log.success(`Cleared agent memory for ${w.displayName}.`);
     }
@@ -120,7 +121,7 @@ async function clearAgentMemory(): Promise<void> {
 
 // --- Remove images (multi-select across all workspaces) ----------------------------------------------------------------------------------
 async function removeImages(): Promise<void> {
-    const listResult = spawnSync("docker", ["images", "--filter", "label=totopo.managed=true", "--format", "{{.Repository}}\t{{.ID}}"], {
+    const listResult = spawnSync("docker", ["images", "--filter", `label=${LABEL_MANAGED}=true`, "--format", "{{.Repository}}\t{{.ID}}"], {
         encoding: "utf8",
     });
     const lines = (listResult.stdout ?? "").trim().split("\n").filter(Boolean);
@@ -177,6 +178,10 @@ async function uninstallWorkspaces(currentWorkspaceId?: string): Promise<boolean
     const sorted = currentWorkspaceId
         ? [...workspaces].sort((a, b) => (a.workspaceId === currentWorkspaceId ? -1 : b.workspaceId === currentWorkspaceId ? 1 : 0))
         : workspaces;
+
+    log.info(
+        "Uninstalling a workspace stops and removes its container and image, and deletes its data from ~/.totopo/workspaces/. Your files are untouched.",
+    );
 
     const selected = await multiselect({
         message: "Select workspaces to uninstall: (space to toggle, enter to confirm)",
@@ -243,7 +248,7 @@ async function uninstallTotopo(): Promise<void> {
     }
 
     // Stop and remove all totopo containers
-    const psResult = spawnSync("docker", ["ps", "-a", "--filter", "name=totopo-", "--format", "{{.Names}}"], {
+    const psResult = spawnSync("docker", ["ps", "-a", "--filter", `name=${CONTAINER_NAME_PREFIX}`, "--format", "{{.Names}}"], {
         encoding: "utf8",
     });
     const containers = (psResult.stdout ?? "").trim().split("\n").filter(Boolean);
@@ -253,7 +258,7 @@ async function uninstallTotopo(): Promise<void> {
     }
 
     // Remove all totopo images
-    const imagesResult = spawnSync("docker", ["images", "--filter", "label=totopo.managed=true", "--format", "{{.Repository}}"], {
+    const imagesResult = spawnSync("docker", ["images", "--filter", `label=${LABEL_MANAGED}=true`, "--format", "{{.Repository}}"], {
         encoding: "utf8",
     });
     const imgs = (imagesResult.stdout ?? "").trim().split("\n").filter(Boolean);
@@ -263,7 +268,7 @@ async function uninstallTotopo(): Promise<void> {
     }
 
     // Delete ~/.totopo/
-    const globalTotopoDir = join(homedir(), ".totopo");
+    const globalTotopoDir = join(homedir(), TOTOPO_DIR);
     if (existsSync(globalTotopoDir)) {
         log.step("Deleting ~/.totopo/...");
         safeRmSync(globalTotopoDir, { recursive: true, force: true });

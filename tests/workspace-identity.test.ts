@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, test } from "node:test";
+import { LOCK_FILE } from "../src/lib/constants.js";
 import {
     checkCollision,
     deriveContainerName,
@@ -11,8 +12,10 @@ import {
     initWorkspaceDir,
     listWorkspaceIds,
     readActiveProfile,
+    readLastCliUpdate,
     readLockFile,
     writeActiveProfile,
+    writeLastCliUpdate,
     writeLockFile,
 } from "../src/lib/workspace-identity.js";
 import { cleanTempDir, createTempDir, overrideEnv } from "./helpers.js";
@@ -85,7 +88,7 @@ describe("with isolated home", () => {
             const tmp = createTempDir();
             initWorkspaceDir("test-ws", tmp);
             const wsDir = getWorkspaceDir("test-ws");
-            assert.ok(existsSync(join(wsDir, ".lock")));
+            assert.ok(existsSync(join(wsDir, LOCK_FILE)));
             assert.ok(existsSync(join(wsDir, "agents")));
             assert.ok(existsSync(join(wsDir, "shadows")));
             cleanTempDir(tmp);
@@ -136,6 +139,33 @@ describe("with isolated home", () => {
         test("initWorkspaceDir with custom profile", () => {
             const tmp = createTempDir();
             initWorkspaceDir("test-ws", tmp, "slim");
+            assert.equal(readActiveProfile("test-ws"), "slim");
+            cleanTempDir(tmp);
+        });
+
+        test("lock file is written in key=value format", () => {
+            const tmp = createTempDir();
+            initWorkspaceDir("test-ws", tmp);
+            const raw = readFileSync(join(getWorkspaceDir("test-ws"), LOCK_FILE), "utf8");
+            assert.ok(raw.includes("yaml="), "should contain yaml= key");
+            assert.ok(raw.includes("profile="), "should contain profile= key");
+            assert.ok(raw.includes("last-cli-update="), "should contain last-cli-update= key");
+            cleanTempDir(tmp);
+        });
+
+        test("readLastCliUpdate returns empty string when never set", () => {
+            const tmp = createTempDir();
+            initWorkspaceDir("test-ws", tmp);
+            assert.equal(readLastCliUpdate("test-ws"), "");
+            cleanTempDir(tmp);
+        });
+
+        test("writeLastCliUpdate persists timestamp and preserves other fields", () => {
+            const tmp = createTempDir();
+            initWorkspaceDir("test-ws", tmp, "slim");
+            writeLastCliUpdate("test-ws", "2026-04-05T10:00:00.000Z");
+            assert.equal(readLastCliUpdate("test-ws"), "2026-04-05T10:00:00.000Z");
+            assert.equal(readLockFile("test-ws"), tmp);
             assert.equal(readActiveProfile("test-ws"), "slim");
             cleanTempDir(tmp);
         });

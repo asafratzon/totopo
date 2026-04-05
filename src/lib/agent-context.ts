@@ -12,6 +12,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { AGENTS_DIR, CONTAINER_HOME } from "./constants.js";
 
 // --- Types -------------------------------------------------------------------------------------------------------------------------------
 
@@ -40,25 +41,25 @@ export const AGENT_MOUNTS: readonly AgentMount[] = [
     {
         agent: "claude",
         hostSubpath: "claude",
-        container: "/home/devuser/.claude",
+        container: `${CONTAINER_HOME}/.claude`,
         description: "Claude Code user-level config and session data",
     },
     {
         agent: "opencode",
         hostSubpath: "opencode/config",
-        container: "/home/devuser/.config/opencode",
+        container: `${CONTAINER_HOME}/.config/opencode`,
         description: "OpenCode user-level config",
     },
     {
         agent: "opencode",
         hostSubpath: "opencode/data",
-        container: "/home/devuser/.local/share/opencode",
+        container: `${CONTAINER_HOME}/.local/share/opencode`,
         description: "OpenCode user-level data and session history",
     },
     {
         agent: "codex",
         hostSubpath: "codex",
-        container: "/home/devuser/.codex",
+        container: `${CONTAINER_HOME}/.codex`,
         description: "Codex user-level config and session data",
     },
 ];
@@ -68,7 +69,7 @@ export const AGENT_FILE_MOUNTS: readonly AgentFileMount[] = [
         // .claude.json lives outside ~/.claude/ so it is not covered by the directory mount.
         // Persisting it as a file mount avoids losing Claude Code settings on container rebuild.
         hostSubpath: "claude/.claude.json",
-        container: "/home/devuser/.claude.json",
+        container: `${CONTAINER_HOME}/.claude.json`,
         initialContent: "{}\n",
     },
 ];
@@ -80,7 +81,7 @@ export const AGENT_FILE_MOUNTS: readonly AgentFileMount[] = [
  * returns volume mount args for all supported agent tools.
  */
 export function buildAgentMountArgs(workspaceDir: string): string[] {
-    const agentsDir = join(workspaceDir, "agents");
+    const agentsDir = join(workspaceDir, AGENTS_DIR);
 
     const mounts = AGENT_MOUNTS.map((m) => ({
         host: join(agentsDir, m.hostSubpath),
@@ -157,7 +158,7 @@ export function buildAgentContextDocs(hasGit: boolean, shadowPatterns?: string[]
  * Writes agent context markdown files into the workspace's agents/ directory.
  */
 export function injectAgentContext(workspaceDir: string, docs: AgentContextDocs): void {
-    const a = join(workspaceDir, "agents");
+    const a = join(workspaceDir, AGENTS_DIR);
 
     const files = [
         { path: join(a, "claude", "CLAUDE.md"), content: docs.claude },

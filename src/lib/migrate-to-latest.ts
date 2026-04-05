@@ -25,6 +25,17 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { log } from "@clack/prompts";
 import { load as loadYaml } from "js-yaml";
+import {
+    AGENTS_DIR,
+    CONTAINER_NAME_PREFIX,
+    GLOBAL_ENV_FILE,
+    LOCK_FILE,
+    PROJECTS_DIR,
+    SHADOWS_DIR,
+    TOTOPO_DIR,
+    TOTOPO_YAML,
+    WORKSPACES_DIR,
+} from "./constants.js";
 import { safeRmSync } from "./safe-rm.js";
 import {
     buildDefaultTotopoYaml,
@@ -75,7 +86,7 @@ function readV2ShadowPaths(dirPath: string): string[] {
 
 function readV2YamlName(workspaceRoot: string): string | null {
     try {
-        const raw = loadYaml(readFileSync(join(workspaceRoot, "totopo.yaml"), "utf8"));
+        const raw = loadYaml(readFileSync(join(workspaceRoot, TOTOPO_YAML), "utf8"));
         if (typeof raw !== "object" || raw === null) return null;
         const obj = raw as Record<string, unknown>;
         return typeof obj.name === "string" ? obj.name : null;
@@ -159,8 +170,8 @@ function migrateSingleV2Workspace(v2: V2Project, existingIds: Set<string>): stri
     const newDir = join(getWorkspacesBaseDir(), workspaceId);
     initWorkspaceDir(workspaceId, v2.projectRoot);
 
-    const oldAgents = join(getWorkspacesBaseDir(), v2.hashId, "agents");
-    const newAgents = join(newDir, "agents");
+    const oldAgents = join(getWorkspacesBaseDir(), v2.hashId, AGENTS_DIR);
+    const newAgents = join(newDir, AGENTS_DIR);
     if (existsSync(oldAgents)) {
         try {
             cpSync(oldAgents, newAgents, { recursive: true, force: true });
@@ -169,8 +180,8 @@ function migrateSingleV2Workspace(v2: V2Project, existingIds: Set<string>): stri
         }
     }
 
-    const oldShadows = join(getWorkspacesBaseDir(), v2.hashId, "shadows");
-    const newShadows = join(newDir, "shadows");
+    const oldShadows = join(getWorkspacesBaseDir(), v2.hashId, SHADOWS_DIR);
+    const newShadows = join(newDir, SHADOWS_DIR);
     if (existsSync(oldShadows)) {
         try {
             cpSync(oldShadows, newShadows, { recursive: true, force: true });
@@ -194,8 +205,8 @@ function migrateSingleV2Workspace(v2: V2Project, existingIds: Set<string>): stri
  * Stops running containers first because they have bind mounts into the old path.
  */
 function migrateProjectsDir(): void {
-    const oldDir = join(homedir(), ".totopo", "projects");
-    const newDir = join(homedir(), ".totopo", "workspaces");
+    const oldDir = join(homedir(), TOTOPO_DIR, PROJECTS_DIR);
+    const newDir = join(homedir(), TOTOPO_DIR, WORKSPACES_DIR);
 
     if (!existsSync(oldDir)) return;
 
@@ -205,11 +216,15 @@ function migrateProjectsDir(): void {
         return;
     }
 
-    const psResult = spawnSync("docker", ["ps", "--filter", "name=totopo-", "--format", "{{.Names}}"], {
+    const psResult = spawnSync("docker", ["ps", "--filter", `name=${CONTAINER_NAME_PREFIX}`, "--format", "{{.Names}}"], {
         encoding: "utf8",
         stdio: "pipe",
     });
-    const running = (psResult.stdout ?? "").trim().split("\n").filter(Boolean);
+    const projectContainerNames = new Set(entries.map((e) => `${CONTAINER_NAME_PREFIX}${e}`));
+    const running = (psResult.stdout ?? "")
+        .trim()
+        .split("\n")
+        .filter((n) => projectContainerNames.has(n));
 
     if (running.length > 0) {
         log.info(`Stopping ${running.length} running container(s) for directory migration...`);
@@ -253,7 +268,7 @@ function migrateV2Workspaces(): void {
     const existingIds = new Set<string>();
     if (existsSync(baseDir)) {
         for (const entry of readdirSync(baseDir)) {
-            if (existsSync(join(baseDir, entry, ".lock"))) {
+            if (existsSync(join(baseDir, entry, LOCK_FILE))) {
                 existingIds.add(entry);
             }
         }
@@ -282,7 +297,7 @@ function migrateTotopoYaml(cwd: string): void {
     const dir = findTotopoYamlDir(cwd);
     if (!dir) return;
 
-    const filePath = join(dir, "totopo.yaml");
+    const filePath = join(dir, TOTOPO_YAML);
     try {
         const content = readFileSync(filePath, "utf8");
         const raw = loadYaml(content);
@@ -303,7 +318,7 @@ function migrateTotopoYaml(cwd: string): void {
  * API keys are now declared per-workspace via env_file in totopo.yaml.
  */
 function migrateGlobalEnv(): void {
-    const globalEnv = join(homedir(), ".totopo", ".env");
+    const globalEnv = join(homedir(), TOTOPO_DIR, GLOBAL_ENV_FILE);
     if (!existsSync(globalEnv)) return;
 
     log.warn(
@@ -323,14 +338,42 @@ interface Migration {
     run: (cwd: string) => void;
 }
 
+/**
+ * v3-rc-6 and earlier: Upgrade .lock files from positional line format to key=value format.
+ * Detects old format by absence of "=" on the first line. Idempotent — skips already-upgraded files.
+ */
+function migrateLockFileFormat(): void {
+    const baseDir = getWorkspacesBaseDir();
+    if (!existsSync(baseDir)) return;
+
+    for (const entry of readdirSync(baseDir)) {
+        const lockPath = join(baseDir, entry, LOCK_FILE);
+        try {
+            const lines = readFileSync(lockPath, "utf8")
+                .trimEnd()
+                .split("\n")
+                .map((l) => l.trim())
+                .filter(Boolean);
+            const [firstLine, secondLine] = lines;
+            if (!firstLine || firstLine.includes("=")) continue; // empty or already new format
+            const activeProfile = secondLine ?? "default";
+            writeFileSync(lockPath, `yaml=${firstLine}\nprofile=${activeProfile}\nlast-cli-update=\n`);
+        } catch {
+            // unreadable -- skip, will surface as a broken workspace elsewhere
+        }
+    }
+}
+
 // Order matters: migrateProjectsDir must run before migrateV2Workspaces because
 // step 2 scans ~/.totopo/workspaces/ which only exists after step 1 renames projects/.
 // Steps 3 and 4 are independent of each other and of steps 1-2.
+// migrateLockFileFormat must run last so all workspace dirs are in their final location first.
 const MIGRATIONS: Migration[] = [
     { from: "v3-rc-1/rc-2", description: "Rename ~/.totopo/projects/ to ~/.totopo/workspaces/", run: migrateProjectsDir },
     { from: "v2.x", description: "Hash-based dirs to workspace_id-based dirs + totopo.yaml", run: migrateV2Workspaces },
     { from: "v3-rc-1/rc-2", description: "Rename project_id to workspace_id in totopo.yaml", run: migrateTotopoYaml },
     { from: "v2.x", description: "Remove legacy ~/.totopo/.env global key file", run: migrateGlobalEnv },
+    { from: "v3-rc-6", description: "Upgrade .lock files from positional to key=value format", run: migrateLockFileFormat },
 ];
 
 /** Run all migrations in order. Called early in bin/totopo.js startup. */

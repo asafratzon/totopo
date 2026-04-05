@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, test } from "node:test";
+import { LOCK_FILE } from "../src/lib/constants.js";
 import { runMigration } from "../src/lib/migrate-to-latest.js";
 import { cleanTempDir, createTempDir, overrideEnv } from "./helpers.js";
 
@@ -55,7 +56,7 @@ describe("migrate-to-latest", () => {
         const projectsDir = join(fakeHome, ".totopo", "projects");
         const workspacesDir = join(fakeHome, ".totopo", "workspaces");
         mkdirSync(join(projectsDir, "new-workspace"), { recursive: true });
-        writeFileSync(join(projectsDir, "new-workspace", ".lock"), "/some/path\ndefault\n");
+        writeFileSync(join(projectsDir, "new-workspace", LOCK_FILE), "/some/path\ndefault\n");
         mkdirSync(join(workspacesDir, "existing-workspace"), { recursive: true });
 
         runMigration(tmp);
@@ -69,15 +70,17 @@ describe("migrate-to-latest", () => {
         const projectsDir = join(fakeHome, ".totopo", "projects");
         const workspacesDir = join(fakeHome, ".totopo", "workspaces");
         mkdirSync(join(projectsDir, "my-workspace"), { recursive: true });
-        writeFileSync(join(projectsDir, "my-workspace", ".lock"), "/old/path\ndefault\n");
+        writeFileSync(join(projectsDir, "my-workspace", LOCK_FILE), "/old/path\ndefault\n");
         mkdirSync(join(workspacesDir, "my-workspace"), { recursive: true });
-        writeFileSync(join(workspacesDir, "my-workspace", ".lock"), "/new/path\ndefault\n");
+        writeFileSync(join(workspacesDir, "my-workspace", LOCK_FILE), "/new/path\ndefault\n");
 
         runMigration(tmp);
 
         assert.ok(!existsSync(projectsDir), "projects/ should be removed");
-        // workspaces/ version should win (not overwritten)
-        assert.equal(readFileSync(join(workspacesDir, "my-workspace", ".lock"), "utf8"), "/new/path\ndefault\n");
+        // workspaces/ version should win (not overwritten); format is upgraded to key=value by migrateLockFileFormat
+        const lockContent = readFileSync(join(workspacesDir, "my-workspace", LOCK_FILE), "utf8");
+        assert.ok(lockContent.includes("yaml=/new/path"), "workspace root should be preserved");
+        assert.ok(lockContent.includes("profile=default"), "profile should be preserved");
     });
 
     // ---- migrateGlobalEnv ---------------------------------------------------------------------------------------------------------------
@@ -168,5 +171,36 @@ describe("migrate-to-latest", () => {
         // Hash dir should still exist (skipped, not removed)
         // Actually the implementation skips it and returns null, but doesn't remove it
         // Let's just verify no crash
+    });
+
+    // ---- migrateLockFileFormat ----------------------------------------------------------------------------------------------------------
+
+    test("upgrades old positional .lock format to key=value", () => {
+        const wsDir = join(fakeHome, ".totopo", "workspaces", "my-ws");
+        mkdirSync(wsDir, { recursive: true });
+        writeFileSync(join(wsDir, LOCK_FILE), "/some/path\nslim\n");
+
+        runMigration(tmp);
+
+        const content = readFileSync(join(wsDir, LOCK_FILE), "utf8");
+        assert.ok(content.includes("yaml=/some/path"), "workspace root should be preserved");
+        assert.ok(content.includes("profile=slim"), "profile should be preserved");
+        assert.ok(content.includes("last-cli-update="), "last-cli-update key should be present");
+    });
+
+    test("skips .lock files already in key=value format", () => {
+        const wsDir = join(fakeHome, ".totopo", "workspaces", "my-ws");
+        mkdirSync(wsDir, { recursive: true });
+        const original = "yaml=/some/path\nprofile=slim\nlast-cli-update=2026-04-05T10:00:00.000Z\n";
+        writeFileSync(join(wsDir, LOCK_FILE), original);
+
+        runMigration(tmp);
+
+        assert.equal(readFileSync(join(wsDir, LOCK_FILE), "utf8"), original);
+    });
+
+    test("migrateLockFileFormat is a no-op when workspaces/ does not exist", () => {
+        // fakeHome has no .totopo/ dir at all -- should not throw
+        runMigration(tmp);
     });
 });

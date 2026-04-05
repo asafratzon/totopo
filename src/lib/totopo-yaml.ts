@@ -7,8 +7,7 @@ import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import AjvModule from "ajv";
 import { dump as dumpYaml, load as loadYaml } from "js-yaml";
-
-export const TOTOPO_YAML = "totopo.yaml";
+import { DEFAULT_SHADOW_PATHS, TOTOPO_YAML, WORKSPACE_ID_MAX, WORKSPACE_ID_MIN } from "./constants.js";
 
 // --- Interfaces --------------------------------------------------------------------------------------------------------------------------
 
@@ -29,8 +28,6 @@ export interface TotopoYamlConfig {
 
 // Must match the pattern, minLength, and maxLength in schema/totopo.schema.json
 const WORKSPACE_ID_PATTERN = /^[a-z0-9][a-z0-9-]*[a-z0-9]$/;
-const WORKSPACE_ID_MIN = 2;
-const WORKSPACE_ID_MAX = 48;
 
 /** Returns error message if invalid, undefined if valid. Used for interactive input validation. */
 export function validateWorkspaceId(id: string): string | undefined {
@@ -159,8 +156,6 @@ export function writeTotopoYaml(dir: string, config: TotopoYamlConfig): void {
 }
 
 // --- Defaults ----------------------------------------------------------------------------------------------------------------------------
-
-const DEFAULT_SHADOW_PATHS = ["node_modules", ".env*"];
 
 const DEFAULT_PROFILE_HOOK = `# Installs Go and Java.
 RUN apt-get update && apt-get install -y --no-install-recommends golang-go default-jdk-headless && rm -rf /var/lib/apt/lists/*

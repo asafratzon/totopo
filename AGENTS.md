@@ -49,8 +49,9 @@ src/commands/                  - Command modules (compiled to dist/commands/ by 
 
 src/lib/                       - Shared utilities (compiled to dist/lib/ by pnpm build)
   agent-context.ts             - AGENT_MOUNTS, buildAgentMountArgs, buildAgentContextDocs, injectAgentContext
+  constants.ts                 - Canonical constants: paths, filenames, container names, Docker labels
   dockerfile-builder.ts        - Compose final Dockerfile from base template + profile hook
-  migrate-to-latest.ts         - Startup migration: projects/ rename, v2 hash dirs, project_id key rename
+  migrate-to-latest.ts         - Startup migration: projects/ rename, v2 hash dirs, lock file format upgrade
   safe-rm.ts                   - safeRmSync: path-allowlist guard wrapping rmSync (only deletes under ~/.totopo/ or totopo.yaml)
   shadows.ts                   - Pattern expansion, shadow sync, Docker mount args for shadow paths
   totopo-yaml.ts               - Read, write, validate, repair totopo.yaml; schema validation via ajv
