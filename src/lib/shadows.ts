@@ -6,6 +6,7 @@
 import { existsSync, lstatSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import fg from "fast-glob";
+import { CONTAINER_WORKSPACE, SHADOWS_DIR } from "./constants.js";
 import { safeRmSync } from "./safe-rm.js";
 
 // --- Pattern expansion -------------------------------------------------------------------------------------------------------------------
@@ -54,7 +55,7 @@ export function countPatternHits(pattern: string, workspaceRoot: string): number
  */
 export function ensureShadowsInSync(workspaceDir: string, expandedPaths: string[], workspaceRoot: string, freshPaths?: Set<string>): void {
     const expected = new Set(expandedPaths);
-    const shadowsDir = join(workspaceDir, "shadows");
+    const shadowsDir = join(workspaceDir, SHADOWS_DIR);
 
     // Create shadows/ root if needed
     mkdirSync(shadowsDir, { recursive: true });
@@ -83,7 +84,7 @@ export function ensureShadowsInSync(workspaceDir: string, expandedPaths: string[
 export function buildShadowMountArgs(workspaceDir: string, expandedPaths: string[]): string[] {
     const args: string[] = [];
     for (const relPath of expandedPaths) {
-        args.push("-v", `${join(workspaceDir, "shadows", relPath)}:/workspace/${relPath}`);
+        args.push("-v", `${join(workspaceDir, SHADOWS_DIR, relPath)}:${CONTAINER_WORKSPACE}/${relPath}`);
     }
     return args;
 }

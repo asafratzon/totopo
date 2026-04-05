@@ -8,15 +8,18 @@ import { existsSync } from "node:fs";
 import { join, relative } from "node:path";
 import { cancel, isCancel, log, outro, select } from "@clack/prompts";
 import { buildAgentContextDocs, buildAgentMountArgs, injectAgentContext } from "../lib/agent-context.js";
+import { CONTAINER_POST_START, CONTAINER_WORKSPACE, LABEL_MANAGED, LABEL_PROFILE, LABEL_SHADOWS } from "../lib/constants.js";
 import { buildDockerfile, buildImageWithTempfile } from "../lib/dockerfile-builder.js";
 import { buildShadowMountArgs, ensureShadowsInSync, expandShadowPatterns } from "../lib/shadows.js";
 import { readTotopoYaml } from "../lib/totopo-yaml.js";
 import type { WorkspaceContext } from "../lib/workspace-identity.js";
-import { readActiveProfile, writeActiveProfile } from "../lib/workspace-identity.js";
+import { readActiveProfile, readLastCliUpdate, writeActiveProfile, writeLastCliUpdate } from "../lib/workspace-identity.js";
+
+const CLI_UPDATE_THROTTLE_MS = 24 * 60 * 60 * 1000;
 
 // --- Prompt: working directory selection -------------------------------------------------------------------------------------------------
 async function promptWorkdir(workspaceDir: string, cwd: string): Promise<string> {
-    if (cwd === workspaceDir) return "/workspace";
+    if (cwd === workspaceDir) return CONTAINER_WORKSPACE;
     const relPath = relative(workspaceDir, cwd);
     const choice = await select({
         message: "Start session:",
@@ -29,7 +32,7 @@ async function promptWorkdir(workspaceDir: string, cwd: string): Promise<string>
         cancel("Cancelled.");
         process.exit(0);
     }
-    return choice === "here" ? `/workspace/${relPath}` : "/workspace";
+    return choice === "here" ? `${CONTAINER_WORKSPACE}/${relPath}` : CONTAINER_WORKSPACE;
 }
 
 // --- Profile selection -------------------------------------------------------------------------------------------------------------------
@@ -72,7 +75,7 @@ interface ContainerInfo {
 
 // Returns null when the container does not exist (docker inspect exits non-zero).
 function inspectContainer(containerName: string): ContainerInfo | null {
-    const fmt = `{{.State.Status}}|{{index .Config.Labels "totopo.shadows"}}|{{index .Config.Labels "totopo.profile"}}`;
+    const fmt = `{{.State.Status}}|{{index .Config.Labels "${LABEL_SHADOWS}"}}|{{index .Config.Labels "${LABEL_PROFILE}"}}`;
     const result = spawnSync("docker", ["inspect", "--format", fmt, containerName], { encoding: "utf8", stdio: "pipe" });
     if (result.status !== 0) return null;
     const clean = (s: string) => (s === "<no value>" ? "" : s);
@@ -116,7 +119,7 @@ function updateAiClis(containerName: string): void {
 // --- Run post-start ----------------------------------------------------------------------------------------------------------------------
 function runPostStart(containerName: string): void {
     log.step("Running post-start checks...");
-    const postStart = spawnSync("docker", ["exec", containerName, "node", "/home/devuser/post-start.mjs"], {
+    const postStart = spawnSync("docker", ["exec", containerName, "node", CONTAINER_POST_START], {
         stdio: "inherit",
     });
     if (postStart.status !== 0) {
@@ -182,16 +185,16 @@ export function startContainer(opts: StartContainerOpts): ContainerStartResult {
     // --- Build mount args ----------------------------------------------------------------------------------------------------------------
     const agentMounts = buildAgentMountArgs(cacheDir);
     // Shadow mounts must come AFTER the workspace mount to overlay correctly
-    const mountArgs = ["-v", `${workspaceRoot}:/workspace`, ...shadowMountArgs, ...agentMounts];
+    const mountArgs = ["-v", `${workspaceRoot}:${CONTAINER_WORKSPACE}`, ...shadowMountArgs, ...agentMounts];
 
     // --- Container labels ----------------------------------------------------------------------------------------------------------------
     const labelArgs = [
         "--label",
-        "totopo.managed=true",
+        `${LABEL_MANAGED}=true`,
         "--label",
-        `totopo.shadows=${shadowLabel(expandedShadows)}`,
+        `${LABEL_SHADOWS}=${shadowLabel(expandedShadows)}`,
         "--label",
-        `totopo.profile=${activeProfile}`,
+        `${LABEL_PROFILE}=${activeProfile}`,
     ];
 
     // --- Workspace identity env var ------------------------------------------------------------------------------------------------------
@@ -341,7 +344,13 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
 
     // --- Post-start setup (only on fresh start or resume) --------------------------------------------------------------------------------
     if (sessionResult === "created" || sessionResult === "resumed") {
-        updateAiClis(containerName);
+        const lastUpdate = readLastCliUpdate(ctx.workspaceId);
+        if (!lastUpdate || Date.now() - new Date(lastUpdate).getTime() >= CLI_UPDATE_THROTTLE_MS) {
+            updateAiClis(containerName);
+            writeLastCliUpdate(ctx.workspaceId, new Date().toISOString());
+        } else {
+            log.info("AI CLIs are up to date.");
+        }
         runPostStart(containerName);
     }
 
