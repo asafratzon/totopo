@@ -141,6 +141,7 @@ export interface StartContainerOpts {
     envFilePath: string | undefined; // Resolved absolute path, or undefined if not set/missing
     hasGit: boolean;
     shadowPatterns: string[]; // Raw patterns from totopo.yaml, used for agent context docs
+    workspaceName: string;
     noCache?: boolean;
     quiet?: boolean; // Suppress log output and docker stdio; used by tests
 }
@@ -159,6 +160,7 @@ export function startContainer(opts: StartContainerOpts): ContainerStartResult {
         envFilePath,
         hasGit,
         shadowPatterns,
+        workspaceName,
         noCache,
         quiet = false,
     } = opts;
@@ -191,6 +193,9 @@ export function startContainer(opts: StartContainerOpts): ContainerStartResult {
         "--label",
         `totopo.profile=${activeProfile}`,
     ];
+
+    // --- Workspace identity env var ------------------------------------------------------------------------------------------------------
+    const workspaceEnvArgs = ["-e", `TOTOPO_WORKSPACE=${workspaceName}`];
 
     // --- Inspect container state ---------------------------------------------------------------------------------------------------------
     const info = inspectContainer(containerName);
@@ -239,6 +244,7 @@ export function startContainer(opts: StartContainerOpts): ContainerStartResult {
                 containerName,
                 ...mountArgs,
                 ...envFileArgs,
+                ...workspaceEnvArgs,
                 "--security-opt",
                 "no-new-privileges:true",
                 ...labelArgs,
@@ -329,6 +335,7 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
         envFilePath,
         hasGit,
         shadowPatterns,
+        workspaceName: ctx.displayName,
         ...(options?.noCache !== undefined && { noCache: options.noCache }),
     });
 

@@ -22,6 +22,7 @@ const run = (cmd) => {
 const green = (s) => `\x1b[32m${s}\x1b[0m`;
 const _yellow = (s) => `\x1b[33m${s}\x1b[0m`;
 const red = (s) => `\x1b[31m${s}\x1b[0m`;
+const blue = (s) => `\x1b[34m${s}\x1b[0m`;
 const dim = (s) => `\x1b[2m${s}\x1b[0m`;
 const bold = (s) => `\x1b[1m${s}\x1b[0m`;
 
@@ -127,11 +128,16 @@ ok("yq", run("yq --version") ?? "not found");
 // ─── API keys ────────────────────────────────────────────────────────────────
 section("API keys");
 
-console.log(`ℹ ${dim("API keys are injected via env_file in totopo.yaml. Set env_file to point to your .env file.")}`);
+console.log(`${blue("●")} ${dim("API keys are injected via env_file in totopo.yaml. Set env_file to point to your .env file.")}`);
 
 // ─── Summary ─────────────────────────────────────────────────────────────────
 if (errors === 0) {
-    console.log(`\n${green("●")} ${bold("Ready.")}`);
+    const workspaceSuffix = process.env.TOTOPO_WORKSPACE ? ` — workspace: ${bold(process.env.TOTOPO_WORKSPACE)}` : "";
+    console.log(`\n${blue("●")}  ${bold("totopo dev container ready")}${workspaceSuffix}`);
+    console.log(
+        `${grey("   To adjust settings, ask any agent about")} ${bold("totopo.yaml")} ${grey("— it lives in the workspace root.")}\n`,
+    );
+    console.log(`${green("●")} ${bold("Ready.")}`);
     console.log(`${grey("Type 'status' to re-run the readiness check.")}\n`);
 } else {
     console.log(`\n${red("●")} ${bold(`${errors} error(s) — see above. Rebuild the container to fix.`)}\n`);
