@@ -7,6 +7,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [3.0.1] — 2026-04-06
+
+### Changed
+
+- README rewritten with clearer motivation, quick start guide, and basic usage walkthrough.
+- New "Help" option in the main menu shows a link to the official docs for the running version.
+- Removed "Doctor" from the Manage totopo menu.
+
+---
+
 ## [3.0.0] — 2026-04-05
 
 ### Added
