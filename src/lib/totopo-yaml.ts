@@ -112,6 +112,7 @@ export function readTotopoYaml(dir: string): TotopoYamlConfig | null {
 // We rely on that tag existing so these URLs resolve correctly for every installed version.
 const { version } = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8")) as { version: string };
 const GITHUB_RAW_BASE = `https://raw.githubusercontent.com/asafratzon/totopo/v${version}`;
+export const GITHUB_README_URL = `https://github.com/asafratzon/totopo/blob/v${version}/README.md`;
 
 const YAML_HEADER = `# yaml-language-server: $schema=${GITHUB_RAW_BASE}/schema/totopo.schema.json
 `;
