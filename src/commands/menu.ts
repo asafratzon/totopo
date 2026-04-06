@@ -42,6 +42,7 @@ export async function run(args: MenuArgs): Promise<string> {
         ...(workspaceRunning ? [{ value: "stop", label: "Stop container", hint: "stops this workspace's container" }] : []),
         { value: "settings", label: "Manage Workspace", hint: "profiles, shadow paths, rebuild" },
         { value: "manage-totopo", label: "Manage totopo →", hint: "stop, clear, remove, uninstall" },
+        { value: "help", label: "Help", hint: "official docs" },
         { value: "quit", label: "Quit" },
     ];
 

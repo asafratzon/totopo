@@ -5,6 +5,12 @@ in_progress:
       date: "2026-04-06"
       changed:
         - README rewritten with clearer motivation, quick start guide, and basic usage walkthrough.
+    - rc_version: 3.0.1-rc-2
+      date: "2026-04-06"
+      changed:
+        - README rewritten with clearer motivation, quick start guide, and basic usage walkthrough.
+        - New "Help" option in the main menu shows a link to the official docs for the running version.
+        - Removed "Doctor" from the Manage totopo menu.
 releases:
   - version: 3.0.0
     date: "2026-04-05"

@@ -10,8 +10,6 @@ import { cancel, confirm, isCancel, log, multiselect, outro, select, text } from
 import { AGENTS_DIR, CONTAINER_NAME_PREFIX, LABEL_MANAGED, TOTOPO_DIR, TOTOPO_YAML } from "../lib/constants.js";
 import { safeRmSync } from "../lib/safe-rm.js";
 import { listWorkspaces } from "../lib/workspace-identity.js";
-import { run as runDoctor } from "./doctor.js";
-
 // --- Helpers -----------------------------------------------------------------------------------------------------------------------------
 
 /** Remove workspace cache dir and optionally totopo.yaml from the workspace root. Exported for testing. */
@@ -286,7 +284,6 @@ export async function run(currentWorkspaceId?: string): Promise<"back" | undefin
                 { value: "stop-containers", label: "Stop containers", hint: "pick running containers" },
                 { value: "clear-memory", label: "Clear agent memory", hint: "pick workspaces to clear" },
                 { value: "remove-images", label: "Remove images", hint: "pick images to remove" },
-                { value: "doctor", label: "Doctor", hint: "check Docker health" },
                 { value: "uninstall-workspace", label: "Uninstall workspaces", hint: "pick workspaces to remove" },
                 { value: "uninstall", label: "Uninstall totopo", hint: "wipe ~/.totopo/ and all containers/images" },
                 { value: "back", label: "← Back" },
@@ -312,17 +309,9 @@ export async function run(currentWorkspaceId?: string): Promise<"back" | undefin
                 if (currentDeleted) return undefined;
                 break;
             }
-            case "doctor":
-                await runDoctor(null, true);
-                await sleep(500);
-                break;
             case "uninstall":
                 await uninstallTotopo();
                 return undefined;
         }
     }
-}
-
-function sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, ms));
 }
