@@ -2,7 +2,7 @@
 
 <img src=".github/assets/logo.png" alt="totopo" width="100%" />
 
-Run AI coding agents in a secure local sandbox.
+Local sandbox for AI agents.
 
 ![build](https://github.com/asafratzon/totopo/actions/workflows/build.yml/badge.svg)
 ![tests](https://github.com/asafratzon/totopo/actions/workflows/tests.yml/badge.svg)
@@ -10,27 +10,49 @@ Run AI coding agents in a secure local sandbox.
 ![npm downloads](https://img.shields.io/npm/dm/totopo)
 ![license](https://img.shields.io/npm/l/totopo)
 
-## Why totopo?
+## Motivation
 
-AI agents are non-deterministic. They occasionally get things wrong. Most of the time they're fine — but "most of the time" isn't a great argument for giving an agent unrestricted access to your machine, your credentials, and your remote repositories.
+Two fundamental issues with AI agents:
+- They are non-deterministic — they will occasionally get things wrong.
+- They are susceptible to prompt injection — they can get compromised and act against your interests without you knowing.
 
-totopo draws a clear boundary: agents get a full, capable environment to work in — they just can't touch anything outside the workspace, and they can't reach your remote. No domain whitelisting, no paranoia, no compromise on what the agent can actually do.
+totopo addresses both with a dev container. When you run `npx totopo` in a given directory, the directory is mounted as a workspace where agents get a full, capable environment to work in — they just can't touch anything outside the workspace, and they can't reach remote git repositories.
+
+If an agent makes a mistake, damage is contained to the workspace; your git remote is out of reach.
+If an agent gets compromised, it can't reach your host files — blast radius is limited to the workspace you chose to share.
+
+> totopo's security approach is basic — it is about the minimal precautions I believe anyone running AI agents should have. If you need more robust protections, look somewhere else.
 
 ## Requirements
 
 - [Docker](https://www.docker.com/products/docker-desktop/) — builds and runs the dev container
 - [Node.js](https://nodejs.org/) — required to run `npx totopo`
 
-## Getting Started
+## Quick Start
 
 ```bash
 cd your-project
 npx totopo
 ```
 
-`npx totopo` always runs the latest stable version — no install required. Alternatively, install globally to pin a specific version: `npm install -g totopo`.
+`npx totopo` always runs the latest stable version. Alternatively, install globally to pin a specific version: `npm install -g totopo`.
 
 > **Do not install totopo as a local project dependency.** totopo stores all workspace state in `~/.totopo/`, shared across all your workspaces. A local install means different projects could run different versions, which can break schema compatibility with shared config. Use `npx` or a global install.
+
+### Basic Usage
+
+Once set up, the flow is simple:
+
+1. Run `npx totopo` → **Open session**
+2. Run `claude`, `opencode`, or `codex` — pick an agent, start working
+
+A few things happen automatically:
+
+- **Agents stay up to date** — when you open a session, totopo ensures all AI CLIs are on their latest version.
+- **Sessions are persistent** — agent memory and settings survive container restarts and rebuilds.
+- **Your machine stays safe** — the container can't push to remote, can't read outside the workspace, and sensitive paths like `.env` can be hidden from agents entirely (see [Shadow Paths](#shadow-paths)).
+
+For a deeper look at how totopo works and how to configure it, see the sections below.
 
 ## How totopo Works
 
