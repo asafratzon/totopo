@@ -1,6 +1,10 @@
 in_progress:
   base_version: 3.0.1
-  entries: []
+  entries:
+    - rc_version: 3.0.1-rc-1
+      date: "2026-04-06"
+      changed:
+        - README rewritten with clearer motivation, quick start guide, and basic usage walkthrough.
 releases:
   - version: 3.0.0
     date: "2026-04-05"

@@ -16,9 +16,9 @@ Two fundamental issues with AI agents:
 - They are non-deterministic — they will occasionally get things wrong.
 - They are susceptible to prompt injection — they can get compromised and act against your interests without you knowing.
 
-totopo addresses both with a dev container. When you run `npx totopo` in a given directory, the directory is mounted as a workspace where agents get a full, capable environment to work in — they just can't touch anything outside the workspace, and they can't reach remote git repositories.
+totopo addresses both with a dev container - when you run totopo in a given directory, the directory is mounted as a workspace where agents get a full, capable environment to work in — they just can't touch anything outside the workspace, and they can't reach remote git repositories.
 
-If an agent makes a mistake, damage is contained to the workspace; your git remote is out of reach.
+If an agent makes a mistake, damage is contained to the workspace; your git remote is out of reach.<br>
 If an agent gets compromised, it can't reach your host files — blast radius is limited to the workspace you chose to share.
 
 > totopo's security approach is basic — it is about the minimal precautions I believe anyone running AI agents should have. If you need more robust protections, look somewhere else.
