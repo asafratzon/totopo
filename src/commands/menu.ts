@@ -40,7 +40,7 @@ export async function run(args: MenuArgs): Promise<string> {
     const options: Option[] = [
         { value: "dev", label: "Open session", hint: "start or resume the dev container" },
         ...(workspaceRunning ? [{ value: "stop", label: "Stop container", hint: "stops this workspace's container" }] : []),
-        { value: "settings", label: "Manage Workspace", hint: "profiles, shadow paths, rebuild" },
+        { value: "settings", label: "Manage Workspace", hint: "shadow paths, rebuild, reset config" },
         { value: "manage-totopo", label: "Manage totopo →", hint: "stop, clear, remove, uninstall" },
         { value: "help", label: "Help", hint: "official docs" },
         { value: "quit", label: "Quit" },

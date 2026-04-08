@@ -5,6 +5,7 @@
 
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import { LABEL_MANAGED } from "../../src/lib/constants.js";
 
 // Re-export temp dir helpers for use in docker tests
 export { cleanTempDir, createTempDir } from "../helpers.js";
@@ -104,7 +105,7 @@ export function cleanupAllTestArtifacts(): void {
 
 // Complete standalone Dockerfile - used when building an image directly (not via buildDockerfile()).
 export const MINIMAL_DOCKERFILE = `FROM debian:bookworm-slim
-LABEL totopo.managed=true
+LABEL ${LABEL_MANAGED}=true
 RUN groupadd --gid 1001 devuser && useradd --uid 1001 --gid devuser --shell /bin/bash --create-home devuser
 WORKDIR /workspace
 USER devuser
@@ -114,7 +115,7 @@ CMD ["sleep", "infinity"]
 // Base template for use with buildDockerfile() - no USER or CMD, matching the real templates/Dockerfile
 // convention. buildDockerfile() appends the profile hook (runs as root), then adds USER devuser.
 export const MINIMAL_DOCKERFILE_TEMPLATE = `FROM debian:bookworm-slim
-LABEL totopo.managed=true
+LABEL ${LABEL_MANAGED}=true
 RUN groupadd --gid 1001 devuser && useradd --uid 1001 --gid devuser --shell /bin/bash --create-home devuser
 WORKDIR /workspace
 `;

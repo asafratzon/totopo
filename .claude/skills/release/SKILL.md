@@ -100,6 +100,8 @@ If the command fails or reports unfixable issues, stop and show the output to th
 
 ## Step 9 — Stage and commit
 
+Check the current branch with `git branch --show-current`. If it is `main`, warn the user: RC development should happen on a dedicated branch (e.g. `v3.1.0-rc-development`), not on `main`. Ask them to switch branches before committing.
+
 Ask the user: **"Stage all changes and commit?"**
 
 If yes:

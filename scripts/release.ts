@@ -4,9 +4,9 @@
 //
 // Reads the current rc version from the npm registry, strips the -rc-N
 // suffix, validates changelog.yaml has notes, squashes rc entries, regenerates
-// CHANGELOG.md, updates package.json, commits, publishes to npm, removes the
-// rc dist-tag, pushes tags to GitHub (only after npm publish succeeded), and
-// creates a GitHub release with notes from changelog.yaml via gh CLI.
+// CHANGELOG.md, updates package.json, commits on the RC branch, squash merges
+// into main, publishes to npm, removes the rc dist-tag, pushes tags to GitHub
+// (only after npm publish succeeded), and creates a GitHub release via gh CLI.
 // =========================================================================================================================================
 
 import { execSync, spawnSync } from "node:child_process";
@@ -197,7 +197,20 @@ if (releaseDirtyCheck.stdout.trim().length === 0) {
     execSync(`git commit -m "${releaseCommitMsg}"`, { stdio: "inherit" });
 }
 
-// --- Phase 11: Push ----------------------------------------------------------------------------------------------------------------------
+// --- Phase 11: Squash merge RC branch into main ------------------------------------------------------------------------------------------
+const rcBranch = spawnSync("git", ["branch", "--show-current"], { encoding: "utf8", stdio: "pipe" }).stdout.trim();
+
+if (rcBranch === "main") {
+    log.info("Already on main — skipping squash merge (re-run detected or ran from main directly)");
+} else {
+    log.step(`Squash merging ${rcBranch} into main...`);
+    execSync("git switch main", { stdio: "inherit" });
+    execSync(`git merge --squash ${rcBranch}`, { stdio: "inherit" });
+    execSync(`git commit -m "${releaseCommitMsg}"`, { stdio: "inherit" });
+    log.success(`Squashed ${rcBranch} into main`);
+}
+
+// --- Phase 12: Push ----------------------------------------------------------------------------------------------------------------------
 const releasePushStatus = spawnSync("git", ["status", "-sb"], { encoding: "utf8", stdio: "pipe" });
 const releasePushLine = releasePushStatus.stdout.split("\n")[0] ?? "";
 const releaseHasUpstream = releasePushLine.includes("...");
@@ -209,7 +222,7 @@ if (releaseAlreadyPushed) {
     execSync("git push", { stdio: "inherit" });
 }
 
-// --- Phase 12: Publish to npm ------------------------------------------------------------------------------------------------------------
+// --- Phase 13: Publish to npm ------------------------------------------------------------------------------------------------------------
 // Re-fetch dist-tags (may have changed since Phase 2)
 const freshDistTagsProbe = spawnSync("npm", ["view", name, "dist-tags", "--json"], { encoding: "utf8", stdio: "pipe" });
 let freshDistTags: Record<string, string> = {};
@@ -223,7 +236,7 @@ if (freshDistTags.latest === baseVersion) {
     execSync("pnpm publish --access public", { stdio: "inherit" });
 }
 
-// --- Phase 13: Remove rc dist-tag --------------------------------------------------------------------------------------------------------
+// --- Phase 14: Remove rc dist-tag --------------------------------------------------------------------------------------------------------
 // Re-fetch dist-tags after publish
 const freshRcTagProbe = spawnSync("npm", ["view", name, "dist-tags", "--json"], { encoding: "utf8", stdio: "pipe" });
 let freshRcDistTags: Record<string, string> = {};
@@ -240,7 +253,7 @@ if (!rcStillPointsHere) {
     log.success("rc tag removed — npx totopo@rc will no longer resolve");
 }
 
-// --- Phase 14: Tag + push to GitHub (only after npm publish succeeded) -------------------------------------------------------------------
+// --- Phase 15: Tag + push to GitHub (only after npm publish succeeded) -------------------------------------------------------------------
 const releaseTagLocal = gitTagExistsLocally(tag);
 const releaseTagRemote = gitTagExistsOnRemote(tag);
 if (releaseTagLocal) {

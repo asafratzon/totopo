@@ -133,8 +133,7 @@ describe("writeTotopoYaml", () => {
         assert.equal(read?.schema_version, 3);
         assert.deepEqual(read?.shadow_paths, ["node_modules", ".env*"]);
         assert.ok(read?.profiles?.default);
-        assert.ok(read?.profiles?.slim);
-        assert.ok(read?.profiles?.custom);
+        assert.ok(read?.profiles?.extended);
         cleanTempDir(tmp);
     });
 });
@@ -153,10 +152,12 @@ describe("buildDefaultTotopoYaml", () => {
         assert.deepEqual(config.shadow_paths, ["node_modules", ".env*"]);
     });
 
-    test("includes three default profiles", () => {
+    test("includes two default profiles", () => {
         const config = buildDefaultTotopoYaml("test-ws");
         const profileNames = Object.keys(config.profiles ?? {});
-        assert.deepEqual(profileNames, [PROFILE.default, PROFILE.slim, PROFILE.custom]);
+        assert.deepEqual(profileNames, [PROFILE.default, PROFILE.extended]);
+        assert.ok(config.profiles?.default?.description, "default profile should have a description");
+        assert.ok(config.profiles?.extended?.description, "extended profile should have a description");
     });
 
     test("includes name when provided", () => {

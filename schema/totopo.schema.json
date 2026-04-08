@@ -37,6 +37,10 @@
             "additionalProperties": {
                 "type": "object",
                 "properties": {
+                    "description": {
+                        "type": "string",
+                        "description": "Human-readable description of this profile shown as a hint during profile selection."
+                    },
                     "dockerfile_hook": {
                         "type": "string",
                         "description": "Raw Dockerfile instructions appended after the base image layers. Use for installing additional runtimes, tools, or dependencies."

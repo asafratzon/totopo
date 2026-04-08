@@ -44,7 +44,7 @@ src/commands/                  - Command modules (compiled to dist/commands/ by 
   global.ts                    - "Manage totopo" menu: stop containers, clear memory, remove images, uninstall
   menu.ts                      - Workspace menu (per-workspace actions and status display)
   onboard.ts                   - First-time setup: workspace root, name, workspace_id, totopo.yaml creation
-  workspace.ts                 - "Manage Workspace" submenu: profiles, shadow paths, rebuild, reset config
+  workspace.ts                 - "Manage Workspace" submenu: shadow paths, rebuild, reset config
                                  Exports: stop(), resetImage() for workspace container lifecycle
 
 src/lib/                       - Shared utilities (compiled to dist/lib/ by pnpm build)
@@ -168,5 +168,7 @@ The container isolation model is the core value proposition. Never weaken:
 Skills live in `.claude/skills/`. The `.agents/skills/` directory contains symlinks to the same files — edit only the `.claude/skills/` versions.
 
 ## Release process
+
+RC development happens on a dedicated branch (e.g. `v3.1.0-rc-development`), not on `main`. This keeps `main` pointing to the latest stable release at all times. When `pnpm rc:promote` runs, it squash merges the RC branch into `main` automatically.
 
 Use the `/release` skill to prepare an RC. The source of truth for release notes is `scripts/changelog.yaml` - `CHANGELOG.md` is generated from it. RC entries follow a cumulative convention (describe the full release, not delta from previous RC). Publishing and git push happen on the host via `pnpm rc`.
