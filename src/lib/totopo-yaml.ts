@@ -13,6 +13,7 @@ import { DEFAULT_SHADOW_PATHS, TOTOPO_YAML, WORKSPACE_ID_MAX, WORKSPACE_ID_MIN }
 
 export interface ProfileConfig {
     dockerfile_hook?: string;
+    description?: string;
 }
 
 export interface TotopoYamlConfig {
@@ -158,20 +159,25 @@ export function writeTotopoYaml(dir: string, config: TotopoYamlConfig): void {
 
 // --- Defaults ----------------------------------------------------------------------------------------------------------------------------
 
-const DEFAULT_PROFILE_HOOK = `# Installs Go and Java.
-RUN apt-get update && apt-get install -y --no-install-recommends golang-go default-jdk-headless && rm -rf /var/lib/apt/lists/*
+const DEFAULT_PROFILE_HOOK = `# No extras — uses the totopo base image as-is (Node.js + git + AI CLIs).
 `;
 
-const SLIM_PROFILE_HOOK = `# No extras — uses the base image only (Node.js + git + AI CLIs).
-`;
+const EXTENDED_PROFILE_HOOK = `# Go
+RUN apt-get update && apt-get install -y --no-install-recommends golang-go && rm -rf /var/lib/apt/lists/*
 
-const CUSTOM_PROFILE_HOOK = `# Add your own Dockerfile instructions below, or ask the agent inside the container to help.
-# Install Bun:
-#   RUN curl -fsSL https://bun.sh/install | bash
-# Install Rust:
-#   RUN curl -sSf https://sh.rustup.rs | sh -s -- -y
-# Copy a local script into the image:
-#   COPY my-tool.sh /usr/local/bin/my-tool.sh
+# Java (headless JDK — includes javac; needed for Kotlin, Scala, Android tooling)
+RUN apt-get update && apt-get install -y --no-install-recommends default-jdk-headless && rm -rf /var/lib/apt/lists/*
+
+# Rust (system-wide install — devuser can use cargo and rustc)
+ENV RUSTUP_HOME=/usr/local/rustup
+ENV CARGO_HOME=/usr/local/cargo
+ENV PATH=/usr/local/cargo/bin:$PATH
+RUN curl -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path && chmod -R a+rx /usr/local/cargo /usr/local/rustup
+
+# Bun (fast JS runtime, bundler, and package manager)
+ENV BUN_INSTALL=/usr/local/bun
+ENV PATH=/usr/local/bun/bin:$PATH
+RUN curl -fsSL https://bun.sh/install | bash
 `;
 
 // Appended after the last profile to hint at adding more
@@ -185,13 +191,12 @@ export function buildDefaultTotopoYaml(workspaceId: string, name?: string): Toto
         shadow_paths: [...DEFAULT_SHADOW_PATHS],
         profiles: {
             default: {
+                description: "Base image: Node.js, git, and AI CLIs",
                 dockerfile_hook: DEFAULT_PROFILE_HOOK,
             },
-            slim: {
-                dockerfile_hook: SLIM_PROFILE_HOOK,
-            },
-            custom: {
-                dockerfile_hook: CUSTOM_PROFILE_HOOK,
+            extended: {
+                description: "Base image + Go, Java, Rust, and Bun",
+                dockerfile_hook: EXTENDED_PROFILE_HOOK,
             },
         },
     };

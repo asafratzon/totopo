@@ -40,7 +40,6 @@ export const LABEL_PROFILE = "totopo.profile";
 // Built-in profile names (must match keys in buildDefaultTotopoYaml in totopo-yaml.ts)
 export const PROFILE = {
     default: "default",
-    slim: "slim",
-    custom: "custom",
+    extended: "extended",
 } as const;
 export type BuiltInProfile = (typeof PROFILE)[keyof typeof PROFILE];

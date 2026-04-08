@@ -11,6 +11,7 @@ import { buildAgentContextDocs, buildAgentMountArgs, injectAgentContext } from "
 import { CONTAINER_POST_START, CONTAINER_WORKSPACE, LABEL_MANAGED, LABEL_PROFILE, LABEL_SHADOWS, PROFILE } from "../lib/constants.js";
 import { buildDockerfile, buildImageWithTempfile } from "../lib/dockerfile-builder.js";
 import { buildShadowMountArgs, ensureShadowsInSync, expandShadowPatterns } from "../lib/shadows.js";
+import type { ProfileConfig } from "../lib/totopo-yaml.js";
 import { readTotopoYaml } from "../lib/totopo-yaml.js";
 import type { WorkspaceContext } from "../lib/workspace-identity.js";
 import { readActiveProfile, readLastCliUpdate, writeActiveProfile, writeLastCliUpdate } from "../lib/workspace-identity.js";
@@ -36,7 +37,7 @@ async function promptWorkdir(workspaceDir: string, cwd: string): Promise<string>
 }
 
 // --- Profile selection -------------------------------------------------------------------------------------------------------------------
-async function selectProfile(ctx: WorkspaceContext, profiles: Record<string, unknown>): Promise<string> {
+async function selectProfile(ctx: WorkspaceContext, profiles: Record<string, ProfileConfig>): Promise<string> {
     const profileNames = Object.keys(profiles);
     if (profileNames.length <= 1) {
         return profileNames[0] ?? PROFILE.default;
@@ -47,8 +48,11 @@ async function selectProfile(ctx: WorkspaceContext, profiles: Record<string, unk
     const choice = await select({
         message: "Profile:",
         options: profileNames.map((name) => {
+            const description = profiles[name]?.description;
+            const isCurrent = name === currentProfile;
+            const hint = description && isCurrent ? `${description} · current` : (description ?? (isCurrent ? "current" : undefined));
             const opt: { value: string; label: string; hint?: string } = { value: name, label: name };
-            if (name === currentProfile) opt.hint = "current";
+            if (hint) opt.hint = hint;
             return opt;
         }),
         initialValue: currentProfile,

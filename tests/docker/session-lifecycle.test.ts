@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { after, afterEach, before, beforeEach, describe, test } from "node:test";
 import type { StartContainerOpts } from "../../src/commands/dev.js";
 import { startContainer } from "../../src/commands/dev.js";
-import { PROFILE } from "../../src/lib/constants.js";
+import { LABEL_MANAGED, LABEL_PROFILE, LABEL_SHADOWS, PROFILE } from "../../src/lib/constants.js";
 import { buildDockerfile, buildImageWithTempfile } from "../../src/lib/dockerfile-builder.js";
 import { expandShadowPatterns } from "../../src/lib/shadows.js";
 import {
@@ -109,10 +109,10 @@ describe("session lifecycle", () => {
     });
 
     test("container has totopo labels set", () => {
-        startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { activeProfile: PROFILE.slim }));
-        assert.equal(dockerContainerLabel(containerName, "totopo.managed"), "true");
-        assert.equal(dockerContainerLabel(containerName, "totopo.profile"), "slim");
-        assert.equal(dockerContainerLabel(containerName, "totopo.shadows"), "");
+        startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { activeProfile: PROFILE.extended }));
+        assert.equal(dockerContainerLabel(containerName, LABEL_MANAGED), "true");
+        assert.equal(dockerContainerLabel(containerName, LABEL_PROFILE), PROFILE.extended);
+        assert.equal(dockerContainerLabel(containerName, LABEL_SHADOWS), "");
     });
 
     test("container runs as devuser and WORKDIR is /workspace", () => {
@@ -149,7 +149,7 @@ describe("session lifecycle", () => {
 
     test("shadow change triggers container recreation", () => {
         startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { expandedShadows: [] }));
-        assert.equal(dockerContainerLabel(containerName, "totopo.shadows"), "");
+        assert.equal(dockerContainerLabel(containerName, LABEL_SHADOWS), "");
 
         // Simulate a shadow being added
         const shadowDir = join(workspaceRoot, "node_modules");
@@ -160,16 +160,16 @@ describe("session lifecycle", () => {
             makeOpts(containerName, workspaceRoot, cacheDir, { expandedShadows: expanded, shadowPatterns: ["node_modules"] }),
         );
         assert.equal(result, "created", "container should be recreated after shadow change");
-        assert.ok(dockerContainerLabel(containerName, "totopo.shadows").includes("node_modules"), "shadow label should reflect new shadow");
+        assert.ok(dockerContainerLabel(containerName, LABEL_SHADOWS).includes("node_modules"), "shadow label should reflect new shadow");
     });
 
     test("profile change triggers image rebuild and container recreation", () => {
         startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { activeProfile: PROFILE.default }));
-        assert.equal(dockerContainerLabel(containerName, "totopo.profile"), "default");
+        assert.equal(dockerContainerLabel(containerName, LABEL_PROFILE), PROFILE.default);
 
-        const result = startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { activeProfile: PROFILE.slim }));
+        const result = startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { activeProfile: PROFILE.extended }));
         assert.equal(result, "created", "container should be recreated after profile change");
-        assert.equal(dockerContainerLabel(containerName, "totopo.profile"), "slim");
+        assert.equal(dockerContainerLabel(containerName, LABEL_PROFILE), PROFILE.extended);
     });
 
     test("env_file is passed to container", () => {

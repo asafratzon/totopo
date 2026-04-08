@@ -13,8 +13,8 @@ Local sandbox for AI agents.
 ## Motivation
 
 Two fundamental issues with AI agents:
-- They are non-deterministic — they will occasionally get things wrong.
-- They are susceptible to prompt injection — they can get compromised and act against your interests without you knowing.
+- They are non-deterministic and will occasionally make mistakes.
+- Susceptibility to prompt injection — they can get compromised and act against your interests without you knowing.
 
 totopo addresses both with a dev container - when you run totopo in a given directory, the directory is mounted as a workspace where agents get a full, capable environment to work in — they just can't touch anything outside the workspace, and they can't reach remote git repositories.
 
@@ -68,7 +68,7 @@ On every run, totopo shows the workspace menu:
 
 - **Open session** — start or resume the dev container and connect
 - **Stop container** — stop the running container
-- **Manage Workspace** — profiles, shadow paths, rebuild, reset config
+- **Manage Workspace** — shadow paths, rebuild, reset config
 - **Manage totopo** — multi-workspace management (stop containers, clear memory, uninstall)
 
 ### Working directory
@@ -101,22 +101,30 @@ Profiles let you define multiple container image variants for a workspace. Each 
 # totopo.yaml
 profiles:
   default:
+    description: "Base image: Node.js, git, and AI CLIs"
     dockerfile_hook: |
-      # Installs Go and Java.
-      RUN apt-get update && apt-get install -y --no-install-recommends golang-go default-jdk-headless && rm -rf /var/lib/apt/lists/*
-  slim:
+      # No extras — uses the totopo base image as-is (Node.js + git + AI CLIs).
+  extended:
+    description: Base image + Go, Java, Rust, and Bun
     dockerfile_hook: |
-      # No extras — uses the base image only (Node.js + git + AI CLIs).
-  custom:
-    dockerfile_hook: |
-      # Add your own Dockerfile instructions below, or ask the agent inside the container to help.
-      # e.g. Install Rust:
-      #   RUN curl -sSf https://sh.rustup.rs | sh -s -- -y
+      # Go
+      RUN apt-get update && apt-get install -y --no-install-recommends golang-go && rm -rf /var/lib/apt/lists/*
+      # Java (headless JDK — includes javac; needed for Kotlin, Scala, Android tooling)
+      RUN apt-get update && apt-get install -y --no-install-recommends default-jdk-headless && rm -rf /var/lib/apt/lists/*
+      # Rust (system-wide install — devuser can use cargo and rustc)
+      ENV RUSTUP_HOME=/usr/local/rustup
+      ENV CARGO_HOME=/usr/local/cargo
+      ENV PATH=/usr/local/cargo/bin:$PATH
+      RUN curl -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path && chmod -R a+rx /usr/local/cargo /usr/local/rustup
+      # Bun (fast JS runtime, bundler, and package manager)
+      ENV BUN_INSTALL=/usr/local/bun
+      ENV PATH=/usr/local/bun/bin:$PATH
+      RUN curl -fsSL https://bun.sh/install | bash
   # Add more profiles here — or ask the agent inside the container to set one up for you.
 
 ```
 
-Three profiles are set by default. When multiple profiles are defined, totopo prompts you to pick one at session start (the choice is remembered). Switch any time in **Manage Workspace > Profiles** — a profile change triggers a container rebuild.
+Two profiles are set by default. When multiple profiles are defined, totopo prompts you to pick one at session start (the choice is remembered). A profile change triggers a container rebuild on the next session.
 
 The base image is defined in [`templates/Dockerfile`](templates/Dockerfile) — inspect it to see what's already included before adding your own layers. To force a fully fresh build (no Docker layer cache), use **Manage Workspace > Clean rebuild**.
 
