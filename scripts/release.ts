@@ -217,6 +217,10 @@ const releaseHasUpstream = releasePushLine.includes("...");
 const releaseAlreadyPushed = releaseHasUpstream && !releasePushLine.includes("[ahead");
 if (releaseAlreadyPushed) {
     log.info("Skipping git push — remote already has this commit");
+} else if (!releaseHasUpstream) {
+    const releaseBranch = spawnSync("git", ["branch", "--show-current"], { encoding: "utf8", stdio: "pipe" }).stdout.trim();
+    log.step(`git push --set-upstream origin ${releaseBranch}`);
+    execSync(`git push --set-upstream origin ${releaseBranch}`, { stdio: "inherit" });
 } else {
     log.step("git push");
     execSync("git push", { stdio: "inherit" });
