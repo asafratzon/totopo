@@ -106,11 +106,11 @@ ok("npm", `v${run("npm --version") ?? "not found"}`);
 const pnpmVer = run("pnpm --version");
 ok("pnpm", pnpmVer ? `v${pnpmVer}` : "not found");
 ok("python3", run("python3 --version") ?? "not found");
+ok("pipx", run("pipx --version") ?? "not found");
 
 // Optional (installed via profile hooks)
 const bunVer = run("bun --version");
 checkRuntime("bun", bunVer ? `v${bunVer}` : null);
-checkRuntime("uv", run("uv --version"));
 checkRuntime("go", run("go version"));
 checkRuntime("cargo", run("cargo --version"));
 checkRuntime("java", run("java --version")?.split("\n")[0] ?? null);
@@ -124,6 +124,14 @@ ok("fd", run("fd --version") ?? "not found");
 ok("fzf", run("fzf --version") ?? "not found");
 ok("jq", run("jq --version") ?? "not found");
 ok("yq", run("yq --version") ?? "not found");
+
+// ─── Database tools ──────────────────────────────────────────────────────────
+section("Database tools");
+
+ok("sqlite3", run("sqlite3 --version")?.split(" ").slice(0, 2).join(" ") ?? "not found");
+ok("psql", run("psql --version") ?? "not found");
+ok("mysql", run("mysql --version") ?? "not found");
+ok("redis-cli", run("redis-cli --version") ?? "not found");
 
 // ─── API keys ────────────────────────────────────────────────────────────────
 section("API keys");

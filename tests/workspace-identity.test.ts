@@ -120,8 +120,8 @@ describe("with isolated home", () => {
         test("writeActiveProfile updates profile without changing path", () => {
             const tmp = createTempDir();
             initWorkspaceDir("test-ws", tmp);
-            writeActiveProfile("test-ws", PROFILE.slim);
-            assert.equal(readActiveProfile("test-ws"), PROFILE.slim);
+            writeActiveProfile("test-ws", PROFILE.extended);
+            assert.equal(readActiveProfile("test-ws"), PROFILE.extended);
             assert.equal(readLockFile("test-ws"), tmp);
             cleanTempDir(tmp);
         });
@@ -129,18 +129,18 @@ describe("with isolated home", () => {
         test("writeLockFile updates path without changing profile", () => {
             const tmp1 = createTempDir();
             const tmp2 = createTempDir();
-            initWorkspaceDir("test-ws", tmp1, "custom");
+            initWorkspaceDir("test-ws", tmp1, PROFILE.extended);
             writeLockFile("test-ws", tmp2);
             assert.equal(readLockFile("test-ws"), tmp2);
-            assert.equal(readActiveProfile("test-ws"), "custom");
+            assert.equal(readActiveProfile("test-ws"), PROFILE.extended);
             cleanTempDir(tmp1);
             cleanTempDir(tmp2);
         });
 
         test("initWorkspaceDir with custom profile", () => {
             const tmp = createTempDir();
-            initWorkspaceDir("test-ws", tmp, PROFILE.slim);
-            assert.equal(readActiveProfile("test-ws"), PROFILE.slim);
+            initWorkspaceDir("test-ws", tmp, PROFILE.extended);
+            assert.equal(readActiveProfile("test-ws"), PROFILE.extended);
             cleanTempDir(tmp);
         });
 
@@ -163,11 +163,11 @@ describe("with isolated home", () => {
 
         test("writeLastCliUpdate persists timestamp and preserves other fields", () => {
             const tmp = createTempDir();
-            initWorkspaceDir("test-ws", tmp, PROFILE.slim);
+            initWorkspaceDir("test-ws", tmp, PROFILE.extended);
             writeLastCliUpdate("test-ws", "2026-04-05T10:00:00.000Z");
             assert.equal(readLastCliUpdate("test-ws"), "2026-04-05T10:00:00.000Z");
             assert.equal(readLockFile("test-ws"), tmp);
-            assert.equal(readActiveProfile("test-ws"), PROFILE.slim);
+            assert.equal(readActiveProfile("test-ws"), PROFILE.extended);
             cleanTempDir(tmp);
         });
     });

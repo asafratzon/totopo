@@ -72,6 +72,53 @@ if (changelog.in_progress.entries.length === 0) {
 }
 log.success(`changelog.yaml has ${changelog.in_progress.entries.length} entry/entries for ${changelog.in_progress.base_version}`);
 
+// --- Phase 0: uncommitted changes guard --------------------------------------------------------------------------------------------------
+let stashedBeforeRc = false;
+
+const rcPorcelainResult = spawnSync("git", ["status", "--porcelain"], { encoding: "utf8", stdio: "pipe" });
+const rcPorcelainLines = rcPorcelainResult.stdout.trim().split("\n").filter(Boolean);
+
+if (rcPorcelainLines.length > 0) {
+    const PACKAGED = ["bin/", "dist/", "templates/", "LICENSE", "package.json"];
+    const rcChangedPaths = rcPorcelainLines.map((l) => l.slice(3).trim());
+    const rcPackagedDirty = rcChangedPaths.filter((p) => PACKAGED.some((prefix) => p === prefix || p.startsWith(prefix)));
+
+    if (rcPackagedDirty.length > 0) {
+        log.warn("Uncommitted changes overlap with packaged files:");
+        for (const p of rcPackagedDirty) log.message(`  ${p}`);
+        log.error("These files are included in the published npm package. Publishing with them uncommitted would corrupt the release.");
+        log.message("Options:");
+        log.message("  1. Commit them and re-run pnpm rc");
+        log.message("  2. Manually stash (git stash), re-run pnpm rc, then git stash pop");
+        cancel("Resolve uncommitted changes and re-run.");
+        process.exit(1);
+    } else {
+        log.warn("Uncommitted changes detected (none overlap with packaged files):");
+        for (const p of rcChangedPaths) log.message(`  ${p}`);
+        const rcChoice = await select({
+            message: "How do you want to handle these?",
+            options: [
+                { value: "stash", label: "Stash now → run rc flow → unstash at the end" },
+                { value: "commit", label: "Commit them with a neutral message and continue" },
+                { value: "cancel", label: "Cancel — I'll resolve them manually" },
+            ],
+        });
+        if (isCancel(rcChoice) || rcChoice === "cancel") {
+            cancel("Aborted.");
+            process.exit(0);
+        }
+        if (rcChoice === "stash") {
+            log.step("git stash");
+            execSync("git stash", { stdio: "inherit" });
+            stashedBeforeRc = true;
+        } else {
+            log.step("Committing non-packaged changes...");
+            execSync("git add -A", { stdio: "inherit" });
+            execSync(`git commit -m "chore: commit non-packaged changes before rc"`, { stdio: "inherit" });
+        }
+    }
+}
+
 // --- Build -----------------------------------------------------------------------------------------------------------------------------------
 log.step("Building...");
 try {
@@ -224,6 +271,10 @@ const hasUpstream = pushLine.includes("...");
 const alreadyPushed = hasUpstream && !pushLine.includes("[ahead");
 if (alreadyPushed) {
     log.info("Skipping git push — remote already has this commit");
+} else if (!hasUpstream) {
+    const currentBranch = spawnSync("git", ["branch", "--show-current"], { encoding: "utf8", stdio: "pipe" }).stdout.trim();
+    log.step(`git push --set-upstream origin ${currentBranch}`);
+    execSync(`git push --set-upstream origin ${currentBranch}`, { stdio: "inherit" });
 } else {
     log.step("git push");
     execSync("git push", { stdio: "inherit" });
@@ -266,6 +317,17 @@ log.success("npm registry updated");
 
 // --- Sync GitHub releases (register the new rc) ------------------------------------------------------------------------------------------
 await syncGithubReleases(name);
+
+// --- Unstash if we stashed before rc -----------------------------------------------------------------------------------------------------
+if (stashedBeforeRc) {
+    log.step("git stash pop");
+    const rcPopResult = spawnSync("git", ["stash", "pop"], { encoding: "utf8", stdio: "pipe" });
+    if (rcPopResult.status === 0) {
+        log.success("Stashed changes restored");
+    } else {
+        log.warn("git stash pop failed — run: git stash pop");
+    }
+}
 
 // --- Done --------------------------------------------------------------------------------------------------------------------------------
 outro(`${name}@${nextVersion} published as rc`);

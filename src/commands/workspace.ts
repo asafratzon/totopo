@@ -1,66 +1,13 @@
 // =========================================================================================================================================
-// src/commands/workspace.ts - Manage Workspace submenu: profiles, shadow paths, rebuild, reset, stop, reset-image
+// src/commands/workspace.ts - Manage Workspace submenu: shadow paths, rebuild, reset, stop, reset-image
 // =========================================================================================================================================
 
 import { spawnSync } from "node:child_process";
 import { relative } from "node:path";
 import { cancel, confirm, isCancel, log, multiselect, note, outro, path, select, text } from "@clack/prompts";
-import { PROFILE } from "../lib/constants.js";
 import { countPatternHits } from "../lib/shadows.js";
 import { buildDefaultTotopoYaml, readTotopoYaml, writeTotopoYaml } from "../lib/totopo-yaml.js";
 import type { WorkspaceContext } from "../lib/workspace-identity.js";
-import { readActiveProfile, writeActiveProfile } from "../lib/workspace-identity.js";
-
-// --- Profile menu ------------------------------------------------------------------------------------------------------------------------
-async function profileMenu(ctx: WorkspaceContext): Promise<void> {
-    const yaml = readTotopoYaml(ctx.workspaceRoot);
-    if (!yaml) {
-        log.error("totopo.yaml not found or invalid.");
-        return;
-    }
-
-    const profiles = yaml.profiles ?? {};
-    const profileNames = Object.keys(profiles);
-
-    if (profileNames.length === 0) {
-        log.info("No profiles defined in totopo.yaml.");
-        return;
-    }
-
-    const currentProfile = readActiveProfile(ctx.workspaceId) ?? PROFILE.default;
-    note(`Active profile: ${currentProfile}`, "Profiles");
-
-    if (profileNames.length <= 1) {
-        log.info("Only one profile defined. Add more profiles in totopo.yaml to switch between them.");
-        return;
-    }
-
-    const profileOptions: { value: string; label: string; hint?: string }[] = profileNames.map((name) => {
-        const opt: { value: string; label: string; hint?: string } = { value: name, label: name };
-        if (name === currentProfile) opt.hint = "current";
-        return opt;
-    });
-    profileOptions.push({ value: "back", label: "← Back" });
-
-    const choice = await select({
-        message: "Switch active profile:",
-        options: profileOptions,
-    });
-
-    if (isCancel(choice) || choice === "back") return;
-
-    const selected = choice as string;
-    if (selected === currentProfile) {
-        log.info("Already on that profile.");
-        return;
-    }
-
-    writeActiveProfile(ctx.workspaceId, selected);
-    log.success(`Switched to profile "${selected}"`);
-    log.info("Profile change requires a container rebuild. Stop and rebuild to apply.");
-
-    await promptStopContainer(ctx);
-}
 
 // --- Shadow paths menu -------------------------------------------------------------------------------------------------------------------
 async function shadowPathsMenu(ctx: WorkspaceContext): Promise<void> {
@@ -241,7 +188,6 @@ async function resetTotopoYaml(ctx: WorkspaceContext): Promise<void> {
 export async function run(ctx: WorkspaceContext): Promise<"back" | "rebuild" | "clean-rebuild" | undefined> {
     while (true) {
         const options: { value: string; label: string; hint?: string }[] = [
-            { value: "profiles", label: "Profiles", hint: "switch active Dockerfile profile" },
             { value: "shadow-paths", label: "Shadow paths", hint: "manage shadow patterns" },
             { value: "rebuild", label: "Rebuild container", hint: "force a fresh image build" },
             { value: "clean-rebuild", label: "Clean rebuild", hint: "fresh build, no cache" },
@@ -256,9 +202,6 @@ export async function run(ctx: WorkspaceContext): Promise<"back" | "rebuild" | "
         }
 
         switch (action) {
-            case "profiles":
-                await profileMenu(ctx);
-                break;
             case "shadow-paths":
                 await shadowPathsMenu(ctx);
                 break;
