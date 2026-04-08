@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://raw.githubusercontent.com/asafratzon/totopo/v3.0.0-rc-7/schema/totopo.schema.json
+# yaml-language-server: $schema=https://raw.githubusercontent.com/asafratzon/totopo/v3.0.1/schema/totopo.schema.json
 schema_version: 3
 
 # totopo workspace config — run 'npx totopo' from anywhere under this directory tree to start your dev container.
@@ -13,23 +13,30 @@ shadow_paths:
   - .env*
 
 # Dockerfile profiles — each adds on top of the totopo base image (Debian + Node.js + git + AI CLIs).
-# Base Dockerfile: https://raw.githubusercontent.com/asafratzon/totopo/v3.0.0-rc-7/templates/Dockerfile
+# Base Dockerfile: https://raw.githubusercontent.com/asafratzon/totopo/v3.0.1/templates/Dockerfile
 # Switch profiles in the totopo settings menu, or ask the agent inside the container to help you add a new one.
 profiles:
   default:
+    description: "Base image: Node.js, git, and AI CLIs"
     dockerfile_hook: |
-      # Installs Go and Java.
-      RUN apt-get update && apt-get install -y --no-install-recommends golang-go default-jdk-headless && rm -rf /var/lib/apt/lists/*
-  slim:
+      # No extras — uses the totopo base image as-is (Node.js + git + AI CLIs).
+  extended:
+    description: Base image + Go, Java, Rust, and Bun
     dockerfile_hook: |
-      # No extras — uses the base image only (Node.js + git + AI CLIs).
-  custom:
-    dockerfile_hook: |
-      # Add your own Dockerfile instructions below, or ask the agent inside the container to help.
-      # Install Bun:
-      #   RUN curl -fsSL https://bun.sh/install | bash
-      # Install Rust:
-      #   RUN curl -sSf https://sh.rustup.rs | sh -s -- -y
-      # Copy a local script into the image:
-      #   COPY my-tool.sh /usr/local/bin/my-tool.sh
+      # Go
+      RUN apt-get update && apt-get install -y --no-install-recommends golang-go && rm -rf /var/lib/apt/lists/*
+
+      # Java (headless JDK — includes javac; needed for Kotlin, Scala, Android tooling)
+      RUN apt-get update && apt-get install -y --no-install-recommends default-jdk-headless && rm -rf /var/lib/apt/lists/*
+
+      # Rust (system-wide install — devuser can use cargo and rustc)
+      ENV RUSTUP_HOME=/usr/local/rustup
+      ENV CARGO_HOME=/usr/local/cargo
+      ENV PATH=/usr/local/cargo/bin:$PATH
+      RUN curl -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path && chmod -R a+rx /usr/local/cargo /usr/local/rustup
+
+      # Bun (fast JS runtime, bundler, and package manager)
+      ENV BUN_INSTALL=/usr/local/bun
+      ENV PATH=/usr/local/bun/bin:$PATH
+      RUN curl -fsSL https://bun.sh/install | bash
   # Add more profiles here — or ask the agent inside the container to set one up for you.
