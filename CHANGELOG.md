@@ -7,6 +7,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [3.1.0] — 2026-04-08
+
+### Changed
+
+- Default profile for new workspaces now uses the base image as-is (no extras). The slim and custom profiles are replaced by a single extended profile that installs Go, Java, Rust, and Bun.
+- Profiles support an optional description field in totopo.yaml, shown as a hint during profile selection when opening a session.
+- Removed the Profiles option from the Manage Workspace menu — profile selection happens at session start.
+- Container status check now includes a Database tools section (sqlite3, psql, mysql, redis-cli) and pipx. Removed uv, which was never installed in any profile.
+
+---
+
 ## [3.0.1] — 2026-04-06
 
 ### Changed
