@@ -110,7 +110,7 @@ describe("image lifecycle", () => {
 
 describe("production dockerfile", () => {
     // Validates that templates/Dockerfile is syntactically correct and that all COPY
-    // instructions resolve (e.g. post-start.mjs exists in the build context).
+    // instructions resolve (e.g. startup.mjs exists in the build context).
     // Fast on repeated runs due to Docker layer caching; slow on first cold run.
     test("templates/Dockerfile builds successfully", () => {
         const prodImageName = uniqueName("prod");

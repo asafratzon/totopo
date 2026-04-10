@@ -168,7 +168,7 @@ codex       # Codex (OpenAI)
 
 Agents are self-aware — sandbox constraints, git remote block, and any active shadow path overlays are injected into agent context at every session start.
 
-totopo updates all three CLIs to their latest published versions at most once per 24 hours per workspace.
+totopo updates all three CLIs to their latest published versions automatically when you open a session.
 
 ### Persistent Agent Memory
 

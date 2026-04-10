@@ -29,6 +29,8 @@ Print the current `latest` and `rc` dist-tags.
 
 ## Step 3 — Determine target RC version
 
+First, check the current branch name with `git branch --show-current`. If it follows the `v{X.Y.Z}-rc-development` convention, extract the version — this is a strong signal for what base version is being developed. If it differs from `in_progress.base_version`, use the branch version as the base when proposing the target RC version below.
+
 Apply these rules:
 
 1. Find all entries in `in_progress.entries` whose `rc_version` is **not** present in the published npm versions list.
