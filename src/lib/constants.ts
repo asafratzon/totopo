@@ -27,7 +27,7 @@ export const DEFAULT_SHADOW_PATHS = ["node_modules", ".env*"] as const;
 export const CONTAINER_USER = "devuser";
 export const CONTAINER_HOME = `/home/${CONTAINER_USER}`;
 export const CONTAINER_WORKSPACE = "/workspace";
-export const CONTAINER_POST_START = `${CONTAINER_HOME}/post-start.mjs`;
+export const CONTAINER_STARTUP = `${CONTAINER_HOME}/startup.mjs`;
 
 // Docker container/image naming
 export const CONTAINER_NAME_PREFIX = "totopo-";

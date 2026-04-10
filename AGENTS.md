@@ -70,7 +70,7 @@ scripts/                       - Release tooling (excluded from npm package, not
 
 templates/                     - Bundled assets (included in npm package)
   Dockerfile                   - Base image (debian:bookworm-slim + Node.js + git + AI CLIs)
-  post-start.mjs               - Runs inside container after start; validates security and tool readiness
+  startup.mjs                  - Runs inside container as root on every session; AI CLI updates + readiness checks
   context/                     - Markdown templates for agent context injection ({{var}} placeholders)
 
 tests/                         - Unit test suite (run via tsx, not compiled to dist/)
@@ -123,8 +123,8 @@ schema/
 2. Build Dockerfile in memory (base template + profile hook + USER devuser)
 3. Write to temp file -> `docker build` -> clean up temp file
 4. Create container with bind mounts (workspace + shadows + agent dirs)
-5. Update AI CLIs via `docker exec -u root`
-6. Run post-start checks -> connect via `docker exec -it bash`
+5. Run startup script via `docker exec -u root` (AI CLI updates + readiness checks)
+6. Connect via `docker exec -it bash`
 
 **Agent context (`agent-context.ts`):** Markdown templates from `templates/context/*.md` are assembled with `{{variable}}` substitution, then written to agent dirs on the host (bind-mounted into container).
 

@@ -186,13 +186,13 @@ describe("migrate-to-latest", () => {
         const content = readFileSync(join(wsDir, LOCK_FILE), "utf8");
         assert.ok(content.includes(`${LOCK_KEYS.workspaceRoot}=/some/path`), "workspace root should be preserved");
         assert.ok(content.includes(`${LOCK_KEYS.activeProfile}=slim`), "profile should be preserved");
-        assert.ok(content.includes(`${LOCK_KEYS.lastCliUpdate}=`), "last-cli-update key should be present");
+        assert.ok(!content.includes("last-cli-update="), "last-cli-update key should not be present");
     });
 
     test("skips .lock files already in key=value format", () => {
         const wsDir = join(fakeHome, ".totopo", "workspaces", "my-ws");
         mkdirSync(wsDir, { recursive: true });
-        const original = `${LOCK_KEYS.workspaceRoot}=/some/path\n${LOCK_KEYS.activeProfile}=slim\n${LOCK_KEYS.lastCliUpdate}=2026-04-05T10:00:00.000Z\n`;
+        const original = `${LOCK_KEYS.workspaceRoot}=/some/path\n${LOCK_KEYS.activeProfile}=slim\n`;
         writeFileSync(join(wsDir, LOCK_FILE), original);
 
         runMigration(tmp);
@@ -210,7 +210,7 @@ describe("migrate-to-latest", () => {
     test("renames yaml= key to root= in .lock files", () => {
         const wsDir = join(fakeHome, ".totopo", "workspaces", "my-ws");
         mkdirSync(wsDir, { recursive: true });
-        writeFileSync(join(wsDir, LOCK_FILE), `yaml=/some/path\n${LOCK_KEYS.activeProfile}=slim\n${LOCK_KEYS.lastCliUpdate}=\n`);
+        writeFileSync(join(wsDir, LOCK_FILE), `yaml=/some/path\n${LOCK_KEYS.activeProfile}=slim\n`);
 
         runMigration(tmp);
 
@@ -223,7 +223,7 @@ describe("migrate-to-latest", () => {
     test("skips .lock files already using root= key", () => {
         const wsDir = join(fakeHome, ".totopo", "workspaces", "my-ws");
         mkdirSync(wsDir, { recursive: true });
-        const original = `${LOCK_KEYS.workspaceRoot}=/some/path\n${LOCK_KEYS.activeProfile}=slim\n${LOCK_KEYS.lastCliUpdate}=\n`;
+        const original = `${LOCK_KEYS.workspaceRoot}=/some/path\n${LOCK_KEYS.activeProfile}=slim\n`;
         writeFileSync(join(wsDir, LOCK_FILE), original);
 
         runMigration(tmp);
@@ -234,5 +234,34 @@ describe("migrate-to-latest", () => {
     test("migrateLockKeyYamlToRoot is a no-op when workspaces/ does not exist", () => {
         // fakeHome has no .totopo/ dir at all -- should not throw
         runMigration(tmp);
+    });
+
+    // ---- migrateRemoveLastCliUpdate ---------------------------------------------------------------------------------------------------------
+
+    test("removes last-cli-update key from .lock files", () => {
+        const wsDir = join(fakeHome, ".totopo", "workspaces", "my-ws");
+        mkdirSync(wsDir, { recursive: true });
+        writeFileSync(
+            join(wsDir, LOCK_FILE),
+            `${LOCK_KEYS.workspaceRoot}=/some/path\n${LOCK_KEYS.activeProfile}=slim\nlast-cli-update=2026-04-05T10:00:00.000Z\n`,
+        );
+
+        runMigration(tmp);
+
+        const content = readFileSync(join(wsDir, LOCK_FILE), "utf8");
+        assert.ok(!content.includes("last-cli-update"), "last-cli-update should be removed");
+        assert.ok(content.includes(`${LOCK_KEYS.workspaceRoot}=/some/path`), "root should be preserved");
+        assert.ok(content.includes(`${LOCK_KEYS.activeProfile}=slim`), "profile should be preserved");
+    });
+
+    test("migrateRemoveLastCliUpdate is a no-op when key is absent", () => {
+        const wsDir = join(fakeHome, ".totopo", "workspaces", "my-ws");
+        mkdirSync(wsDir, { recursive: true });
+        const original = `${LOCK_KEYS.workspaceRoot}=/some/path\n${LOCK_KEYS.activeProfile}=slim\n`;
+        writeFileSync(join(wsDir, LOCK_FILE), original);
+
+        runMigration(tmp);
+
+        assert.equal(readFileSync(join(wsDir, LOCK_FILE), "utf8"), original);
     });
 });

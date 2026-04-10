@@ -86,13 +86,14 @@ RUN npm install -g \
 RUN groupadd --gid 1001 devuser && \
     useradd --uid 1001 --gid devuser --shell /bin/bash --create-home devuser && \
     mkdir -p /home/devuser/.local/state /home/devuser/.local/share /home/devuser/.local/bin && \
+    date -u +"%Y-%m-%dT%H:%M:%S.000Z" > /home/devuser/.ai-cli-updated && \
     chown -R devuser:devuser /home/devuser
 
 # ---------------------------------------------------------------------------
-# Layer 9 — Bake post-start script into image
+# Layer 9 — Bake startup script into image
 # ---------------------------------------------------------------------------
-COPY post-start.mjs /home/devuser/post-start.mjs
-RUN chown devuser:devuser /home/devuser/post-start.mjs
+COPY startup.mjs /home/devuser/startup.mjs
+RUN chown devuser:devuser /home/devuser/startup.mjs
 
 WORKDIR /workspace
 
