@@ -357,7 +357,11 @@ describe("startup script", () => {
 
     test("startup script reports CLIs up to date when timestamp is fresh", () => {
         startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
-        // The image was just built, so the timestamp is fresh -- should skip CLI update
+        // Write a fresh timestamp so the test is not affected by image age
+        const freshDate = new Date().toISOString();
+        spawnSync("docker", ["exec", "-u", "root", containerName, "sh", "-c", `echo '${freshDate}' > /home/devuser/.ai-cli-updated`], {
+            stdio: "pipe",
+        });
         // Run as root since startup.mjs is designed to run as root
         const result = spawnSync("docker", ["exec", "-u", "root", containerName, "node", CONTAINER_STARTUP], {
             encoding: "utf8",
