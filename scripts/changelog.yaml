@@ -1,6 +1,10 @@
 in_progress:
   base_version: 3.2.1
-  entries: []
+  entries:
+    - rc_version: 3.2.1-rc-1
+      date: "2026-04-11"
+      changed:
+        - README motivation section rewritten for clarity.
 releases:
   - version: 3.2.0
     date: "2026-04-11"
