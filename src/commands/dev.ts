@@ -99,9 +99,9 @@ function stopAndRemoveContainer(containerName: string): void {
 }
 
 // --- Run startup checks (AI CLI update + readiness validation) ---------------------------------------------------------------------------
-function runStartup(containerName: string): boolean {
+function runStartup(containerName: string, quiet?: boolean): boolean {
     const result = spawnSync("docker", ["exec", "-u", "root", containerName, "node", CONTAINER_STARTUP], {
-        stdio: "inherit",
+        stdio: quiet ? "pipe" : "inherit",
     });
     return result.status === 0;
 }
@@ -325,7 +325,8 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
     let stale = isImageStale(containerName);
     if (stale) {
         const rebuild = await confirm({
-            message: "Container image is outdated and needs rebuilding. Agent memory and settings are preserved. Rebuild now?",
+            message:
+                "totopo's latest release includes an updated container image. Rebuild now? (Recommended) The process is quick and will not affect agent memory, settings, or your data.",
             initialValue: true,
         });
         if (isCancel(rebuild)) {
@@ -341,7 +342,7 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
     }
 
     // --- Startup checks (AI CLI update + readiness validation) ----------------------------------------------------------------------------
-    if (!runStartup(containerName)) {
+    if (!runStartup(containerName, stale)) {
         if (stale) {
             const connect = await confirm({
                 message: "Startup checks failed (likely due to outdated image). Connect anyway?",

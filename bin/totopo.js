@@ -5,8 +5,8 @@
 // =========================================================================================================================================
 
 import { execSync, spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import { dirname } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { cancel, confirm, isCancel, log, select } from "@clack/prompts";
 import { run as dev } from "../dist/commands/dev.js";
@@ -36,6 +36,9 @@ try {
 // --- Paths -------------------------------------------------------------------------------------------------------------------------------
 const packageDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const cwd = process.cwd();
+
+// --- Version -----------------------------------------------------------------------------------------------------------------------------
+const { version } = JSON.parse(readFileSync(join(packageDir, "package.json"), "utf8"));
 
 // --- Guard: dist/ must exist -------------------------------------------------------------------------------------------------------------
 if (!existsSync(new URL("../dist/commands/dev.js", import.meta.url))) {
@@ -149,7 +152,7 @@ while (showMenu) {
     const activeCount = activeNames.length;
     const workspaceRunning = activeNames.some((n) => n === containerName);
 
-    const action = await menu({ ctx: workspace, activeCount, workspaceRunning });
+    const action = await menu({ ctx: workspace, activeCount, workspaceRunning, version });
 
     switch (action) {
         case "dev":

@@ -40,7 +40,7 @@ const fail = (label, detail) => {
 const section = (title) => console.log(`\n${bold(title)}`);
 
 // -- Header -------------------------------------------------------------------
-console.log(`\n${bold("totopo -- Secure AI Box")}\n`);
+console.log(`\n${bold("totopo - Sandbox for AI Agents")}\n`);
 
 // -- AI CLI update (requires root - skipped when run via 'status' alias as devuser) -
 section("AI CLI update");
@@ -168,14 +168,14 @@ console.log(`${blue("●")} ${dim("API keys are injected via env_file in totopo.
 
 // -- Summary ------------------------------------------------------------------
 if (errors === 0) {
-    const workspaceSuffix = process.env.TOTOPO_WORKSPACE ? ` -- workspace: ${bold(process.env.TOTOPO_WORKSPACE)}` : "";
+    const workspaceSuffix = process.env.TOTOPO_WORKSPACE ? ` - workspace: ${bold(process.env.TOTOPO_WORKSPACE)}` : "";
     console.log(`\n${blue("●")}  ${bold("totopo dev container ready")}${workspaceSuffix}`);
     console.log(
-        `${grey("   To adjust settings, ask any agent about")} ${bold("totopo.yaml")} ${grey("-- it lives in the workspace root.")}\n`,
+        `${grey("   To adjust settings, ask any agent about")} ${bold("totopo.yaml")} ${grey("- it lives in the workspace root.")}\n`,
     );
     console.log(`${green("●")} ${bold("Ready.")}`);
     console.log(`${grey("Type 'status' to re-run the readiness check.")}\n`);
 } else {
-    console.log(`\n${red("●")} ${bold(`${errors} error(s) -- see above. Rebuild the container to fix.`)}\n`);
+    console.log(`\n${red("●")} ${bold(`${errors} error(s) - see above. Rebuild the container to fix.`)}\n`);
     process.exit(1);
 }
