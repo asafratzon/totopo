@@ -70,7 +70,7 @@ scripts/                       - Release tooling (excluded from npm package, not
 
 templates/                     - Bundled assets (included in npm package)
   Dockerfile                   - Base image (debian:bookworm-slim + Node.js + git + AI CLIs)
-  post-start.mjs               - Runs inside container after start; validates security and tool readiness
+  startup.mjs                  - Runs inside container as root on every session; AI CLI updates + readiness checks
   context/                     - Markdown templates for agent context injection ({{var}} placeholders)
 
 tests/                         - Unit test suite (run via tsx, not compiled to dist/)
@@ -88,8 +88,9 @@ tests/                         - Unit test suite (run via tsx, not compiled to d
 tests/docker/                  - Docker integration tests (pnpm test:docker, requires Docker, host-only)
   docker-helpers.ts            - uniqueName, dockerContainerStatus/Label/Exec, forceRemove*, cleanupAllTestArtifacts
   image-lifecycle.test.ts      - buildImageWithTempfile: build, label, noCache, invalid Dockerfile, removal
+  migration.test.ts            - migrateProjectsDir: selective container stop during projects/ rename migration
   session-lifecycle.test.ts    - startContainer(): lifecycle (created/resumed/connected), labels, mounts,
-                                 mismatch detection, shadow overlays, profile hooks
+                                 mismatch detection, shadow overlays, profile hooks, image staleness
 
 schema/
   totopo.schema.json           - JSON Schema for totopo.yaml (bundled; used by ajv at runtime)
@@ -101,7 +102,7 @@ schema/
 ~/.totopo/
   workspaces/
     <workspace_id>/
-      .lock                    - Line 1: absolute workspace root path. Line 2: active profile name.
+      .lock                    - Key-value file: root=<workspace path>, profile=<active profile name>
       agents/
         claude/                - Mounted as ~/.claude/ inside the container
           .claude.json         - Mounted as ~/.claude.json (file mount - persists Claude Code settings)
@@ -123,8 +124,9 @@ schema/
 2. Build Dockerfile in memory (base template + profile hook + USER devuser)
 3. Write to temp file -> `docker build` -> clean up temp file
 4. Create container with bind mounts (workspace + shadows + agent dirs)
-5. Update AI CLIs via `docker exec -u root`
-6. Run post-start checks -> connect via `docker exec -it bash`
+5. Detect stale images via `isImageStale()` -> prompt user to rebuild if outdated
+6. Run startup script via `docker exec -u root` (AI CLI updates + readiness checks)
+7. Connect via `docker exec -it bash`
 
 **Agent context (`agent-context.ts`):** Markdown templates from `templates/context/*.md` are assembled with `{{variable}}` substitution, then written to agent dirs on the host (bind-mounted into container).
 

@@ -48,10 +48,7 @@ describe("migrateProjectsDir - does not stop unrelated containers", () => {
         const workspaceRoot = join(tmp, workspaceId);
         mkdirSync(projectsDir, { recursive: true });
         mkdirSync(workspaceRoot, { recursive: true });
-        writeFileSync(
-            join(projectsDir, LOCK_FILE),
-            `${LOCK_KEYS.workspaceRoot}=${workspaceRoot}\n${LOCK_KEYS.activeProfile}=default\n${LOCK_KEYS.lastCliUpdate}=\n`,
-        );
+        writeFileSync(join(projectsDir, LOCK_FILE), `${LOCK_KEYS.workspaceRoot}=${workspaceRoot}\n${LOCK_KEYS.activeProfile}=default\n`);
 
         assert.equal(dockerContainerStatus(bystander), "running", "bystander should be running before migration");
 

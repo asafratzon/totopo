@@ -25,7 +25,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { log } from "@clack/prompts";
 import { load as loadYaml } from "js-yaml";
-import { AGENTS_DIR, LOCK_FILE, PROFILE, SHADOWS_DIR, TOTOPO_DIR, TOTOPO_YAML, WORKSPACES_DIR } from "./constants.js";
+import { AGENTS_DIR, CONTAINER_STARTUP, LOCK_FILE, PROFILE, SHADOWS_DIR, TOTOPO_DIR, TOTOPO_YAML, WORKSPACES_DIR } from "./constants.js";
 import { safeRmSync } from "./safe-rm.js";
 import {
     buildDefaultTotopoYaml,
@@ -347,10 +347,7 @@ function migrateLockFileFormat(): void {
             const [firstLine, secondLine] = lines;
             if (!firstLine || firstLine.includes("=")) continue; // empty or already new format
             const activeProfile = secondLine ?? PROFILE.default;
-            writeFileSync(
-                lockPath,
-                `${LOCK_KEYS.workspaceRoot}=${firstLine}\n${LOCK_KEYS.activeProfile}=${activeProfile}\n${LOCK_KEYS.lastCliUpdate}=\n`,
-            );
+            writeFileSync(lockPath, `${LOCK_KEYS.workspaceRoot}=${firstLine}\n${LOCK_KEYS.activeProfile}=${activeProfile}\n`);
         } catch {
             // unreadable -- skip, will surface as a broken workspace elsewhere
         }
@@ -378,6 +375,31 @@ function migrateLockKeyYamlToRoot(): void {
     }
 }
 
+/**
+ * v3.1.0 and earlier: Remove the "last-cli-update" key from .lock files.
+ * CLI update timestamps are now managed inside the container via /home/devuser/.ai-cli-updated.
+ * Detects old format by presence of "last-cli-update=" in the file content. Idempotent.
+ */
+function migrateRemoveLastCliUpdate(): void {
+    const baseDir = getWorkspacesBaseDir();
+    if (!existsSync(baseDir)) return;
+
+    for (const entry of readdirSync(baseDir)) {
+        const lockPath = join(baseDir, entry, LOCK_FILE);
+        try {
+            const content = readFileSync(lockPath, "utf8");
+            if (!content.includes("last-cli-update=")) continue;
+            const filtered = content
+                .split("\n")
+                .filter((line) => !line.startsWith("last-cli-update="))
+                .join("\n");
+            writeFileSync(lockPath, filtered);
+        } catch {
+            // unreadable -- skip, will surface as a broken workspace elsewhere
+        }
+    }
+}
+
 // Order matters: migrateProjectsDir must run before migrateV2Workspaces because
 // step 2 scans ~/.totopo/workspaces/ which only exists after step 1 renames projects/.
 // Steps 3 and 4 are independent of each other and of steps 1-2.
@@ -391,6 +413,7 @@ const MIGRATIONS: Migration[] = [
     { from: "v2.x", description: "Remove legacy ~/.totopo/.env global key file", run: migrateGlobalEnv },
     { from: "v3-rc-6", description: "Upgrade .lock files from positional to key=value format", run: migrateLockFileFormat },
     { from: "v3-rc-8", description: "Rename 'yaml' key to 'root' in .lock files", run: migrateLockKeyYamlToRoot },
+    { from: "v3.1.0", description: "Remove last-cli-update key from .lock files", run: migrateRemoveLastCliUpdate },
 ];
 
 /** Run all migrations in order. Called early in bin/totopo.js startup. */
@@ -398,4 +421,19 @@ export function runMigration(cwd: string): void {
     for (const migration of MIGRATIONS) {
         migration.run(cwd);
     }
+}
+
+// =========================================================================================================================================
+// Image staleness detection
+// Called at session start to detect outdated container images that need rebuilding.
+// Add new conditions here when the base image changes in future releases.
+// =========================================================================================================================================
+
+/** Check if a running container's image is stale (missing expected files/features). */
+export function isImageStale(containerName: string): boolean {
+    // v3.2.0: startup.mjs replaced post-start.mjs + update-ai-clis.mjs
+    const check = spawnSync("docker", ["exec", containerName, "test", "-f", CONTAINER_STARTUP], { stdio: "pipe" });
+    if (check.status !== 0) return true;
+
+    return false;
 }
