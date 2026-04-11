@@ -15,10 +15,11 @@ interface MenuArgs {
     ctx: WorkspaceContext;
     activeCount: number;
     workspaceRunning: boolean;
+    version: string;
 }
 
 export async function run(args: MenuArgs): Promise<string> {
-    const { ctx, workspaceRunning } = args;
+    const { ctx, workspaceRunning, version } = args;
 
     // --- Read workspace config -----------------------------------------------------------------------------------------------------------
     const activeProfile = readActiveProfile(ctx.workspaceId) ?? PROFILE.default;
@@ -28,12 +29,16 @@ export async function run(args: MenuArgs): Promise<string> {
     const containerStatus = workspaceRunning ? "running" : "stopped";
     const gitNotice = hasGit ? "" : `\n${styleText("yellow", "●")} no git — agent changes are not tracked`;
 
-    box(`workspace:   ${ctx.displayName}\nprofile:     ${activeProfile}\ncontainer:   ${containerStatus}${gitNotice}`, " totopo ", {
-        contentAlign: "left",
-        titleAlign: "center",
-        width: "auto",
-        rounded: true,
-    });
+    box(
+        `workspace:   ${ctx.displayName}\nprofile:     ${activeProfile}\ncontainer:   ${containerStatus}${gitNotice}`,
+        ` totopo v${version} `,
+        {
+            contentAlign: "left",
+            titleAlign: "center",
+            width: "auto",
+            rounded: true,
+        },
+    );
 
     // --- Menu ----------------------------------------------------------------------------------------------------------------------------
     type Option = { value: string; label: string; hint?: string };
