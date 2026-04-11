@@ -324,9 +324,11 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
     // --- Stale image check - prompt user to rebuild if image is outdated ------------------------------------------------------------------
     let stale = isImageStale(containerName);
     if (stale) {
+        log.warn(
+            "totopo's latest release includes an updated container image.\n  Please rebuild to update — this will not affect agent memory, settings, or your data.",
+        );
         const rebuild = await confirm({
-            message:
-                "totopo's latest release includes an updated container image. Rebuild now? (Recommended) The process is quick and will not affect agent memory, settings, or your data.",
+            message: "Rebuild now? (Recommended)",
             initialValue: true,
         });
         if (isCancel(rebuild)) {
