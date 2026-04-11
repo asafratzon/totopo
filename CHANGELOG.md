@@ -7,6 +7,26 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [3.2.0] — 2026-04-11
+
+### Added
+
+- Main menu now displays the current totopo version in the title box.
+
+### Changed
+
+- Unified container startup into a single script that runs on every session start, including reconnections to already-running containers. AI CLI updates and readiness checks now run in one step instead of two separate passes.
+- AI CLI update throttling moved from host-side lock file to a container-side timestamp. Each container independently tracks when its CLIs were last updated, eliminating redundant reinstalls on first session after a clean build.
+- Outdated container images are now detected at session start. Users are prompted to rebuild with a confirmation dialog that explains agent memory and settings are preserved.
+- Startup check failures on outdated images offer a choice to connect anyway, rather than blocking the session. Failures on current images still block.
+
+### Fixed
+
+- AI CLI reinstall no longer runs unnecessarily on first session after a clean image build.
+- The status command inside the container no longer fails when the CLI update throttle window has expired (update is skipped when not running as root).
+
+---
+
 ## [3.1.0] — 2026-04-08
 
 ### Changed

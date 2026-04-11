@@ -56,7 +56,7 @@ export async function syncGithubReleases(packageName: string): Promise<void> {
     }
 
     // -- Fetch existing GitHub releases ---------------------------------------------------------------------------------------------------
-    const ghResult = run("gh", ["release", "list", "--limit", "100", "--json", "tagName"]);
+    const ghResult = run("gh", ["release", "list", "--limit", "1000", "--json", "tagName"]);
     let ghTags = new Set<string>();
     try {
         const releases = JSON.parse(ghResult.stdout) as { tagName: string }[];

@@ -12,8 +12,9 @@ import { join } from "node:path";
 import { after, afterEach, before, beforeEach, describe, test } from "node:test";
 import type { StartContainerOpts } from "../../src/commands/dev.js";
 import { startContainer } from "../../src/commands/dev.js";
-import { LABEL_MANAGED, LABEL_PROFILE, LABEL_SHADOWS, PROFILE } from "../../src/lib/constants.js";
+import { CONTAINER_STARTUP, LABEL_MANAGED, LABEL_PROFILE, LABEL_SHADOWS, PROFILE } from "../../src/lib/constants.js";
 import { buildDockerfile, buildImageWithTempfile } from "../../src/lib/dockerfile-builder.js";
+import { isImageStale } from "../../src/lib/migrate-to-latest.js";
 import { expandShadowPatterns } from "../../src/lib/shadows.js";
 import {
     cleanTempDir,
@@ -24,6 +25,7 @@ import {
     dockerExec,
     forceRemoveContainer,
     forceRemoveImage,
+    MINIMAL_DOCKERFILE,
     MINIMAL_DOCKERFILE_TEMPLATE,
     requireDocker,
     uniqueName,
@@ -314,5 +316,125 @@ describe("profile hooks", () => {
         assert.equal(result, "created");
         const whoami = dockerExec(containerName, ["whoami"]);
         assert.equal(whoami.stdout, "devuser");
+    });
+});
+
+// =========================================================================================================================================
+// Startup script (AI CLI update + readiness checks)
+// =========================================================================================================================================
+
+describe("startup script", () => {
+    let containerName: string;
+    let workspaceRoot: string;
+    let cacheDir: string;
+
+    beforeEach(() => {
+        containerName = uniqueName("startup");
+        workspaceRoot = createTempDir();
+        cacheDir = createTempDir();
+    });
+
+    afterEach(() => {
+        forceRemoveContainer(containerName);
+        forceRemoveImage(containerName);
+        cleanTempDir(workspaceRoot);
+        cleanTempDir(cacheDir);
+    });
+
+    test("build-time timestamp file exists in production image", () => {
+        startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
+        const cat = dockerExec(containerName, ["cat", "/home/devuser/.ai-cli-updated"]);
+        assert.equal(cat.status, 0, ".ai-cli-updated should exist");
+        const timestamp = new Date(cat.stdout);
+        assert.ok(!Number.isNaN(timestamp.getTime()), "timestamp should be a valid date");
+    });
+
+    test("startup.mjs script exists in production image", () => {
+        startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
+        const stat = dockerExec(containerName, ["test", "-f", CONTAINER_STARTUP]);
+        assert.equal(stat.status, 0, "startup.mjs should exist in the image");
+    });
+
+    test("startup script reports CLIs up to date when timestamp is fresh", () => {
+        startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
+        // The image was just built, so the timestamp is fresh -- should skip CLI update
+        // Run as root since startup.mjs is designed to run as root
+        const result = spawnSync("docker", ["exec", "-u", "root", containerName, "node", CONTAINER_STARTUP], {
+            encoding: "utf8",
+            stdio: "pipe",
+        });
+        assert.equal(result.status, 0, "script should exit 0");
+        assert.ok(result.stdout.includes("up to date"), "should report CLIs are up to date");
+    });
+
+    test("startup script skips update as non-root when timestamp is stale", () => {
+        startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
+        // Write a stale timestamp (48h ago) as root
+        const staleDate = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+        spawnSync("docker", ["exec", "-u", "root", containerName, "sh", "-c", `echo '${staleDate}' > /home/devuser/.ai-cli-updated`], {
+            stdio: "pipe",
+        });
+        // Run as devuser -- should skip CLI update (not fail) and pass readiness checks
+        const result = dockerExec(containerName, ["node", CONTAINER_STARTUP]);
+        assert.equal(result.status, 0, "should pass when run as devuser (CLI update skipped)");
+        assert.ok(result.stdout.includes("update skipped"), "should report update was skipped");
+    });
+});
+
+// =========================================================================================================================================
+// Image staleness detection
+// =========================================================================================================================================
+
+describe("image staleness", () => {
+    let containerName: string;
+    let workspaceRoot: string;
+    let cacheDir: string;
+
+    beforeEach(() => {
+        containerName = uniqueName("stale");
+        workspaceRoot = createTempDir();
+        cacheDir = createTempDir();
+    });
+
+    afterEach(() => {
+        forceRemoveContainer(containerName);
+        forceRemoveImage(containerName);
+        cleanTempDir(workspaceRoot);
+        cleanTempDir(cacheDir);
+    });
+
+    test("isImageStale returns false for current production image", () => {
+        startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
+        assert.equal(isImageStale(containerName), false);
+    });
+
+    test("isImageStale returns true for container missing startup.mjs", () => {
+        // Build a minimal image without startup.mjs to simulate an outdated container
+        const contextDir = createTempDir();
+        try {
+            const result = buildImageWithTempfile(MINIMAL_DOCKERFILE, contextDir, containerName, false, true);
+            assert.equal(result.status, 0);
+            spawnSync("docker", ["run", "-d", "--name", containerName, containerName, "sleep", "infinity"], { stdio: "pipe" });
+            assert.equal(isImageStale(containerName), true);
+        } finally {
+            cleanTempDir(contextDir);
+        }
+    });
+
+    test("startup script fails on stale container (startup.mjs missing)", () => {
+        // Minimal image has no startup.mjs -- docker exec should fail
+        const contextDir = createTempDir();
+        try {
+            const result = buildImageWithTempfile(MINIMAL_DOCKERFILE, contextDir, containerName, false, true);
+            assert.equal(result.status, 0);
+            spawnSync("docker", ["run", "-d", "--name", containerName, containerName, "sleep", "infinity"], { stdio: "pipe" });
+            const startup = spawnSync("docker", ["exec", "-u", "root", containerName, "node", CONTAINER_STARTUP], {
+                encoding: "utf8",
+                stdio: "pipe",
+            });
+            assert.notEqual(startup.status, 0, "startup should fail when script is missing");
+        } finally {
+            cleanTempDir(contextDir);
+        }
     });
 });

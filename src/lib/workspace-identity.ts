@@ -32,10 +32,9 @@ export interface WorkspaceContext {
 export const LOCK_KEYS = {
     workspaceRoot: "root",
     activeProfile: "profile",
-    lastCliUpdate: "last-cli-update",
 } as const;
 
-/** Parsed representation of a workspace .lock file. All fields are strings; lastCliUpdate is empty when never set. */
+/** Parsed representation of a workspace .lock file. All fields are strings. */
 export type LockFile = { -readonly [K in keyof typeof LOCK_KEYS]: string };
 
 /** Reverse lookup: file key → LockFile field name, used during parsing. */
@@ -86,7 +85,6 @@ function parseLockFile(workspaceId: string): LockFile | null {
         return {
             workspaceRoot: partial.workspaceRoot,
             activeProfile: partial.activeProfile ?? PROFILE.default,
-            lastCliUpdate: partial.lastCliUpdate ?? "",
         };
     } catch {
         return null;
@@ -106,13 +104,12 @@ export function readLockFile(workspaceId: string): string | null {
     return parseLockFile(workspaceId)?.workspaceRoot ?? null;
 }
 
-/** Write a workspace's lock file with the owning workspace root path. Preserves active profile and lastCliUpdate. */
+/** Write a workspace's lock file with the owning workspace root path. Preserves active profile. */
 export function writeLockFile(workspaceId: string, workspaceRoot: string): void {
     const existing = parseLockFile(workspaceId);
     writeLockFileInternal(workspaceId, {
         workspaceRoot,
         activeProfile: existing?.activeProfile ?? PROFILE.default,
-        lastCliUpdate: existing?.lastCliUpdate ?? "",
     });
 }
 
@@ -121,23 +118,11 @@ export function readActiveProfile(workspaceId: string): string | null {
     return parseLockFile(workspaceId)?.activeProfile ?? null;
 }
 
-/** Write the active profile name. Preserves workspace root path and lastCliUpdate. */
+/** Write the active profile name. Preserves workspace root path. */
 export function writeActiveProfile(workspaceId: string, profile: string): void {
     const existing = parseLockFile(workspaceId);
     if (!existing) return;
     writeLockFileInternal(workspaceId, { ...existing, activeProfile: profile });
-}
-
-/** Read the last CLI update timestamp. Returns empty string if lock file is missing or field was never set. */
-export function readLastCliUpdate(workspaceId: string): string {
-    return parseLockFile(workspaceId)?.lastCliUpdate ?? "";
-}
-
-/** Write the last CLI update timestamp. Preserves all other fields. No-op if lock file is missing. */
-export function writeLastCliUpdate(workspaceId: string, timestamp: string): void {
-    const existing = parseLockFile(workspaceId);
-    if (!existing) return;
-    writeLockFileInternal(workspaceId, { ...existing, lastCliUpdate: timestamp });
 }
 
 // --- Workspace directory initialization --------------------------------------------------------------------------------------------------
@@ -147,7 +132,7 @@ export function initWorkspaceDir(workspaceId: string, workspaceRoot: string, act
     const dir = getWorkspaceDir(workspaceId);
     mkdirSync(join(dir, AGENTS_DIR), { recursive: true });
     mkdirSync(join(dir, SHADOWS_DIR), { recursive: true });
-    writeLockFileInternal(workspaceId, { workspaceRoot, activeProfile, lastCliUpdate: "" });
+    writeLockFileInternal(workspaceId, { workspaceRoot, activeProfile });
 }
 
 // --- Listing -----------------------------------------------------------------------------------------------------------------------------

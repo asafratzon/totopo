@@ -8,7 +8,7 @@ import { randomBytes } from "node:crypto";
 import { readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CONTAINER_HOME, CONTAINER_NAME_PREFIX, CONTAINER_POST_START, CONTAINER_USER, LABEL_MANAGED } from "./constants.js";
+import { CONTAINER_HOME, CONTAINER_NAME_PREFIX, CONTAINER_STARTUP, CONTAINER_USER, LABEL_MANAGED } from "./constants.js";
 
 // --- User shell config appended after USER instruction -----------------------------------------------------------------------------------
 
@@ -22,7 +22,7 @@ RUN echo 'export PS1="\\[\\033[01;32m\\][devcontainer]\\[\\033[00m\\] \\[\\033[0
     echo 'echo ""' >> ${CONTAINER_HOME}/.bashrc && \\
     echo "echo \\"  Run 'opencode', 'claude', or 'codex' to start an agent.\\"" >> ${CONTAINER_HOME}/.bashrc && \\
     echo 'echo ""' >> ${CONTAINER_HOME}/.bashrc && \\
-    echo 'alias status="node ${CONTAINER_POST_START}"' >> ${CONTAINER_HOME}/.bashrc
+    echo 'alias status="node ${CONTAINER_STARTUP}"' >> ${CONTAINER_HOME}/.bashrc
 
 CMD ["/bin/bash"]
 `;

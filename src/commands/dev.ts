@@ -6,17 +6,16 @@
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join, relative } from "node:path";
-import { cancel, isCancel, log, outro, select } from "@clack/prompts";
+import { cancel, confirm, isCancel, log, outro, select } from "@clack/prompts";
 import { buildAgentContextDocs, buildAgentMountArgs, injectAgentContext } from "../lib/agent-context.js";
-import { CONTAINER_POST_START, CONTAINER_WORKSPACE, LABEL_MANAGED, LABEL_PROFILE, LABEL_SHADOWS, PROFILE } from "../lib/constants.js";
+import { CONTAINER_STARTUP, CONTAINER_WORKSPACE, LABEL_MANAGED, LABEL_PROFILE, LABEL_SHADOWS, PROFILE } from "../lib/constants.js";
 import { buildDockerfile, buildImageWithTempfile } from "../lib/dockerfile-builder.js";
+import { isImageStale } from "../lib/migrate-to-latest.js";
 import { buildShadowMountArgs, ensureShadowsInSync, expandShadowPatterns } from "../lib/shadows.js";
 import type { ProfileConfig } from "../lib/totopo-yaml.js";
 import { readTotopoYaml } from "../lib/totopo-yaml.js";
 import type { WorkspaceContext } from "../lib/workspace-identity.js";
-import { readActiveProfile, readLastCliUpdate, writeActiveProfile, writeLastCliUpdate } from "../lib/workspace-identity.js";
-
-const CLI_UPDATE_THROTTLE_MS = 24 * 60 * 60 * 1000;
+import { readActiveProfile, writeActiveProfile } from "../lib/workspace-identity.js";
 
 // --- Prompt: working directory selection -------------------------------------------------------------------------------------------------
 async function promptWorkdir(workspaceDir: string, cwd: string): Promise<string> {
@@ -99,37 +98,12 @@ function stopAndRemoveContainer(containerName: string): void {
     spawnSync("docker", ["rm", containerName], { stdio: "pipe" });
 }
 
-// --- Update AI CLIs to latest (runs as root so npm global is writable) -------------------------------------------------------------------
-function updateAiClis(containerName: string): void {
-    log.step("Updating AI CLIs to latest...");
-    spawnSync(
-        "docker",
-        [
-            "exec",
-            "-u",
-            "root",
-            containerName,
-            "npm",
-            "install",
-            "-g",
-            "opencode-ai@latest",
-            "@anthropic-ai/claude-code@latest",
-            "@openai/codex@latest",
-        ],
-        { stdio: "inherit" },
-    );
-}
-
-// --- Run post-start ----------------------------------------------------------------------------------------------------------------------
-function runPostStart(containerName: string): void {
-    log.step("Running post-start checks...");
-    const postStart = spawnSync("docker", ["exec", containerName, "node", CONTAINER_POST_START], {
-        stdio: "inherit",
+// --- Run startup checks (AI CLI update + readiness validation) ---------------------------------------------------------------------------
+function runStartup(containerName: string, quiet?: boolean): boolean {
+    const result = spawnSync("docker", ["exec", "-u", "root", containerName, "node", CONTAINER_STARTUP], {
+        stdio: quiet ? "pipe" : "inherit",
     });
-    if (postStart.status !== 0) {
-        outro("Post-start checks failed.");
-        process.exit(postStart.status ?? 1);
-    }
+    return result.status === 0;
 }
 
 // =========================================================================================================================================
@@ -331,7 +305,7 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
     const hasGit = existsSync(join(workspaceDir, ".git"));
 
     // --- Start container -----------------------------------------------------------------------------------------------------------------
-    const sessionResult = startContainer({
+    const containerOpts: StartContainerOpts = {
         containerName,
         workspaceRoot: workspaceDir,
         cacheDir,
@@ -344,18 +318,46 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
         shadowPatterns,
         workspaceName: ctx.displayName,
         ...(options?.noCache !== undefined && { noCache: options.noCache }),
-    });
+    };
+    startContainer(containerOpts);
 
-    // --- Post-start setup (only on fresh start or resume) --------------------------------------------------------------------------------
-    if (sessionResult === "created" || sessionResult === "resumed") {
-        const lastUpdate = readLastCliUpdate(ctx.workspaceId);
-        if (!lastUpdate || Date.now() - new Date(lastUpdate).getTime() >= CLI_UPDATE_THROTTLE_MS) {
-            updateAiClis(containerName);
-            writeLastCliUpdate(ctx.workspaceId, new Date().toISOString());
-        } else {
-            log.info("AI CLIs are up to date.");
+    // --- Stale image check - prompt user to rebuild if image is outdated ------------------------------------------------------------------
+    let stale = isImageStale(containerName);
+    if (stale) {
+        log.warn(
+            "totopo's latest release includes an updated container image.\n  Please rebuild to update — this will not affect agent memory, settings, or your data.",
+        );
+        const rebuild = await confirm({
+            message: "Rebuild now? (Recommended)",
+            initialValue: true,
+        });
+        if (isCancel(rebuild)) {
+            cancel("Session cancelled.");
+            process.exit(0);
         }
-        runPostStart(containerName);
+        if (rebuild) {
+            stopAndRemoveContainer(containerName);
+            spawnSync("docker", ["rmi", containerName], { stdio: "pipe" });
+            startContainer(containerOpts);
+            stale = false;
+        }
+    }
+
+    // --- Startup checks (AI CLI update + readiness validation) ----------------------------------------------------------------------------
+    if (!runStartup(containerName, stale)) {
+        if (stale) {
+            const connect = await confirm({
+                message: "Startup checks failed (likely due to outdated image). Connect anyway?",
+                initialValue: true,
+            });
+            if (!connect || isCancel(connect)) {
+                cancel("Session cancelled.");
+                process.exit(0);
+            }
+        } else {
+            outro("Startup checks failed.");
+            process.exit(1);
+        }
     }
 
     // --- Connect -------------------------------------------------------------------------------------------------------------------------

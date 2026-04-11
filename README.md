@@ -12,9 +12,10 @@ Local sandbox for AI agents.
 
 ## Motivation
 
-Two fundamental issues with AI agents:
-- They are non-deterministic and will occasionally make mistakes.
-- Susceptibility to prompt injection — they can get compromised and act against your interests without you knowing.
+**Can you trust an AI agent?** Two issues make that hard:
+
+- **Inherently unpredictable**: they will make mistakes, often without you knowing, and not always possible to undo.
+- **Vulnerable to prompt injection**: a subtle attack that can silently turn your agent against you.
 
 totopo addresses both with a dev container - when you run totopo in a given directory, the directory is mounted as a workspace where agents get a full, capable environment to work in — they just can't touch anything outside the workspace, and they can't reach remote git repositories.
 
@@ -48,7 +49,7 @@ Once set up, the flow is simple:
 
 A few things happen automatically:
 
-- **Agents stay up to date** — when you open a session, totopo ensures all AI CLIs are on their latest version.
+- **Agents stay up to date** — totopo keeps all AI CLIs on their latest versions, checking for updates automatically.
 - **Sessions are persistent** — agent memory and settings survive container restarts and rebuilds.
 - **Your machine stays safe** — the container can't push to remote, can't read outside the workspace, and sensitive paths like `.env` can be hidden from agents entirely (see [Shadow Paths](#shadow-paths)).
 
@@ -168,7 +169,7 @@ codex       # Codex (OpenAI)
 
 Agents are self-aware — sandbox constraints, git remote block, and any active shadow path overlays are injected into agent context at every session start.
 
-totopo updates all three CLIs to their latest published versions at most once per 24 hours per workspace.
+totopo keeps all three CLIs on their latest published versions, checking for updates automatically.
 
 ### Persistent Agent Memory
 
