@@ -88,7 +88,7 @@ Active profile is known from the current lock file (line 2), so migration is det
 - Docs updates required
 - Agent context injection needs to account for per-profile container names
 
-### Local LLMs
+### Local LLM Support
 
 ## Low Priority Backlog
 
