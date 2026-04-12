@@ -3,24 +3,15 @@
     "title": "totopo.yaml",
     "description": "Configuration file for totopo — secure AI dev containers",
     "type": "object",
-    "required": ["schema_version", "workspace_id"],
+    "required": ["workspace_id"],
     "additionalProperties": false,
     "properties": {
-        "schema_version": {
-            "type": "integer",
-            "const": 3,
-            "description": "Schema version — must be 3"
-        },
         "workspace_id": {
             "type": "string",
             "pattern": "^[a-z0-9][a-z0-9-]*[a-z0-9]$",
             "minLength": 2,
             "maxLength": 48,
             "description": "Unique workspace identifier. Used for container naming and cache directory. Lowercase alphanumeric and hyphens only."
-        },
-        "name": {
-            "type": "string",
-            "description": "Human-readable workspace name (shown in menus and welcome message)"
         },
         "env_file": {
             "type": "string",

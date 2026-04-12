@@ -12,15 +12,14 @@ Local sandbox for AI agents.
 
 ## Motivation
 
-Before they run freely on your machine, ask yourself: **can you trust AI agents?**
+Two fundamental risks when running AI agents locally:
 
-- **Inherently unpredictable**: agents inevitably make mistakes, in ways that may be hard to detect or undo.
-- **Vulnerable to prompt injection**: agents with internet access can be subtly manipulated to leak sensitive data or execute unauthorized operations.
+1. Agents are unpredictable — they will make mistakes that may be hard to detect or undo.
+2. Agents are vulnerable to prompt injection and can be subtly manipulated to leak sensitive data or execute unauthorized operations.
 
-Totopo mitigates both risks with a dev container - when you run totopo in a given directory, that directory is mounted as a workspace where agents get a full, capable environment to work in - without access to anything outside it or to remote Git repositories.
+Totopo mitigates both risks by letting you run agents in a dev container — when you run totopo in a given directory, that directory is mounted as a workspace where agents can work freely, without access to the rest of your filesystem or your git remote.
 
-If an agent makes a mistake, damage is contained to the workspace, your git remote is out of reach.<br>
-If an agent gets compromised, it can't reach your host files — blast radius is limited to the workspace you chose to share.
+In practice, this means any mistake can be reverted from your git remote, and even a compromised agent can't access sensitive files on your machine — SSH keys, credentials, browser data — things a locally-running agent could otherwise read without you ever noticing.
 
 > totopo's security approach is basic — it is about the minimal precautions I believe anyone running AI agents should have. If you need more robust protections, look somewhere else.
 

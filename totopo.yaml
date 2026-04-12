@@ -1,19 +1,15 @@
-# yaml-language-server: $schema=https://raw.githubusercontent.com/asafratzon/totopo/v3.0.1/schema/totopo.schema.json
-schema_version: 3
 
-# totopo workspace config — run 'npx totopo' from anywhere under this directory tree to start your dev container.
+# totopo workspace config - run 'npx totopo' from anywhere under this directory tree to start your dev container.
 # Ask the AI agent inside the container to help you edit this file if needed.
 # This file may be rewritten by totopo (repair, reset, settings changes). Custom comments will not be preserved.
 workspace_id: totopo
-name: totopo
 
-# .gitignore-style patterns — agents see an empty, isolated copy instead of the real host data.
+# .gitignore-style patterns - agents see an empty, isolated copy instead of the real host data.
 shadow_paths:
   - node_modules
   - .env*
 
-# Dockerfile profiles — each adds on top of the totopo base image (Debian + Node.js + git + AI CLIs).
-# Base Dockerfile: https://raw.githubusercontent.com/asafratzon/totopo/v3.0.1/templates/Dockerfile
+# Dockerfile profiles - each adds on top of the totopo base image (Debian + Node.js + git + AI CLIs).
 # Switch profiles in the totopo settings menu, or ask the agent inside the container to help you add a new one.
 profiles:
   default:

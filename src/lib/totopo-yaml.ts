@@ -17,9 +17,7 @@ export interface ProfileConfig {
 }
 
 export interface TotopoYamlConfig {
-    schema_version: 3;
     workspace_id: string;
-    name?: string;
     env_file?: string;
     shadow_paths?: string[];
     profiles?: Record<string, ProfileConfig>;
@@ -112,22 +110,17 @@ export function readTotopoYaml(dir: string): TotopoYamlConfig | null {
 // Every published version (rc or release) has a corresponding git tag created by pnpm rc / pnpm rc:promote.
 // We rely on that tag existing so these URLs resolve correctly for every installed version.
 const { version } = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8")) as { version: string };
-const GITHUB_RAW_BASE = `https://raw.githubusercontent.com/asafratzon/totopo/v${version}`;
 export const GITHUB_README_URL = `https://github.com/asafratzon/totopo/blob/v${version}/README.md`;
-
-const YAML_HEADER = `# yaml-language-server: $schema=${GITHUB_RAW_BASE}/schema/totopo.schema.json
-`;
 
 // Inline comments injected before specific YAML keys (preceded by a blank line)
 const YAML_COMMENTS: Partial<Record<keyof TotopoYamlConfig, string>> = {
     workspace_id:
-        "# totopo workspace config — run 'npx totopo' from anywhere under this directory tree to start your dev container.\n" +
+        "# totopo workspace config - run 'npx totopo' from anywhere under this directory tree to start your dev container.\n" +
         "# Ask the AI agent inside the container to help you edit this file if needed.\n" +
         "# This file may be rewritten by totopo (repair, reset, settings changes). Custom comments will not be preserved.",
-    shadow_paths: "# .gitignore-style patterns — agents see an empty, isolated copy instead of the real host data.",
+    shadow_paths: "# .gitignore-style patterns - agents see an empty, isolated copy instead of the real host data.",
     profiles:
-        "# Dockerfile profiles — each adds on top of the totopo base image (Debian + Node.js + git + AI CLIs).\n" +
-        `# Base Dockerfile: ${GITHUB_RAW_BASE}/templates/Dockerfile\n` +
+        "# Dockerfile profiles - each adds on top of the totopo base image (Debian + Node.js + git + AI CLIs).\n" +
         "# Switch profiles in the totopo settings menu, or ask the agent inside the container to help you add a new one.",
 };
 
@@ -154,7 +147,7 @@ export function writeTotopoYaml(dir: string, config: TotopoYamlConfig): void {
     }
 
     const body = output.join("\n").trimEnd();
-    writeFileSync(filePath, `${YAML_HEADER}${body}\n${PROFILES_FOOTER_COMMENT}\n`);
+    writeFileSync(filePath, `${body}\n${PROFILES_FOOTER_COMMENT}\n`);
 }
 
 // --- Defaults ----------------------------------------------------------------------------------------------------------------------------
@@ -184,9 +177,8 @@ RUN curl -fsSL https://bun.sh/install | bash
 const PROFILES_FOOTER_COMMENT = "  # Add more profiles here — or ask the agent inside the container to set one up for you.";
 
 /** Create a default TotopoYamlConfig with sane defaults. */
-export function buildDefaultTotopoYaml(workspaceId: string, name?: string): TotopoYamlConfig {
-    const config: TotopoYamlConfig = {
-        schema_version: 3,
+export function buildDefaultTotopoYaml(workspaceId: string): TotopoYamlConfig {
+    return {
         workspace_id: workspaceId,
         shadow_paths: [...DEFAULT_SHADOW_PATHS],
         profiles: {
@@ -200,19 +192,12 @@ export function buildDefaultTotopoYaml(workspaceId: string, name?: string): Toto
             },
         },
     };
-    if (name) config.name = name;
-
-    // Reorder keys so name appears after workspace_id
-    const { schema_version, workspace_id, name: n, ...rest } = config;
-    const ordered: Record<string, unknown> = { schema_version, workspace_id };
-    if (n !== undefined) ordered.name = n;
-    return Object.assign(ordered, rest) as unknown as TotopoYamlConfig;
 }
 
 // --- Repair -------------------------------------------------------------------------------------------------------------------------------
 
 /** Set of keys that TotopoYamlConfig allows (used to strip unknown fields). */
-const KNOWN_KEYS = new Set<string>(["schema_version", "workspace_id", "name", "env_file", "shadow_paths", "profiles"]);
+const KNOWN_KEYS = new Set<string>(["workspace_id", "env_file", "shadow_paths", "profiles"]);
 
 export interface RepairResult {
     repairedYaml: TotopoYamlConfig | null;
@@ -249,10 +234,6 @@ export function repairTotopoYaml(dir: string): RepairResult {
         const defaults = buildDefaultTotopoYaml((obj.workspace_id as string) || fallbackId);
 
         // Fill missing required fields
-        if (!("schema_version" in obj)) {
-            obj.schema_version = defaults.schema_version;
-            fixes.push("added missing schema_version");
-        }
         if (!("workspace_id" in obj)) {
             obj.workspace_id = defaults.workspace_id;
             fixes.push(`added missing workspace_id ("${defaults.workspace_id}")`);
