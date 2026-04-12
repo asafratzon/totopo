@@ -78,11 +78,11 @@ async function clearAgentMemory(): Promise<void> {
         const w = workspaces[0];
         if (w === undefined) return;
         toClear = [w.workspaceId];
-        log.info(`Clearing agent memory for ${w.displayName}...`);
+        log.info(`Clearing agent memory for ${w.workspaceId}...`);
     } else {
         const selected = await multiselect({
             message: "Select workspaces to clear agent memory for: (space to toggle, enter to confirm)",
-            options: workspaces.map((w) => ({ value: w.workspaceId, label: w.displayName, hint: w.workspaceRoot })),
+            options: workspaces.map((w) => ({ value: w.workspaceId, label: w.workspaceId, hint: w.workspaceRoot })),
             required: false,
         });
         if (isCancel(selected)) {
@@ -104,7 +104,7 @@ async function clearAgentMemory(): Promise<void> {
 
         if (isRunning) {
             const confirmed = await confirm({
-                message: `Container for ${w.displayName} is running. Stop it to clear memory?`,
+                message: `Container for ${w.workspaceId} is running. Stop it to clear memory?`,
             });
             if (isCancel(confirmed) || !confirmed) continue;
             log.step(`Stopping ${w.containerName}...`);
@@ -113,7 +113,7 @@ async function clearAgentMemory(): Promise<void> {
 
         const agentsDir = join(w.workspaceDir, AGENTS_DIR);
         safeRmSync(agentsDir, { recursive: true, force: true });
-        log.success(`Cleared agent memory for ${w.displayName}.`);
+        log.success(`Cleared agent memory for ${w.workspaceId}.`);
     }
 }
 
@@ -185,7 +185,7 @@ async function uninstallWorkspaces(currentWorkspaceId?: string): Promise<boolean
         message: "Select workspaces to uninstall: (space to toggle, enter to confirm)",
         options: sorted.map((w) => ({
             value: w.workspaceId,
-            label: w.displayName,
+            label: w.workspaceId,
             hint: w.workspaceRoot + (w.workspaceId === currentWorkspaceId ? " (current)" : ""),
         })),
         required: false,
@@ -227,7 +227,7 @@ async function uninstallWorkspaces(currentWorkspaceId?: string): Promise<boolean
         }
 
         removeWorkspaceFiles(w.workspaceRoot, w.workspaceDir, removeTotopoYaml);
-        log.success(`Uninstalled workspace ${w.displayName}.`);
+        log.success(`Uninstalled workspace ${w.workspaceId}.`);
     }
 
     return currentWorkspaceId !== undefined && selectedIds.includes(currentWorkspaceId);

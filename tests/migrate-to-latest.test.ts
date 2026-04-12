@@ -106,7 +106,7 @@ describe("migrate-to-latest", () => {
 
     test("renames project_id to workspace_id in totopo.yaml", () => {
         // Create a totopo.yaml with project_id in cwd
-        writeFileSync(join(tmp, "totopo.yaml"), "schema_version: 3\nproject_id: legacy-ws\n");
+        writeFileSync(join(tmp, "totopo.yaml"), "schema_version: 3\nproject_id: legacy-ws\n"); // legacy format with schema_version
 
         // Need workspace dir to exist for readTotopoYaml after rename
         mkdirSync(join(fakeHome, TOTOPO_DIR, WORKSPACES_DIR), { recursive: true });
@@ -119,7 +119,7 @@ describe("migrate-to-latest", () => {
     });
 
     test("no-op when totopo.yaml already has workspace_id", () => {
-        writeFileSync(join(tmp, "totopo.yaml"), "schema_version: 3\nworkspace_id: modern-ws\n");
+        writeFileSync(join(tmp, "totopo.yaml"), "workspace_id: modern-ws\n");
         mkdirSync(join(fakeHome, TOTOPO_DIR, WORKSPACES_DIR), { recursive: true });
 
         runMigration(tmp);
@@ -263,5 +263,59 @@ describe("migrate-to-latest", () => {
         runMigration(tmp);
 
         assert.equal(readFileSync(join(wsDir, LOCK_FILE), "utf8"), original);
+    });
+
+    // ---- migrateRemoveDeprecatedYamlFields ------------------------------------------------------------------------------------------------
+
+    test("removes schema_version and yaml-language-server header from totopo.yaml", () => {
+        const yamlContent =
+            "# yaml-language-server: $schema=https://raw.githubusercontent.com/asafratzon/totopo/v3.2.1/schema/totopo.schema.json\n" +
+            "schema_version: 3\nworkspace_id: schema-test\n";
+        writeFileSync(join(tmp, "totopo.yaml"), yamlContent);
+        mkdirSync(join(fakeHome, TOTOPO_DIR, WORKSPACES_DIR), { recursive: true });
+
+        runMigration(tmp);
+
+        const content = readFileSync(join(tmp, "totopo.yaml"), "utf8");
+        assert.ok(!content.includes("schema_version"), "schema_version should be removed");
+        assert.ok(!content.includes("yaml-language-server"), "yaml-language-server header should be removed");
+        assert.ok(content.includes("workspace_id: schema-test"), "workspace_id should be preserved");
+    });
+
+    test("removes name field from totopo.yaml", () => {
+        writeFileSync(join(tmp, "totopo.yaml"), "workspace_id: name-test\nname: My Project\n");
+        mkdirSync(join(fakeHome, TOTOPO_DIR, WORKSPACES_DIR), { recursive: true });
+
+        runMigration(tmp);
+
+        const content = readFileSync(join(tmp, "totopo.yaml"), "utf8");
+        assert.ok(!content.includes("name:"), "name field should be removed");
+        assert.ok(content.includes("workspace_id: name-test"), "workspace_id should be preserved");
+    });
+
+    test("removes all deprecated fields in one pass", () => {
+        const yamlContent =
+            "# yaml-language-server: $schema=https://example.com/schema.json\n" +
+            "schema_version: 3\nworkspace_id: combo-test\nname: My Project\n";
+        writeFileSync(join(tmp, "totopo.yaml"), yamlContent);
+        mkdirSync(join(fakeHome, TOTOPO_DIR, WORKSPACES_DIR), { recursive: true });
+
+        runMigration(tmp);
+
+        const content = readFileSync(join(tmp, "totopo.yaml"), "utf8");
+        assert.ok(!content.includes("schema_version"), "schema_version should be removed");
+        assert.ok(!content.includes("yaml-language-server"), "yaml-language-server header should be removed");
+        assert.ok(!content.includes("name:"), "name field should be removed");
+        assert.ok(content.includes("workspace_id: combo-test"), "workspace_id should be preserved");
+    });
+
+    test("migrateRemoveDeprecatedYamlFields is a no-op when no deprecated fields present", () => {
+        writeFileSync(join(tmp, "totopo.yaml"), "workspace_id: clean-ws\n");
+        mkdirSync(join(fakeHome, TOTOPO_DIR, WORKSPACES_DIR), { recursive: true });
+
+        runMigration(tmp);
+
+        const content = readFileSync(join(tmp, "totopo.yaml"), "utf8");
+        assert.ok(content.includes("workspace_id: clean-ws"));
     });
 });

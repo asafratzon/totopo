@@ -31,7 +31,19 @@ const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as {
 const { name } = pkg;
 
 intro(`${name} — promote rc to latest`);
-log.message("Make sure you are logged in to npm before proceeding (npm whoami).");
+
+// --- npm auth check ----------------------------------------------------------------------------------------------------------------------
+const whoami = spawnSync("npm", ["whoami"], { encoding: "utf8", stdio: "pipe" });
+if (whoami.status === 0) {
+    log.success(`Logged in to npm as ${whoami.stdout.trim()}`);
+} else {
+    const loginOk = await confirm({ message: "Not logged in to npm. Run npm login now?" });
+    if (isCancel(loginOk) || !loginOk) {
+        cancel("Cannot publish without npm auth.");
+        process.exit(0);
+    }
+    execSync("npm login", { stdio: "inherit" });
+}
 
 let stashedBeforeRelease = false;
 

@@ -43,7 +43,7 @@ src/commands/                  - Command modules (compiled to dist/commands/ by 
   doctor.ts                    - Host readiness checks (Docker installed and running)
   global.ts                    - "Manage totopo" menu: stop containers, clear memory, remove images, uninstall
   menu.ts                      - Workspace menu (per-workspace actions and status display)
-  onboard.ts                   - First-time setup: workspace root, name, workspace_id, totopo.yaml creation
+  onboard.ts                   - First-time setup: workspace root, workspace_id, totopo.yaml creation
   workspace.ts                 - "Manage Workspace" submenu: shadow paths, rebuild, reset config
                                  Exports: stop(), resetImage() for workspace container lifecycle
 

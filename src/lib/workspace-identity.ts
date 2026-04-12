@@ -23,9 +23,8 @@ import { readTotopoYaml } from "./totopo-yaml.js";
 export interface WorkspaceContext {
     workspaceId: string; // unique slug from totopo.yaml (e.g. "my-project")
     workspaceRoot: string; // absolute path to the repo/dir containing totopo.yaml
-    containerName: string; // docker container and image name (e.g. "totopo-my-project")
+    containerName: string; // docker container and image name: totopo-<workspace_id>
     workspaceDir: string; // host cache dir: ~/.totopo/workspaces/<workspace_id>/
-    displayName: string; // human-readable name from totopo.yaml, falls back to workspaceId
 }
 
 /** Maps LockFile field names to their corresponding keys written in the .lock file. */
@@ -162,7 +161,6 @@ export function listWorkspaces(): WorkspaceContext[] {
                     workspaceRoot: lockPath,
                     containerName: deriveContainerName(workspaceId),
                     workspaceDir: getWorkspaceDir(workspaceId),
-                    displayName: yaml.name || workspaceId,
                 };
             } catch {
                 return null;
@@ -191,7 +189,6 @@ export function resolveWorkspace(fromPath: string): WorkspaceContext | null {
                     workspaceRoot: current,
                     containerName: deriveContainerName(yaml.workspace_id),
                     workspaceDir: getWorkspaceDir(yaml.workspace_id),
-                    displayName: yaml.name || yaml.workspace_id,
                 };
             }
             // totopo.yaml found but workspace not initialized or lock mismatch - return null
