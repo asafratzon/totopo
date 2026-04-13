@@ -47,6 +47,17 @@ describe("safeRmSync", () => {
         assert.ok(!existsSync(file));
     });
 
+    // --- Allowed: legacy workspace-local .totopo/ ----------------------------------------------------------------------------------------
+
+    test("deletes a directory named .totopo in any directory", () => {
+        const tmp = createTempDir();
+        const dir = join(tmp, TOTOPO_DIR);
+        mkdirSync(dir, { recursive: true });
+        safeRmSync(dir, { recursive: true });
+        assert.ok(!existsSync(dir));
+        cleanTempDir(tmp);
+    });
+
     // --- Allowed: totopo.yaml anywhere ---------------------------------------------------------------------------------------------------
 
     test("deletes a file named totopo.yaml in any directory", () => {
@@ -80,5 +91,9 @@ describe("safeRmSync", () => {
     test("throws for a path that starts with ~/.totopo but is not under it", () => {
         // ~/.totopo-other must not be confused with ~/.totopo/
         assert.throws(() => safeRmSync("/tmp/.totopo-other"), /safeRmSync: refusing to delete/);
+    });
+
+    test("throws for a path with a name similar to .totopo", () => {
+        assert.throws(() => safeRmSync("/tmp/project/.totopo-other"), /safeRmSync: refusing to delete/);
     });
 });
