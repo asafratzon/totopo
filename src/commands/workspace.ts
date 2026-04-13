@@ -169,7 +169,7 @@ async function resetTotopoYaml(ctx: WorkspaceContext): Promise<void> {
 
     note(
         "This will reset totopo.yaml to factory defaults.\n" +
-            "Your workspace_id and name will be preserved.\n" +
+            "Your workspace_id will be preserved.\n" +
             "Shadow paths, profiles, and env_file will be reset to defaults.",
         "Reset totopo.yaml",
     );
@@ -177,7 +177,7 @@ async function resetTotopoYaml(ctx: WorkspaceContext): Promise<void> {
     const confirmed = await confirm({ message: "Reset totopo.yaml to defaults?" });
     if (isCancel(confirmed) || !confirmed) return;
 
-    const freshYaml = buildDefaultTotopoYaml(yaml.workspace_id, yaml.name);
+    const freshYaml = buildDefaultTotopoYaml(yaml.workspace_id);
     writeTotopoYaml(ctx.workspaceRoot, freshYaml);
     log.success("totopo.yaml reset to defaults.");
 

@@ -82,12 +82,6 @@ export async function run(cwd: string): Promise<WorkspaceContext | null> {
         workspaceRoot = yamlDir;
         yaml = existing;
 
-        // Show welcome message
-        if (yaml.name) {
-            log.info(yaml.name);
-            process.stdout.write("\n");
-        }
-
         const ok = await confirm({ message: `Set up totopo for: ${toTildePath(workspaceRoot)}?` });
         if (isCancel(ok) || !ok) {
             cancel("Setup cancelled.");
@@ -133,24 +127,25 @@ export async function run(cwd: string): Promise<WorkspaceContext | null> {
             workspaceRoot = rootChoice as string;
         }
 
-        // Ask for workspace name (used as display name, also derives workspace_id)
-        const defaultName = basename(workspaceRoot);
-        const nameInput = await text({
-            message: "Workspace name:",
-            placeholder: defaultName,
-            defaultValue: defaultName,
+        // Ask for workspace ID
+        const defaultId = slugifyForWorkspaceId(basename(workspaceRoot));
+        const idInput = await text({
+            message: "Workspace ID:",
+            placeholder: defaultId,
+            defaultValue: defaultId,
+            validate: (v) => validateWorkspaceId((v ?? "").trim() || defaultId),
         });
-        if (isCancel(nameInput)) {
+        if (isCancel(idInput)) {
             cancel("Setup cancelled.");
             return null;
         }
-        const workspaceName = (nameInput as string).trim() || defaultName;
+        const inputId = (idInput as string).trim() || defaultId;
 
-        // Derive workspace_id from name, auto-resolve collisions with numeric suffix
-        const workspaceId = deriveUniqueWorkspaceId(slugifyForWorkspaceId(workspaceName), workspaceRoot);
+        // Auto-resolve collisions with numeric suffix
+        const workspaceId = deriveUniqueWorkspaceId(inputId, workspaceRoot);
 
         // Build and write totopo.yaml
-        yaml = buildDefaultTotopoYaml(workspaceId, workspaceName);
+        yaml = buildDefaultTotopoYaml(workspaceId);
         writeTotopoYaml(workspaceRoot, yaml);
         log.success(`Created ${toTildePath(join(workspaceRoot, TOTOPO_YAML))}`);
     }
@@ -239,6 +234,5 @@ export async function run(cwd: string): Promise<WorkspaceContext | null> {
         workspaceRoot,
         containerName: deriveContainerName(finalId),
         workspaceDir: getWorkspaceDir(finalId),
-        displayName: yaml.name || finalId,
     };
 }

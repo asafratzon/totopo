@@ -11,7 +11,7 @@ describe("removeWorkspaceFiles", () => {
         const workspaceDir = createTempDir();
         const yamlPath = join(workspaceRoot, "totopo.yaml");
 
-        writeFileSync(yamlPath, "schema_version: 3\nworkspace_id: test\n");
+        writeFileSync(yamlPath, "workspace_id: test\n");
         mkdirSync(join(workspaceDir, "agents"), { recursive: true });
 
         removeWorkspaceFiles(workspaceRoot, workspaceDir, true);
@@ -27,7 +27,7 @@ describe("removeWorkspaceFiles", () => {
         const workspaceDir = createTempDir();
         const yamlPath = join(workspaceRoot, "totopo.yaml");
 
-        writeFileSync(yamlPath, "schema_version: 3\nworkspace_id: test\n");
+        writeFileSync(yamlPath, "workspace_id: test\n");
 
         removeWorkspaceFiles(workspaceRoot, workspaceDir, false);
 
