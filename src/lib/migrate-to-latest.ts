@@ -6,7 +6,7 @@
 //   v2.x (~/.totopo/projects/<sha256-hash>/)
 //     Each workspace stored as: meta.json, settings.json, agents/, shadows/
 //     Global API keys in ~/.totopo/.env
-//     Optional totopo.yaml with name field (no schema_version)
+//     Optional totopo.yaml with name field (removed in v3.3)
 //
 //   v3-rc-1/rc-2 (~/.totopo/workspaces/<workspace_id>/)
 //     Renamed projects/ to workspaces/, hash dirs to workspace_id dirs
@@ -16,14 +16,17 @@
 //   v3-rc-3+ (latest)
 //     project_id renamed to workspace_id in totopo.yaml
 //
+//   v3.2.1 and earlier
+//     totopo.yaml had schema_version field and yaml-language-server header (both redundant)
+//
 // All migrations are idempotent - each checks if needed and skips if not.
 // =========================================================================================================================================
 
 import { spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { log } from "@clack/prompts";
+import { confirm, isCancel, log } from "@clack/prompts";
 import { load as loadYaml } from "js-yaml";
 import { AGENTS_DIR, CONTAINER_STARTUP, LOCK_FILE, PROFILE, SHADOWS_DIR, TOTOPO_DIR, TOTOPO_YAML, WORKSPACES_DIR } from "./constants.js";
 import { safeRmSync } from "./safe-rm.js";
@@ -71,17 +74,6 @@ function readV2ShadowPaths(dirPath: string): string[] {
         return [];
     } catch {
         return [];
-    }
-}
-
-function readV2YamlName(workspaceRoot: string): string | null {
-    try {
-        const raw = loadYaml(readFileSync(join(workspaceRoot, TOTOPO_YAML), "utf8"));
-        if (typeof raw !== "object" || raw === null) return null;
-        const obj = raw as Record<string, unknown>;
-        return typeof obj.name === "string" ? obj.name : null;
-    } catch {
-        return null;
     }
 }
 
@@ -144,10 +136,8 @@ function migrateSingleV2Workspace(v2: V2Project, existingIds: Set<string>): stri
     if (yaml) {
         workspaceId = yaml.workspace_id;
     } else {
-        const v2Name = readV2YamlName(v2.projectRoot);
-
         workspaceId = generateUniqueWorkspaceId(v2.displayName, existingIds);
-        yaml = buildDefaultTotopoYaml(workspaceId, v2Name ?? v2.displayName);
+        yaml = buildDefaultTotopoYaml(workspaceId);
 
         if (v2.shadowPaths.length > 0) {
             yaml.shadow_paths = [...new Set([...(yaml.shadow_paths ?? []), ...v2.shadowPaths])];
@@ -189,6 +179,63 @@ function migrateSingleV2Workspace(v2: V2Project, existingIds: Set<string>): stri
 // =========================================================================================================================================
 // Migration steps - each is idempotent and checks if needed before acting
 // =========================================================================================================================================
+
+const V1_WORKSPACE_FILES = ["Dockerfile", "README.md", "post-start.mjs", "settings.json"] as const;
+
+function getCandidateWorkspaceRoots(cwd: string): string[] {
+    const roots = [cwd];
+    const gitRoot = spawnSync("git", ["rev-parse", "--show-toplevel"], {
+        cwd,
+        encoding: "utf8",
+        stdio: "pipe",
+    });
+
+    const root = (gitRoot.stdout ?? "").trim();
+    if (gitRoot.status === 0 && root.length > 0 && root !== cwd) roots.push(root);
+
+    return roots;
+}
+
+function detectLegacyV1WorkspaceDir(cwd: string): string | null {
+    for (const root of getCandidateWorkspaceRoots(cwd)) {
+        const legacyDir = join(root, TOTOPO_DIR);
+        try {
+            if (!statSync(legacyDir).isDirectory()) continue;
+        } catch {
+            continue;
+        }
+
+        const hasLegacyFile = V1_WORKSPACE_FILES.some((file) => existsSync(join(legacyDir, file)));
+        if (hasLegacyFile) return legacyDir;
+    }
+
+    return null;
+}
+
+/**
+ * v1.0.3 -> latest: Remove workspace-local .totopo/ artifacts.
+ * These files are now bundled in the totopo CLI package.
+ */
+async function migrateLegacyV1WorkspaceArtifacts(cwd: string, requireConfirmation = true): Promise<void> {
+    const legacyDir = detectLegacyV1WorkspaceDir(cwd);
+    if (!legacyDir) return;
+
+    log.warn(
+        `Found legacy v1 totopo artifacts at ${legacyDir}.\n` +
+            "  Latest totopo bundles these files in the binary, so this directory can be safely removed.",
+    );
+
+    if (requireConfirmation) {
+        const shouldRemove = await confirm({ message: "Remove legacy .totopo/ directory?", initialValue: true });
+        if (isCancel(shouldRemove) || !shouldRemove) {
+            log.info("Kept legacy .totopo/ directory.");
+            return;
+        }
+    }
+
+    safeRmSync(legacyDir, { recursive: true, force: true });
+    log.success("Removed legacy .totopo/ directory.");
+}
 
 /**
  * v3-rc-1/rc-2 → latest: Rename ~/.totopo/projects/ → ~/.totopo/workspaces/.
@@ -325,7 +372,7 @@ function migrateGlobalEnv(): void {
 interface Migration {
     from: string;
     description: string;
-    run: (cwd: string) => void;
+    run: () => void | Promise<void>;
 }
 
 /**
@@ -400,26 +447,83 @@ function migrateRemoveLastCliUpdate(): void {
     }
 }
 
+/**
+ * v3.2.1 and earlier: Remove deprecated fields from totopo.yaml.
+ * - schema_version: redundant, totopo validates with the bundled JSON schema at runtime
+ * - yaml-language-server header: created stale versioned URLs
+ * - name: redundant, workspace_id serves as both identifier and display name
+ * Only migrates the current workspace (found by walking up from cwd).
+ */
+function migrateRemoveDeprecatedYamlFields(cwd: string): void {
+    const dir = findTotopoYamlDir(cwd);
+    if (!dir) return;
+
+    const filePath = join(dir, TOTOPO_YAML);
+    try {
+        const content = readFileSync(filePath, "utf8");
+
+        const hasSchemaVersion = /^schema_version:\s/m.test(content);
+        const hasYamlLsHeader = content.includes("# yaml-language-server:");
+        const hasName = /^name:\s/m.test(content);
+        if (!hasSchemaVersion && !hasYamlLsHeader && !hasName) return;
+
+        const raw = loadYaml(content);
+        if (typeof raw !== "object" || raw === null) return;
+        const obj = raw as Record<string, unknown>;
+
+        delete obj.schema_version;
+        delete obj.name;
+
+        try {
+            writeTotopoYaml(dir, obj as unknown as TotopoYamlConfig);
+            readTotopoYaml(dir);
+        } catch {
+            writeFileSync(filePath, content);
+            return;
+        }
+
+        const removed: string[] = [];
+        if (hasSchemaVersion) removed.push("schema_version");
+        if (hasYamlLsHeader) removed.push("yaml-language-server header");
+        if (hasName) removed.push("name");
+        log.success(`Migrated totopo.yaml: removed ${removed.join(", ")}`);
+    } catch {
+        // Unreadable or invalid yaml - skip
+    }
+}
+
 // Order matters: migrateProjectsDir must run before migrateV2Workspaces because
 // step 2 scans ~/.totopo/workspaces/ which only exists after step 1 renames projects/.
 // Steps 3 and 4 are independent of each other and of steps 1-2.
 // migrateLockFileFormat and migrateLockKeyYamlToRoot must run last so all workspace
 // dirs are in their final location first. migrateLockKeyYamlToRoot runs after
 // migrateLockFileFormat so the latter always writes "root=" for freshly upgraded files.
-const MIGRATIONS: Migration[] = [
-    { from: "v3-rc-1/rc-2", description: "Rename ~/.totopo/projects/ to ~/.totopo/workspaces/", run: migrateProjectsDir },
-    { from: "v2.x", description: "Hash-based dirs to workspace_id-based dirs + totopo.yaml", run: migrateV2Workspaces },
-    { from: "v3-rc-1/rc-2", description: "Rename project_id to workspace_id in totopo.yaml", run: migrateTotopoYaml },
-    { from: "v2.x", description: "Remove legacy ~/.totopo/.env global key file", run: migrateGlobalEnv },
-    { from: "v3-rc-6", description: "Upgrade .lock files from positional to key=value format", run: migrateLockFileFormat },
-    { from: "v3-rc-8", description: "Rename 'yaml' key to 'root' in .lock files", run: migrateLockKeyYamlToRoot },
-    { from: "v3.1.0", description: "Remove last-cli-update key from .lock files", run: migrateRemoveLastCliUpdate },
-];
+function buildMigrations(cwd: string, skipAnyConfirmations: boolean): Migration[] {
+    return [
+        {
+            from: "v1.0.3",
+            description: "Remove workspace-local .totopo/ artifacts",
+            run: () => migrateLegacyV1WorkspaceArtifacts(cwd, !skipAnyConfirmations),
+        },
+        { from: "v3-rc-1/rc-2", description: "Rename ~/.totopo/projects/ to ~/.totopo/workspaces/", run: migrateProjectsDir },
+        { from: "v2.x", description: "Hash-based dirs to workspace_id-based dirs + totopo.yaml", run: migrateV2Workspaces },
+        { from: "v3-rc-1/rc-2", description: "Rename project_id to workspace_id in totopo.yaml", run: () => migrateTotopoYaml(cwd) },
+        { from: "v2.x", description: "Remove legacy ~/.totopo/.env global key file", run: migrateGlobalEnv },
+        { from: "v3-rc-6", description: "Upgrade .lock files from positional to key=value format", run: migrateLockFileFormat },
+        { from: "v3-rc-8", description: "Rename 'yaml' key to 'root' in .lock files", run: migrateLockKeyYamlToRoot },
+        { from: "v3.1.0", description: "Remove last-cli-update key from .lock files", run: migrateRemoveLastCliUpdate },
+        {
+            from: "v3.2.1",
+            description: "Remove deprecated fields (schema_version, name, yaml-language-server) from totopo.yaml",
+            run: () => migrateRemoveDeprecatedYamlFields(cwd),
+        },
+    ];
+}
 
 /** Run all migrations in order. Called early in bin/totopo.js startup. */
-export function runMigration(cwd: string): void {
-    for (const migration of MIGRATIONS) {
-        migration.run(cwd);
+export async function runMigration(cwd: string, skipAnyConfirmations = true): Promise<void> {
+    for (const migration of buildMigrations(cwd, skipAnyConfirmations)) {
+        await migration.run();
     }
 }
 
@@ -432,8 +536,16 @@ export function runMigration(cwd: string): void {
 /** Check if a running container's image is stale (missing expected files/features). */
 export function isImageStale(containerName: string): boolean {
     // v3.2.0: startup.mjs replaced post-start.mjs + update-ai-clis.mjs
-    const check = spawnSync("docker", ["exec", containerName, "test", "-f", CONTAINER_STARTUP], { stdio: "pipe" });
-    if (check.status !== 0) return true;
+    const startupCheck = spawnSync("docker", ["exec", containerName, "test", "-f", CONTAINER_STARTUP], { stdio: "pipe" });
+    if (startupCheck.status !== 0) return true;
+
+    // v3.3.0: file added to the base image for artifact inspection
+    const fileCheck = spawnSync("docker", ["exec", containerName, "test", "-x", "/usr/bin/file"], { stdio: "pipe" });
+    if (fileCheck.status !== 0) return true;
+
+    // v3.3.0: bubblewrap added for Codex sandboxing prerequisites
+    const bubblewrapCheck = spawnSync("docker", ["exec", containerName, "test", "-x", "/usr/bin/bwrap"], { stdio: "pipe" });
+    if (bubblewrapCheck.status !== 0) return true;
 
     return false;
 }

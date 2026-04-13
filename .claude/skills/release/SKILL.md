@@ -50,9 +50,10 @@ If the target RC already has an entry in `in_progress.entries`, show it and ask 
 
 If not, help the user draft a new entry. The entry must follow these rules:
 - Use only the categories that apply: `added`, `changed`, `fixed`, `security`
-- One line per item — concise, user-facing language
-- No implementation details, file paths, or internal module names
-- Group related changes into single entries rather than listing each file change separately
+- One line per item — concise language describing what changed and why it matters
+- Include all relevant changes, not just user-facing ones. Test improvements, internal refactors, and tooling changes matter to users who follow the project. However, compact them: multiple related changes (e.g. several test additions) should be grouped into a single bullet rather than listed individually
+- No file paths or internal module names — describe changes in terms of what they affect, not where the code lives
+- Use common sense for grouping and filtering: a single bullet for "improved test coverage for shadow paths" is better than five bullets listing each test file, but omitting test changes entirely loses useful signal
 - Set `date` to today's date (YYYY-MM-DD format)
 - **Cumulative convention**: the new RC entry should describe the **full release** as it would appear in the final release notes, not just the delta from the previous RC. Review all previous RC entries in `in_progress.entries` and carry forward any items that still apply. The latest entry becomes the release notes when promoted via `pnpm rc:promote`. Previous RC entries serve as a development audit trail.
 - **Omit RC-relative fixes**: if a bug was introduced in a previous RC and fixed before this one, do NOT include it. The final release notes describe changes relative to the **last stable release**, not relative to previous RCs. A user upgrading from the last stable version never experienced the bug, so it is not a release note. Only include fixes for bugs that exist in the last stable release.

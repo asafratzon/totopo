@@ -30,7 +30,7 @@ export async function run(args: MenuArgs): Promise<string> {
     const gitNotice = hasGit ? "" : `\n${styleText("yellow", "●")} no git — agent changes are not tracked`;
 
     box(
-        `workspace:   ${ctx.displayName}\nprofile:     ${activeProfile}\ncontainer:   ${containerStatus}${gitNotice}`,
+        `workspace:   ${ctx.workspaceId}\nprofile:     ${activeProfile}\ncontainer:   ${containerStatus}${gitNotice}`,
         ` totopo v${version} `,
         {
             contentAlign: "left",

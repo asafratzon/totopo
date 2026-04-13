@@ -1,7 +1,34 @@
 in_progress:
-  base_version: 3.2.2
+  base_version: 3.3.1
   entries: []
 releases:
+  - version: 3.3.0
+    date: "2026-04-13"
+    added:
+      - >-
+        Base image now includes file and bubblewrap. file enables binary artifact inspection; bubblewrap satisfies Codex
+        sandbox prerequisites.
+    changed:
+      - >-
+        Startup now detects workspace-local .totopo/ directories left over from v1.0.3 (containing legacy artifacts such
+        as Dockerfile, settings.json, or post-start.mjs). Users are prompted to remove them — these files have been
+        bundled in the CLI since v2.
+      - >-
+        Stale image detection updated to check for file and bubblewrap. Containers built before 3.3.0 will be offered a
+        rebuild on next session start.
+      - >-
+        Removed schema_version, name, and yaml-language-server header from totopo.yaml. workspace_id is now the sole
+        identifier — no separate display name. Existing files are migrated automatically on first run.
+      - Onboarding now asks for workspace ID directly instead of deriving it from a workspace name.
+      - README motivation section rewritten for clarity.
+      - >-
+        ROADMAP reorganized — removed parallel profiles design, added base image sharing and stale detection ideas to
+        backlog.
+      - Release script now checks npm authentication before promoting an RC, with interactive login if needed.
+      - Release skill changelog guidelines updated to include non-user-facing changes with better grouping rules.
+      - >-
+        Improved test coverage for v1 artifact migration, staleness checks for new binaries, and safe-rm allowlist
+        behavior.
   - version: 3.2.1
     date: "2026-04-11"
     changed:

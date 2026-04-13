@@ -50,10 +50,10 @@ if (!existsSync(new URL("../dist/commands/dev.js", import.meta.url))) {
     process.exit(1);
 }
 
-// --- v2 migration check ------------------------------------------------------------------------------------------------------------------
+// --- migrations check --------------------------------------------------------------------------------------------------------------------
 try {
     const { runMigration } = await import("../dist/lib/migrate-to-latest.js");
-    runMigration(process.cwd());
+    await runMigration(process.cwd(), false);
 } catch {
     // Non-fatal - migration failure should not block startup
 }

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, test } from "node:test";
@@ -10,6 +11,14 @@ import { cleanTempDir, createTempDir, overrideEnv } from "./helpers.js";
 let tmp: string;
 let fakeHome: string;
 let restoreEnv: Array<() => void>;
+
+function writeLegacyV1Files(dir: string): void {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "Dockerfile"), "FROM node:20\n");
+    writeFileSync(join(dir, "README.md"), "legacy totopo\n");
+    writeFileSync(join(dir, "post-start.mjs"), "console.log('legacy');\n");
+    writeFileSync(join(dir, "settings.json"), "{}\n");
+}
 
 describe("migrate-to-latest", () => {
     beforeEach(() => {
@@ -32,14 +41,74 @@ describe("migrate-to-latest", () => {
         cleanTempDir(tmp);
     });
 
+    // ---- migrateLegacyV1WorkspaceArtifacts ----------------------------------------------------------------------------------------------
+
+    test("removes legacy v1 workspace-local .totopo artifacts when confirmation is disabled", async () => {
+        const legacyDir = join(tmp, TOTOPO_DIR);
+        writeLegacyV1Files(legacyDir);
+
+        await runMigration(tmp);
+
+        assert.ok(!existsSync(legacyDir), "legacy v1 .totopo/ should be removed");
+    });
+
+    test("removes legacy v1 workspace-local .totopo artifacts when any known v1 file exists", async () => {
+        const legacyDir = join(tmp, TOTOPO_DIR);
+        mkdirSync(legacyDir, { recursive: true });
+        writeFileSync(join(legacyDir, "settings.json"), "{}\n");
+
+        await runMigration(tmp);
+
+        assert.ok(!existsSync(legacyDir), "partial legacy v1 .totopo/ should be removed");
+    });
+
+    test("skips .totopo directories that do not contain known v1 files", async () => {
+        const legacyDir = join(tmp, TOTOPO_DIR);
+        mkdirSync(legacyDir, { recursive: true });
+        writeFileSync(join(legacyDir, "custom.json"), "{}\n");
+
+        await runMigration(tmp);
+
+        assert.ok(existsSync(legacyDir), "non-matching .totopo/ should be kept");
+    });
+
+    test("detects legacy v1 workspace-local .totopo artifacts at the git root", async () => {
+        const repo = join(tmp, "repo");
+        const subdir = join(repo, "nested");
+        mkdirSync(subdir, { recursive: true });
+        spawnSync("git", ["init"], { cwd: repo, stdio: "pipe" });
+        const legacyDir = join(repo, TOTOPO_DIR);
+        writeLegacyV1Files(legacyDir);
+
+        await runMigration(subdir);
+
+        assert.ok(!existsSync(legacyDir), "legacy v1 .totopo/ at git root should be removed");
+    });
+
+    test("prefers legacy v1 workspace-local .totopo artifacts in cwd over a higher git root", async () => {
+        const repo = join(tmp, "repo");
+        const nestedProject = join(repo, "packages", "example");
+        mkdirSync(nestedProject, { recursive: true });
+        spawnSync("git", ["init"], { cwd: repo, stdio: "pipe" });
+        const repoLegacyDir = join(repo, TOTOPO_DIR);
+        const nestedLegacyDir = join(nestedProject, TOTOPO_DIR);
+        writeLegacyV1Files(repoLegacyDir);
+        writeLegacyV1Files(nestedLegacyDir);
+
+        await runMigration(nestedProject);
+
+        assert.ok(!existsSync(nestedLegacyDir), "legacy v1 .totopo/ in cwd should be removed");
+        assert.ok(existsSync(repoLegacyDir), "legacy v1 .totopo/ at the higher git root should be kept");
+    });
+
     // ---- migrateProjectsDir -------------------------------------------------------------------------------------------------------------
 
-    test("renames projects/ to workspaces/", () => {
+    test("renames projects/ to workspaces/", async () => {
         const projectsDir = join(fakeHome, ".totopo", "projects");
         mkdirSync(projectsDir, { recursive: true });
         writeFileSync(join(projectsDir, "marker.txt"), "test");
 
-        runMigration(tmp);
+        await runMigration(tmp);
 
         const workspacesDir = join(fakeHome, TOTOPO_DIR, WORKSPACES_DIR);
         assert.ok(existsSync(workspacesDir), "workspaces/ should exist after migration");
@@ -47,27 +116,27 @@ describe("migrate-to-latest", () => {
         assert.ok(existsSync(join(workspacesDir, "marker.txt")), "contents should be preserved");
     });
 
-    test("skips rename if projects/ does not exist", () => {
+    test("skips rename if projects/ does not exist", async () => {
         // No projects/ dir - should not create workspaces/
-        runMigration(tmp);
+        await runMigration(tmp);
         // No error thrown
     });
 
-    test("merges projects/ into existing workspaces/, removes projects/", () => {
+    test("merges projects/ into existing workspaces/, removes projects/", async () => {
         const projectsDir = join(fakeHome, ".totopo", "projects");
         const workspacesDir = join(fakeHome, TOTOPO_DIR, WORKSPACES_DIR);
         mkdirSync(join(projectsDir, "new-workspace"), { recursive: true });
         writeFileSync(join(projectsDir, "new-workspace", LOCK_FILE), "/some/path\ndefault\n");
         mkdirSync(join(workspacesDir, "existing-workspace"), { recursive: true });
 
-        runMigration(tmp);
+        await runMigration(tmp);
 
         assert.ok(!existsSync(projectsDir), "projects/ should be removed");
         assert.ok(existsSync(join(workspacesDir, "new-workspace")), "new entry should be moved");
         assert.ok(existsSync(join(workspacesDir, "existing-workspace")), "existing entry should be preserved");
     });
 
-    test("skips collision entries when merging projects/ into workspaces/", () => {
+    test("skips collision entries when merging projects/ into workspaces/", async () => {
         const projectsDir = join(fakeHome, ".totopo", "projects");
         const workspacesDir = join(fakeHome, TOTOPO_DIR, WORKSPACES_DIR);
         mkdirSync(join(projectsDir, "my-workspace"), { recursive: true });
@@ -75,7 +144,7 @@ describe("migrate-to-latest", () => {
         mkdirSync(join(workspacesDir, "my-workspace"), { recursive: true });
         writeFileSync(join(workspacesDir, "my-workspace", LOCK_FILE), "/new/path\ndefault\n");
 
-        runMigration(tmp);
+        await runMigration(tmp);
 
         assert.ok(!existsSync(projectsDir), "projects/ should be removed");
         // workspaces/ version should win (not overwritten); format is upgraded to key=value by migrateLockFileFormat
@@ -86,43 +155,43 @@ describe("migrate-to-latest", () => {
 
     // ---- migrateGlobalEnv ---------------------------------------------------------------------------------------------------------------
 
-    test("removes legacy ~/.totopo/.env", () => {
+    test("removes legacy ~/.totopo/.env", async () => {
         mkdirSync(join(fakeHome, TOTOPO_DIR), { recursive: true });
         writeFileSync(join(fakeHome, ".totopo", ".env"), "API_KEY=secret");
 
-        runMigration(tmp);
+        await runMigration(tmp);
 
         assert.ok(!existsSync(join(fakeHome, ".totopo", ".env")), "global .env should be removed");
     });
 
-    test("no-op when ~/.totopo/.env does not exist", () => {
+    test("no-op when ~/.totopo/.env does not exist", async () => {
         mkdirSync(join(fakeHome, TOTOPO_DIR), { recursive: true });
 
-        runMigration(tmp);
+        await runMigration(tmp);
         // No error thrown
     });
 
     // ---- migrateTotopoYaml (project_id -> workspace_id) ---------------------------------------------------------------------------------
 
-    test("renames project_id to workspace_id in totopo.yaml", () => {
+    test("renames project_id to workspace_id in totopo.yaml", async () => {
         // Create a totopo.yaml with project_id in cwd
-        writeFileSync(join(tmp, "totopo.yaml"), "schema_version: 3\nproject_id: legacy-ws\n");
+        writeFileSync(join(tmp, "totopo.yaml"), "schema_version: 3\nproject_id: legacy-ws\n"); // legacy format with schema_version
 
         // Need workspace dir to exist for readTotopoYaml after rename
         mkdirSync(join(fakeHome, TOTOPO_DIR, WORKSPACES_DIR), { recursive: true });
 
-        runMigration(tmp);
+        await runMigration(tmp);
 
         const content = readFileSync(join(tmp, "totopo.yaml"), "utf8");
         assert.ok(content.includes("workspace_id"), "should contain workspace_id after migration");
         assert.ok(!content.includes("project_id"), "should not contain project_id after migration");
     });
 
-    test("no-op when totopo.yaml already has workspace_id", () => {
-        writeFileSync(join(tmp, "totopo.yaml"), "schema_version: 3\nworkspace_id: modern-ws\n");
+    test("no-op when totopo.yaml already has workspace_id", async () => {
+        writeFileSync(join(tmp, "totopo.yaml"), "workspace_id: modern-ws\n");
         mkdirSync(join(fakeHome, TOTOPO_DIR, WORKSPACES_DIR), { recursive: true });
 
-        runMigration(tmp);
+        await runMigration(tmp);
 
         const content = readFileSync(join(tmp, "totopo.yaml"), "utf8");
         assert.ok(content.includes("workspace_id: modern-ws"));
@@ -130,7 +199,7 @@ describe("migrate-to-latest", () => {
 
     // ---- migrateV2Workspaces ------------------------------------------------------------------------------------------------------------
 
-    test("migrates v2 hash-based workspace", () => {
+    test("migrates v2 hash-based workspace", async () => {
         // Set up a fake v2 hash directory with meta.json
         const wsBase = join(fakeHome, TOTOPO_DIR, WORKSPACES_DIR);
         const hashDir = join(wsBase, "abc123hash");
@@ -147,7 +216,7 @@ describe("migrate-to-latest", () => {
         // Write a marker in agents to verify copy
         writeFileSync(join(hashDir, "agents", "claude", "memory.json"), "{}");
 
-        runMigration(tmp);
+        await runMigration(tmp);
 
         // Hash dir should be removed
         assert.ok(!existsSync(hashDir), "hash directory should be removed");
@@ -160,14 +229,14 @@ describe("migrate-to-latest", () => {
         assert.ok(existsSync(join(projectRoot, "totopo.yaml")), "totopo.yaml should be created");
     });
 
-    test("skips v2 workspace when project root no longer exists", () => {
+    test("skips v2 workspace when project root no longer exists", async () => {
         const wsBase = join(fakeHome, TOTOPO_DIR, WORKSPACES_DIR);
         const hashDir = join(wsBase, "deadhash");
         mkdirSync(hashDir, { recursive: true });
 
         writeFileSync(join(hashDir, "meta.json"), JSON.stringify({ projectRoot: "/nonexistent/path", displayName: "Gone Project" }));
 
-        runMigration(tmp);
+        await runMigration(tmp);
 
         // Hash dir should still exist (skipped, not removed)
         // Actually the implementation skips it and returns null, but doesn't remove it
@@ -176,12 +245,12 @@ describe("migrate-to-latest", () => {
 
     // ---- migrateLockFileFormat ----------------------------------------------------------------------------------------------------------
 
-    test("upgrades old positional .lock format to key=value", () => {
+    test("upgrades old positional .lock format to key=value", async () => {
         const wsDir = join(fakeHome, ".totopo", "workspaces", "my-ws");
         mkdirSync(wsDir, { recursive: true });
         writeFileSync(join(wsDir, LOCK_FILE), "/some/path\nslim\n");
 
-        runMigration(tmp);
+        await runMigration(tmp);
 
         const content = readFileSync(join(wsDir, LOCK_FILE), "utf8");
         assert.ok(content.includes(`${LOCK_KEYS.workspaceRoot}=/some/path`), "workspace root should be preserved");
@@ -189,30 +258,30 @@ describe("migrate-to-latest", () => {
         assert.ok(!content.includes("last-cli-update="), "last-cli-update key should not be present");
     });
 
-    test("skips .lock files already in key=value format", () => {
+    test("skips .lock files already in key=value format", async () => {
         const wsDir = join(fakeHome, ".totopo", "workspaces", "my-ws");
         mkdirSync(wsDir, { recursive: true });
         const original = `${LOCK_KEYS.workspaceRoot}=/some/path\n${LOCK_KEYS.activeProfile}=slim\n`;
         writeFileSync(join(wsDir, LOCK_FILE), original);
 
-        runMigration(tmp);
+        await runMigration(tmp);
 
         assert.equal(readFileSync(join(wsDir, LOCK_FILE), "utf8"), original);
     });
 
-    test("migrateLockFileFormat is a no-op when workspaces/ does not exist", () => {
+    test("migrateLockFileFormat is a no-op when workspaces/ does not exist", async () => {
         // fakeHome has no .totopo/ dir at all -- should not throw
-        runMigration(tmp);
+        await runMigration(tmp);
     });
 
     // ---- migrateLockKeyYamlToRoot --------------------------------------------------------------------------------------------------------
 
-    test("renames yaml= key to root= in .lock files", () => {
+    test("renames yaml= key to root= in .lock files", async () => {
         const wsDir = join(fakeHome, ".totopo", "workspaces", "my-ws");
         mkdirSync(wsDir, { recursive: true });
         writeFileSync(join(wsDir, LOCK_FILE), `yaml=/some/path\n${LOCK_KEYS.activeProfile}=slim\n`);
 
-        runMigration(tmp);
+        await runMigration(tmp);
 
         const content = readFileSync(join(wsDir, LOCK_FILE), "utf8");
         assert.ok(content.includes(`${LOCK_KEYS.workspaceRoot}=/some/path`), "yaml= should be renamed to root=");
@@ -220,25 +289,25 @@ describe("migrate-to-latest", () => {
         assert.ok(content.includes(`${LOCK_KEYS.activeProfile}=slim`), "profile should be preserved");
     });
 
-    test("skips .lock files already using root= key", () => {
+    test("skips .lock files already using root= key", async () => {
         const wsDir = join(fakeHome, ".totopo", "workspaces", "my-ws");
         mkdirSync(wsDir, { recursive: true });
         const original = `${LOCK_KEYS.workspaceRoot}=/some/path\n${LOCK_KEYS.activeProfile}=slim\n`;
         writeFileSync(join(wsDir, LOCK_FILE), original);
 
-        runMigration(tmp);
+        await runMigration(tmp);
 
         assert.equal(readFileSync(join(wsDir, LOCK_FILE), "utf8"), original);
     });
 
-    test("migrateLockKeyYamlToRoot is a no-op when workspaces/ does not exist", () => {
+    test("migrateLockKeyYamlToRoot is a no-op when workspaces/ does not exist", async () => {
         // fakeHome has no .totopo/ dir at all -- should not throw
-        runMigration(tmp);
+        await runMigration(tmp);
     });
 
     // ---- migrateRemoveLastCliUpdate ---------------------------------------------------------------------------------------------------------
 
-    test("removes last-cli-update key from .lock files", () => {
+    test("removes last-cli-update key from .lock files", async () => {
         const wsDir = join(fakeHome, ".totopo", "workspaces", "my-ws");
         mkdirSync(wsDir, { recursive: true });
         writeFileSync(
@@ -246,7 +315,7 @@ describe("migrate-to-latest", () => {
             `${LOCK_KEYS.workspaceRoot}=/some/path\n${LOCK_KEYS.activeProfile}=slim\nlast-cli-update=2026-04-05T10:00:00.000Z\n`,
         );
 
-        runMigration(tmp);
+        await runMigration(tmp);
 
         const content = readFileSync(join(wsDir, LOCK_FILE), "utf8");
         assert.ok(!content.includes("last-cli-update"), "last-cli-update should be removed");
@@ -254,14 +323,68 @@ describe("migrate-to-latest", () => {
         assert.ok(content.includes(`${LOCK_KEYS.activeProfile}=slim`), "profile should be preserved");
     });
 
-    test("migrateRemoveLastCliUpdate is a no-op when key is absent", () => {
+    test("migrateRemoveLastCliUpdate is a no-op when key is absent", async () => {
         const wsDir = join(fakeHome, ".totopo", "workspaces", "my-ws");
         mkdirSync(wsDir, { recursive: true });
         const original = `${LOCK_KEYS.workspaceRoot}=/some/path\n${LOCK_KEYS.activeProfile}=slim\n`;
         writeFileSync(join(wsDir, LOCK_FILE), original);
 
-        runMigration(tmp);
+        await runMigration(tmp);
 
         assert.equal(readFileSync(join(wsDir, LOCK_FILE), "utf8"), original);
+    });
+
+    // ---- migrateRemoveDeprecatedYamlFields ------------------------------------------------------------------------------------------------
+
+    test("removes schema_version and yaml-language-server header from totopo.yaml", async () => {
+        const yamlContent =
+            "# yaml-language-server: $schema=https://raw.githubusercontent.com/asafratzon/totopo/v3.2.1/schema/totopo.schema.json\n" +
+            "schema_version: 3\nworkspace_id: schema-test\n";
+        writeFileSync(join(tmp, "totopo.yaml"), yamlContent);
+        mkdirSync(join(fakeHome, TOTOPO_DIR, WORKSPACES_DIR), { recursive: true });
+
+        await runMigration(tmp);
+
+        const content = readFileSync(join(tmp, "totopo.yaml"), "utf8");
+        assert.ok(!content.includes("schema_version"), "schema_version should be removed");
+        assert.ok(!content.includes("yaml-language-server"), "yaml-language-server header should be removed");
+        assert.ok(content.includes("workspace_id: schema-test"), "workspace_id should be preserved");
+    });
+
+    test("removes name field from totopo.yaml", async () => {
+        writeFileSync(join(tmp, "totopo.yaml"), "workspace_id: name-test\nname: My Project\n");
+        mkdirSync(join(fakeHome, TOTOPO_DIR, WORKSPACES_DIR), { recursive: true });
+
+        await runMigration(tmp);
+
+        const content = readFileSync(join(tmp, "totopo.yaml"), "utf8");
+        assert.ok(!content.includes("name:"), "name field should be removed");
+        assert.ok(content.includes("workspace_id: name-test"), "workspace_id should be preserved");
+    });
+
+    test("removes all deprecated fields in one pass", async () => {
+        const yamlContent =
+            "# yaml-language-server: $schema=https://example.com/schema.json\n" +
+            "schema_version: 3\nworkspace_id: combo-test\nname: My Project\n";
+        writeFileSync(join(tmp, "totopo.yaml"), yamlContent);
+        mkdirSync(join(fakeHome, TOTOPO_DIR, WORKSPACES_DIR), { recursive: true });
+
+        await runMigration(tmp);
+
+        const content = readFileSync(join(tmp, "totopo.yaml"), "utf8");
+        assert.ok(!content.includes("schema_version"), "schema_version should be removed");
+        assert.ok(!content.includes("yaml-language-server"), "yaml-language-server header should be removed");
+        assert.ok(!content.includes("name:"), "name field should be removed");
+        assert.ok(content.includes("workspace_id: combo-test"), "workspace_id should be preserved");
+    });
+
+    test("migrateRemoveDeprecatedYamlFields is a no-op when no deprecated fields present", async () => {
+        writeFileSync(join(tmp, "totopo.yaml"), "workspace_id: clean-ws\n");
+        mkdirSync(join(fakeHome, TOTOPO_DIR, WORKSPACES_DIR), { recursive: true });
+
+        await runMigration(tmp);
+
+        const content = readFileSync(join(tmp, "totopo.yaml"), "utf8");
+        assert.ok(content.includes("workspace_id: clean-ws"));
     });
 });

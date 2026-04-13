@@ -36,14 +36,14 @@ describe("deriveContainerName", () => {
 describe("findTotopoYamlDir", () => {
     test("finds totopo.yaml in current dir", () => {
         const tmp = createTempDir();
-        writeFileSync(join(tmp, "totopo.yaml"), "schema_version: 3\nworkspace_id: test\n");
+        writeFileSync(join(tmp, "totopo.yaml"), "workspace_id: test\n");
         assert.equal(findTotopoYamlDir(tmp), tmp);
         cleanTempDir(tmp);
     });
 
     test("walks up to find totopo.yaml", () => {
         const tmp = createTempDir();
-        writeFileSync(join(tmp, "totopo.yaml"), "schema_version: 3\nworkspace_id: test\n");
+        writeFileSync(join(tmp, "totopo.yaml"), "workspace_id: test\n");
         const deep = join(tmp, "a", "b", "c");
         mkdirSync(deep, { recursive: true });
         assert.equal(findTotopoYamlDir(deep), tmp);

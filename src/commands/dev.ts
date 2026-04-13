@@ -316,7 +316,7 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
         envFilePath,
         hasGit,
         shadowPatterns,
-        workspaceName: ctx.displayName,
+        workspaceName: ctx.workspaceId,
         ...(options?.noCache !== undefined && { noCache: options.noCache }),
     };
     startContainer(containerOpts);
