@@ -23,7 +23,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # Build essentials
     build-essential pkg-config libssl-dev \
     # Utilities
-    jq unzip zip tree htop procps lsb-release gnupg ca-certificates sox \
+    jq unzip zip tree htop procps lsb-release gnupg ca-certificates sox file bubblewrap \
     # Modern search/navigation tools
     ripgrep fzf \
     # Database clients

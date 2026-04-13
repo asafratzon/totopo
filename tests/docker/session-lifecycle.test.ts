@@ -425,6 +425,37 @@ describe("image staleness", () => {
         }
     });
 
+    test("isImageStale returns true for container missing file", () => {
+        const dockerfile = `FROM debian:bookworm-slim
+LABEL totopo.managed=true
+RUN groupadd --gid 1001 devuser && useradd --uid 1001 --gid devuser --shell /bin/bash --create-home devuser
+COPY startup.mjs /home/devuser/startup.mjs
+WORKDIR /workspace
+USER devuser
+CMD ["sleep", "infinity"]
+`;
+        const result = buildImageWithTempfile(dockerfile, TEMPLATES_DIR, containerName, false, true);
+        assert.equal(result.status, 0);
+        spawnSync("docker", ["run", "-d", "--name", containerName, containerName, "sleep", "infinity"], { stdio: "pipe" });
+        assert.equal(isImageStale(containerName), true);
+    });
+
+    test("isImageStale returns true for container missing bubblewrap", () => {
+        const dockerfile = `FROM debian:bookworm-slim
+LABEL totopo.managed=true
+RUN groupadd --gid 1001 devuser && useradd --uid 1001 --gid devuser --shell /bin/bash --create-home devuser
+RUN touch /usr/bin/file && chmod +x /usr/bin/file
+COPY startup.mjs /home/devuser/startup.mjs
+WORKDIR /workspace
+USER devuser
+CMD ["sleep", "infinity"]
+`;
+        const result = buildImageWithTempfile(dockerfile, TEMPLATES_DIR, containerName, false, true);
+        assert.equal(result.status, 0);
+        spawnSync("docker", ["run", "-d", "--name", containerName, containerName, "sleep", "infinity"], { stdio: "pipe" });
+        assert.equal(isImageStale(containerName), true);
+    });
+
     test("startup script fails on stale container (startup.mjs missing)", () => {
         // Minimal image has no startup.mjs -- docker exec should fail
         const contextDir = createTempDir();

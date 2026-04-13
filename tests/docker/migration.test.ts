@@ -41,7 +41,7 @@ describe("migrateProjectsDir - does not stop unrelated containers", () => {
         cleanTempDir(tmp);
     });
 
-    test("leaves a running totopo-* container untouched when its workspace is not in projects/", () => {
+    test("leaves a running totopo-* container untouched when its workspace is not in projects/", async () => {
         // Set up ~/.totopo/projects/ with a workspace whose container name differs from the bystander
         const workspaceId = "migrated-ws";
         const projectsDir = join(fakeHome, ".totopo", "projects", workspaceId);
@@ -52,7 +52,7 @@ describe("migrateProjectsDir - does not stop unrelated containers", () => {
 
         assert.equal(dockerContainerStatus(bystander), "running", "bystander should be running before migration");
 
-        runMigration(tmp);
+        await runMigration(tmp);
 
         assert.equal(dockerContainerStatus(bystander), "running", "bystander should still be running after migration");
     });
