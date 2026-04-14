@@ -118,10 +118,12 @@ const YAML_COMMENTS: Partial<Record<keyof TotopoYamlConfig, string>> = {
         "# totopo workspace config - run 'npx totopo' from anywhere under this directory tree to start your dev container.\n" +
         "# Ask the AI agent inside the container to help you edit this file if needed.\n" +
         "# This file may be rewritten by totopo (repair, reset, settings changes). Custom comments will not be preserved.",
+    env_file: "# Path to env file relative to this directory (e.g. '.env') - injected into the container at runtime.",
     shadow_paths: "# .gitignore-style patterns - agents see an empty, isolated copy instead of the real host data.",
     profiles:
         "# Dockerfile profiles - each adds on top of the totopo base image (Debian + Node.js + git + AI CLIs).\n" +
-        "# Switch profiles in the totopo settings menu, or ask the agent inside the container to help you add a new one.",
+        "# Useful for teams: each person can have a lean profile for their stack instead of one large shared image.\n" +
+        "# When multiple profiles exist, totopo prompts you to pick one on session start.",
 };
 
 /** Write totopo.yaml to a directory with schema header and inline comments. */
@@ -180,6 +182,7 @@ const PROFILES_FOOTER_COMMENT = "  # Add more profiles here — or ask the agent
 export function buildDefaultTotopoYaml(workspaceId: string): TotopoYamlConfig {
     return {
         workspace_id: workspaceId,
+        env_file: "",
         shadow_paths: [...DEFAULT_SHADOW_PATHS],
         profiles: {
             default: {

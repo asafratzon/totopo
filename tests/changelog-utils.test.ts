@@ -1,12 +1,19 @@
 import assert from "node:assert/strict";
+import { readFileSync, writeFileSync } from "node:fs";
 import { describe, test } from "node:test";
+import yaml from "js-yaml";
 import {
     bumpMajor,
     bumpMinor,
     bumpPatch,
+    CHANGELOG_PATH,
     type Changelog,
+    type ChangelogEntry,
+    directPromote,
     gitTagExistsLocally,
     type RcEntry,
+    readChangelog,
+    type StableEntry,
     validateChangelog,
 } from "../scripts/changelog-utils.js";
 
@@ -36,7 +43,7 @@ describe("version bumping", () => {
 
 // ---- validateChangelog ------------------------------------------------------------------------------------------------------------------
 
-function makeValidChangelog(entries: RcEntry[] = []): Changelog {
+function makeValidChangelog(entries: ChangelogEntry[] = []): Changelog {
     return {
         releases: [],
         in_progress: {
@@ -85,6 +92,78 @@ describe("validateChangelog", () => {
     test("throws when category item is not a string", () => {
         const cl = makeValidChangelog([{ rc_version: "1.0.0-rc-1", date: "2026-04-04", added: [123] } as unknown as RcEntry]);
         assert.throws(() => validateChangelog(cl), /must be a string/);
+    });
+
+    test("accepts stable entry with version field", () => {
+        const cl = makeValidChangelog([{ version: "1.0.0", date: "2026-04-04", added: ["New feature"] } as StableEntry]);
+        assert.doesNotThrow(() => validateChangelog(cl));
+    });
+
+    test("throws when entry has both rc_version and version", () => {
+        const cl = makeValidChangelog([
+            { rc_version: "1.0.0-rc-1", version: "1.0.0", date: "2026-04-04", added: ["test"] } as unknown as ChangelogEntry,
+        ]);
+        assert.throws(() => validateChangelog(cl), /both.*rc_version.*and.*version/);
+    });
+
+    test("throws when entry has neither rc_version nor version", () => {
+        const cl = makeValidChangelog([{ date: "2026-04-04", added: ["test"] } as unknown as ChangelogEntry]);
+        assert.throws(() => validateChangelog(cl), /missing.*rc_version.*or.*version/);
+    });
+});
+
+// ---- directPromote ----------------------------------------------------------------------------------------------------------------------
+
+describe("directPromote", () => {
+    const dumpOpts = { lineWidth: 120, quotingType: '"' as const, forceQuotes: false, noRefs: true };
+
+    function writeTestChangelog(data: Changelog): void {
+        writeFileSync(CHANGELOG_PATH, yaml.dump(data, dumpOpts), "utf8");
+    }
+
+    test("promotes stable entry to releases and clears in_progress", () => {
+        const original = readFileSync(CHANGELOG_PATH, "utf8");
+        try {
+            writeTestChangelog({
+                releases: [],
+                in_progress: {
+                    base_version: "2.0.0",
+                    entries: [{ version: "2.0.0", date: "2026-01-01", added: ["Feature A"], fixed: ["Bug B"] }],
+                },
+            });
+
+            const result = directPromote("2.0.0", "2026-04-14");
+
+            assert.equal(result.version, "2.0.0");
+            assert.equal(result.date, "2026-04-14");
+            assert.deepEqual(result.added, ["Feature A"]);
+            assert.deepEqual(result.fixed, ["Bug B"]);
+
+            const after = readChangelog();
+            assert.equal(after.releases.length, 1);
+            assert.equal(after.releases[0]?.version, "2.0.0");
+            assert.equal(after.in_progress.base_version, "2.0.1");
+            assert.equal(after.in_progress.entries.length, 0);
+        } finally {
+            writeFileSync(CHANGELOG_PATH, original, "utf8");
+        }
+    });
+
+    test("throws when no stable entries exist", () => {
+        const original = readFileSync(CHANGELOG_PATH, "utf8");
+        try {
+            writeTestChangelog({
+                releases: [],
+                in_progress: {
+                    base_version: "2.0.0",
+                    entries: [{ rc_version: "2.0.0-rc-1", date: "2026-01-01", added: ["Feature A"] }],
+                },
+            });
+
+            assert.throws(() => directPromote("2.0.0", "2026-04-14"), /no stable entries/i);
+        } finally {
+            writeFileSync(CHANGELOG_PATH, original, "utf8");
+        }
     });
 });
 
