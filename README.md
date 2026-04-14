@@ -19,7 +19,7 @@ Two fundamental risks when running AI agents locally:
 
 Totopo mitigates both risks by letting you run agents in a dev container — when you run totopo in a given directory, that directory is mounted as a workspace where agents can work freely, without access to the rest of your filesystem or your git remote.
 
-In practice, this means any mistake can be reverted from your git remote, and even a compromised agent can't access sensitive files on your machine — SSH keys, credentials, browser data — things a locally-running agent could otherwise read without you ever noticing.
+In practice, this means any mistake can be reverted from your git remote, and even a compromised agent can't access sensitive files on your machine — SSH keys, credentials, browser data — things a locally-running agent could otherwise do without you ever noticing.
 
 > totopo's security approach is basic — it is about the minimal precautions I believe anyone running AI agents should have. If you need more robust protections, look somewhere else.
 
@@ -64,6 +64,15 @@ A few key concepts:
 - **Workspace Boundary** — `npx totopo` always resolves to the nearest `totopo.yaml` going up the directory tree. Each directory tree has exactly one workspace root.
 - **Single Workspace Container** — totopo uses one Docker container per workspace, not one per session. Open as many terminals as you need — they all connect to the same running container, keeping resource use bounded and reconnections fast.
 
+### `totopo.yaml`
+
+The config is minimal — four fields:
+
+- **`workspace_id`** — unique slug for container naming and cache directory
+- **`profiles`** — Dockerfile image variants (see [Profiles](#profiles))
+- **`shadow_paths`** — gitignore-style patterns hidden from agents (see [Shadow Paths](#shadow-paths))
+- **`env_file`** *(optional)* — path to env file injected at runtime (see [Environment Variables](#environment-variables))
+
 On every run, totopo shows the workspace menu:
 
 - **Open session** — start or resume the dev container and connect
@@ -95,7 +104,7 @@ Remote git operations are blocked inside the container. Run them from your host 
 
 ### Profiles
 
-Profiles let you define multiple container image variants for a workspace. Each profile defines a `dockerfile_hook` — raw Dockerfile instructions appended after the base image layers:
+Profiles let you define multiple container image variants for a workspace. Useful for teams — each person can have a lean profile tailored to their stack instead of one large shared image. Each profile defines a `dockerfile_hook` — raw Dockerfile instructions appended after the base image layers:
 
 ```yaml
 # totopo.yaml
@@ -130,7 +139,7 @@ The base image is defined in [`templates/Dockerfile`](templates/Dockerfile) — 
 
 ### Shadow Paths
 
-Shadow paths overlay specific files or directories with empty container-local equivalents. Changes stay in the container-local copy; your workspace files are hidden and untouched:
+Shadow paths overlay specific files or directories with empty container-local equivalents — they apply across all profiles. Changes stay in the container-local copy; your workspace files are hidden and untouched:
 
 ```yaml
 # totopo.yaml
@@ -161,9 +170,9 @@ The file is loaded into the container's environment at session start. If the fil
 The container comes with the major AI coding CLIs pre-installed and ready to use:
 
 ```bash
-opencode    # OpenCode
 claude      # Claude Code (Anthropic)
 codex       # Codex (OpenAI)
+opencode    # OpenCode
 ```
 
 Agents are self-aware — sandbox constraints, git remote block, and any active shadow path overlays are injected into agent context at every session start.
@@ -188,7 +197,7 @@ To clear memory: `npx totopo` → **Manage totopo > Clear agent memory**.
 
 ## What Gets Installed
 
-`totopo.yaml` lives in your workspace directory — commit it alongside your code. Everything else lives in `~/.totopo/` on your machine; nothing else is written into your project.
+`totopo.yaml` lives in your workspace directory — you may commit it alongside your code. Everything else lives in `~/.totopo/` on your machine:
 
 ```
 ~/.totopo/
@@ -197,10 +206,7 @@ To clear memory: `npx totopo` → **Manage totopo > Clear agent memory**.
         ├── .lock       # workspace root path + active profile
         ├── agents/     # agent session data (persists across rebuilds)
         │   ├── claude/
-        │   │   └── .claude.json
         │   ├── opencode/
-        │   │   ├── config/
-        │   │   └── data/
         │   └── codex/
         └── shadows/    # container-local shadow path storage
 ```

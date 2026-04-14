@@ -32,9 +32,28 @@ export interface RcEntry {
     security?: string[];
 }
 
+export interface StableEntry {
+    version: string;
+    date: string;
+    added?: string[];
+    changed?: string[];
+    fixed?: string[];
+    security?: string[];
+}
+
+export type ChangelogEntry = RcEntry | StableEntry;
+
+export function isRcEntry(entry: ChangelogEntry): entry is RcEntry {
+    return "rc_version" in entry;
+}
+
+export function isStableEntry(entry: ChangelogEntry): entry is StableEntry {
+    return "version" in entry && !("rc_version" in entry);
+}
+
 export interface InProgress {
     base_version: string;
-    entries: RcEntry[];
+    entries: ChangelogEntry[];
 }
 
 export interface Changelog {
@@ -82,29 +101,36 @@ export function validateChangelog(data: Changelog): void {
         const prefix = `in_progress.entries[${i}]`;
 
         if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
-            errors.push(`${prefix}: must be an object (RcEntry), got ${Array.isArray(entry) ? "array" : typeof entry}`);
+            errors.push(`${prefix}: must be an object (RcEntry or StableEntry), got ${Array.isArray(entry) ? "array" : typeof entry}`);
             continue;
         }
 
-        if (typeof (entry as RcEntry).rc_version !== "string") {
-            errors.push(`${prefix}: missing or non-string 'rc_version'`);
+        const raw = entry as unknown as Record<string, unknown>;
+        const hasRcVersion = typeof raw.rc_version === "string";
+        const hasVersion = typeof raw.version === "string";
+
+        if (hasRcVersion && hasVersion) {
+            errors.push(`${prefix}: has both 'rc_version' and 'version' — use one or the other`);
+        } else if (!hasRcVersion && !hasVersion) {
+            errors.push(`${prefix}: missing 'rc_version' (for RC entries) or 'version' (for stable entries)`);
         }
-        if (typeof (entry as RcEntry).date !== "string") {
+
+        if (typeof raw.date !== "string") {
             errors.push(`${prefix}: missing or non-string 'date'`);
         }
 
-        const hasCategory = CATEGORIES.some((cat) => (entry as RcEntry)[cat] !== undefined);
+        const hasCategory = CATEGORIES.some((cat) => raw[cat] !== undefined);
         if (!hasCategory) {
             errors.push(`${prefix}: must have at least one of: ${CATEGORIES.join(", ")}`);
         }
 
         for (const cat of CATEGORIES) {
-            const val = (entry as RcEntry)[cat];
+            const val = raw[cat];
             if (val === undefined) continue;
             if (!Array.isArray(val)) {
                 errors.push(`${prefix}.${cat}: must be an array of strings, got ${typeof val}`);
             } else {
-                val.forEach((item, j) => {
+                val.forEach((item: unknown, j: number) => {
                     if (typeof item !== "string") {
                         errors.push(`${prefix}.${cat}[${j}]: must be a string, got ${typeof item}`);
                     }
@@ -143,34 +169,66 @@ export function squashAndPromote(baseVersion: string, date: string): ReleaseEntr
         throw new Error(`changelog.yaml in_progress.base_version is ${data.in_progress.base_version}, expected ${baseVersion}`);
     }
 
-    if (data.in_progress.entries.length === 0) {
-        throw new Error("changelog.yaml has no entries for this release. Run pnpm rc and add notes first.");
+    const rcEntries = data.in_progress.entries.filter(isRcEntry);
+    if (rcEntries.length === 0) {
+        throw new Error("changelog.yaml has no RC entries for this release. Run pnpm release and add notes first.");
     }
 
     // Use the highest-numbered RC entry as the release notes (it contains the cumulative description).
     // Entries may not be in order if added by different sessions, so sort by rc number.
-    const lastEntry = [...data.in_progress.entries]
+    const lastEntry = [...rcEntries]
         .sort((a, b) => {
             const numA = Number.parseInt(a.rc_version.split("-rc-")[1] ?? "0", 10);
             const numB = Number.parseInt(b.rc_version.split("-rc-")[1] ?? "0", 10);
             return numA - numB;
         })
         .at(-1) as RcEntry;
-    const combined: Record<string, string[]> = {};
-    for (const category of ["added", "changed", "fixed", "security"] as const) {
-        const items = lastEntry[category];
-        if (items && items.length > 0) combined[category] = items;
-    }
 
-    const promoted: ReleaseEntry = { version: baseVersion, date, ...combined };
+    const promoted = entryToRelease(lastEntry, baseVersion, date);
 
-    // Prepend to releases, clear in_progress entries
     data.releases.unshift(promoted);
     data.in_progress.base_version = bumpPatch(baseVersion);
     data.in_progress.entries = [];
 
     writeChangelog(data);
     return promoted;
+}
+
+// --- Direct promote (stable release without RC) ------------------------------------------------------------------------------------------
+
+export function directPromote(baseVersion: string, date: string): ReleaseEntry {
+    const data = readChangelog();
+
+    if (data.in_progress.base_version !== baseVersion) {
+        throw new Error(`changelog.yaml in_progress.base_version is ${data.in_progress.base_version}, expected ${baseVersion}`);
+    }
+
+    const stableEntries = data.in_progress.entries.filter(isStableEntry);
+    if (stableEntries.length === 0) {
+        throw new Error("changelog.yaml has no stable entries for this release. Add an entry with a 'version' field first.");
+    }
+
+    // Take the last stable entry (cumulative convention - the latest entry is the most complete)
+    const lastEntry = stableEntries.at(-1) as StableEntry;
+
+    const promoted = entryToRelease(lastEntry, baseVersion, date);
+
+    data.releases.unshift(promoted);
+    data.in_progress.base_version = bumpPatch(baseVersion);
+    data.in_progress.entries = [];
+
+    writeChangelog(data);
+    return promoted;
+}
+
+// Extract category content from a changelog entry into a ReleaseEntry
+function entryToRelease(entry: ChangelogEntry, version: string, date: string): ReleaseEntry {
+    const combined: Record<string, string[]> = {};
+    for (const category of ["added", "changed", "fixed", "security"] as const) {
+        const items = entry[category];
+        if (items && items.length > 0) combined[category] = items;
+    }
+    return { version, date, ...combined };
 }
 
 // --- Get release notes for a specific version --------------------------------------------------------------------------------------------

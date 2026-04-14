@@ -4,13 +4,17 @@
 # This file may be rewritten by totopo (repair, reset, settings changes). Custom comments will not be preserved.
 workspace_id: totopo
 
+# Path to env file relative to this directory (e.g. '.env') - injected into the container at runtime.
+env_file: ""
+
 # .gitignore-style patterns - agents see an empty, isolated copy instead of the real host data.
 shadow_paths:
   - node_modules
   - .env*
 
 # Dockerfile profiles - each adds on top of the totopo base image (Debian + Node.js + git + AI CLIs).
-# Switch profiles in the totopo settings menu, or ask the agent inside the container to help you add a new one.
+# Useful for teams: each person can have a lean profile for their stack instead of one large shared image.
+# When multiple profiles exist, totopo prompts you to pick one on session start.
 profiles:
   default:
     description: "Base image: Node.js, git, and AI CLIs"

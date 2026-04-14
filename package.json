@@ -45,8 +45,7 @@
         "validate": "pnpm typecheck && pnpm lint && tsx scripts/check.ts && pnpm test",
         "check": "pnpm validate && pnpm re:build",
         "generate-changelog": "tsx scripts/generate-changelog.ts",
-        "rc": "tsx scripts/rc.ts",
-        "rc:promote": "tsx scripts/release.ts",
+        "release": "tsx scripts/release.ts",
         "sync-releases": "tsx scripts/sync-github-releases.ts"
     },
     "engines": {

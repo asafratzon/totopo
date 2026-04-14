@@ -64,8 +64,7 @@ scripts/                       - Release tooling (excluded from npm package, not
   changelog.yaml               - Source of truth for all release notes; edit this, not CHANGELOG.md
   changelog-utils.ts           - Read/write/validate changelog.yaml
   generate-changelog.ts        - Regenerate CHANGELOG.md from changelog.yaml (pnpm generate-changelog)
-  rc.ts                        - Publish a release candidate to npm (pnpm rc)
-  release.ts                   - Promote rc to latest release (pnpm rc:promote)
+  release.ts                   - Publish to npm: rc, promote rc to stable, or direct stable (pnpm release)
   sync-github-releases.ts      - Sync GitHub releases with npm + changelog.yaml
 
 templates/                     - Bundled assets (included in npm package)
@@ -171,6 +170,6 @@ Skills live in `.claude/skills/`. The `.agents/skills/` directory contains symli
 
 ## Release process
 
-RC development happens on a dedicated branch (e.g. `v3.1.0-rc-development`), not on `main`. This keeps `main` pointing to the latest stable release at all times. When `pnpm rc:promote` runs, it squash merges the RC branch into `main` automatically.
+RC development happens on a dedicated branch (e.g. `v3.1.0-rc-development`), not on `main`. This keeps `main` pointing to the latest stable release at all times. When promoting an RC, `pnpm release` squash merges the RC branch into `main` automatically. For small changes, `pnpm release` also supports publishing a stable release directly without going through the RC lane.
 
-Use the `/release` skill to prepare an RC. The source of truth for release notes is `scripts/changelog.yaml` - `CHANGELOG.md` is generated from it. RC entries follow a cumulative convention (describe the full release, not delta from previous RC). Publishing and git push happen on the host via `pnpm rc`.
+Use the `/release` skill to prepare a release. The source of truth for release notes is `scripts/changelog.yaml` - `CHANGELOG.md` is generated from it. RC entries follow a cumulative convention (describe the full release, not delta from previous RC). Publishing and git push happen on the host via `pnpm release`.
