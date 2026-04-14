@@ -7,6 +7,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [3.3.1] — 2026-04-14
+
+### Changed
+
+- Default generated totopo.yaml now includes env_file field (empty) with a descriptive comment, making the option discoverable without reading docs.
+- Profile comments in generated totopo.yaml updated to explain team use cases and session-start profile selection.
+- README now includes a totopo.yaml configuration reference, profiles use case for teams, and notes that shadow paths apply across all profiles.
+- Release tooling consolidated into a single pnpm release command supporting three flows: publish RC, promote RC to stable, and direct stable release (bypassing the RC lane).
+- Changelog entries now support a version field (for direct stable releases) alongside the existing rc_version field (for RC entries).
+
+---
+
 ## [3.3.0] — 2026-04-13
 
 ### Added
