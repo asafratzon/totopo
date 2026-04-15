@@ -1,14 +1,24 @@
 // =========================================================================================================================================
 // src/commands/dev.ts - Start the dev container and connect via docker exec
-// In-memory Dockerfile build, profile selection, pattern-based shadows, env_file handling.
+// In-memory Dockerfile build, profile selection, pattern-based shadows, env_file handling, runtime env injection.
 // =========================================================================================================================================
 
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { join, relative } from "node:path";
 import { cancel, confirm, isCancel, log, outro, select } from "@clack/prompts";
 import { buildAgentContextDocs, buildAgentMountArgs, injectAgentContext } from "../lib/agent-context.js";
-import { CONTAINER_STARTUP, CONTAINER_WORKSPACE, LABEL_MANAGED, LABEL_PROFILE, LABEL_SHADOWS, PROFILE } from "../lib/constants.js";
+import {
+    CONTAINER_STARTUP,
+    CONTAINER_WORKSPACE,
+    LABEL_MANAGED,
+    LABEL_PROFILE,
+    LABEL_RUNTIME_ENV,
+    LABEL_SHADOWS,
+    PROFILE,
+    RUNTIME_ENV,
+} from "../lib/constants.js";
 import { buildDockerfile, buildImageWithTempfile } from "../lib/dockerfile-builder.js";
 import { isImageStale } from "../lib/migrate-to-latest.js";
 import { buildShadowMountArgs, ensureShadowsInSync, expandShadowPatterns } from "../lib/shadows.js";
@@ -74,22 +84,34 @@ interface ContainerInfo {
     status: string;
     shadowLabel: string;
     profileLabel: string;
+    runtimeEnvLabel: string;
 }
 
 // Returns null when the container does not exist (docker inspect exits non-zero).
 function inspectContainer(containerName: string): ContainerInfo | null {
-    const fmt = `{{.State.Status}}|{{index .Config.Labels "${LABEL_SHADOWS}"}}|{{index .Config.Labels "${LABEL_PROFILE}"}}`;
+    const fmt = `{{.State.Status}}|{{index .Config.Labels "${LABEL_SHADOWS}"}}|{{index .Config.Labels "${LABEL_PROFILE}"}}|{{index .Config.Labels "${LABEL_RUNTIME_ENV}"}}`;
     const result = spawnSync("docker", ["inspect", "--format", fmt, containerName], { encoding: "utf8", stdio: "pipe" });
     if (result.status !== 0) return null;
     const clean = (s: string) => (s === "<no value>" ? "" : s);
-    const [status = "", shadows = "", profile = ""] = result.stdout.trim().split("|");
-    return { status, shadowLabel: clean(shadows), profileLabel: clean(profile) };
+    const [status = "", shadows = "", profile = "", runtimeEnv = ""] = result.stdout.trim().split("|");
+    return { status, shadowLabel: clean(shadows), profileLabel: clean(profile), runtimeEnvLabel: clean(runtimeEnv) };
 }
 
 // --- Shadow label ------------------------------------------------------------------------------------------------------------------------
 function shadowLabel(paths: string[]): string {
     if (paths.length === 0) return "";
     return [...paths].sort().join(",");
+}
+
+// --- Runtime env fingerprint -------------------------------------------------------------------------------------------------------------
+function runtimeEnvLabel(): string {
+    const entries = Object.entries(RUNTIME_ENV);
+    if (entries.length === 0) return "";
+    const sorted = entries
+        .map(([k, v]) => `${k}=${v}`)
+        .sort()
+        .join(",");
+    return createHash("sha256").update(sorted).digest("hex").slice(0, 12);
 }
 
 // --- Stop and remove container -----------------------------------------------------------------------------------------------------------
@@ -107,7 +129,7 @@ function runStartup(containerName: string, quiet?: boolean): boolean {
 }
 
 // =========================================================================================================================================
-// Non-interactive session start. Handles container state inspection, shadow/profile mismatch recovery,
+// Non-interactive session start. Handles container state inspection, shadow/profile/runtime-env mismatch recovery,
 // image build, container creation, and lifecycle transitions (created / resumed / connected).
 // =========================================================================================================================================
 
@@ -173,22 +195,29 @@ export function startContainer(opts: StartContainerOpts): ContainerStartResult {
         `${LABEL_SHADOWS}=${shadowLabel(expandedShadows)}`,
         "--label",
         `${LABEL_PROFILE}=${activeProfile}`,
+        "--label",
+        `${LABEL_RUNTIME_ENV}=${runtimeEnvLabel()}`,
     ];
 
-    // --- Workspace identity env var ------------------------------------------------------------------------------------------------------
-    const workspaceEnvArgs = ["-e", `TOTOPO_WORKSPACE=${workspaceName}`];
+    // --- Runtime env vars -----------------------------------------------------------------------------------------------------------------
+    const runtimeEnvArgs = [
+        ...Object.entries(RUNTIME_ENV).flatMap(([k, v]) => ["-e", `${k}=${v}`]),
+        "-e",
+        `TOTOPO_WORKSPACE=${workspaceName}`,
+    ];
 
     // --- Inspect container state ---------------------------------------------------------------------------------------------------------
     const info = inspectContainer(containerName);
     let containerStatus = info?.status ?? null;
 
-    // --- Check for shadow or profile mismatch --------------------------------------------------------------------------------------------
+    // --- Check for shadow, profile, or runtime env mismatch ------------------------------------------------------------------------------
     if (info !== null) {
         const expectedShadowLabel = shadowLabel(expandedShadows);
         const shadowChanged = info.shadowLabel !== expectedShadowLabel;
         const profileChanged = info.profileLabel !== activeProfile;
+        const runtimeEnvChanged = info.runtimeEnvLabel !== runtimeEnvLabel();
 
-        if (shadowChanged || profileChanged) {
+        if (shadowChanged || profileChanged || runtimeEnvChanged) {
             stopAndRemoveContainer(containerName);
             containerStatus = null;
 
@@ -196,8 +225,10 @@ export function startContainer(opts: StartContainerOpts): ContainerStartResult {
                 // Profile change means different Dockerfile - must rebuild image
                 if (!quiet) log.info(`Profile changed (${info.profileLabel} -> ${activeProfile}) — rebuilding...`);
                 spawnSync("docker", ["rmi", containerName], { stdio: "pipe" });
-            } else {
+            } else if (shadowChanged) {
                 if (!quiet) log.info("Shadow paths changed — recreating container...");
+            } else {
+                if (!quiet) log.info("Runtime environment updated — recreating container...");
             }
         }
     }
@@ -225,7 +256,7 @@ export function startContainer(opts: StartContainerOpts): ContainerStartResult {
                 containerName,
                 ...mountArgs,
                 ...envFileArgs,
-                ...workspaceEnvArgs,
+                ...runtimeEnvArgs,
                 "--security-opt",
                 "no-new-privileges:true",
                 ...labelArgs,
