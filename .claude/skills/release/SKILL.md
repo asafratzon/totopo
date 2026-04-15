@@ -159,7 +159,7 @@ If no, skip this step.
 
 ## Step 11 — Remind about host commands and testing
 
-Print this reminder:
+Print this reminder exactly — do NOT add extra commands (e.g. `git push`). `pnpm release` handles everything including pushing branches and tags:
 
 > The container cannot publish to npm or push to git remotes.
 > On the host, run:

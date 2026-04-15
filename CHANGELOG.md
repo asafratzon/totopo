@@ -7,6 +7,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [3.3.2] — 2026-04-15
+
+### Added
+
+- Containers now inject runtime environment variables for AI CLIs automatically. Initial set disables the Claude Code feedback survey prompt inside the sandbox.
+
+### Changed
+
+- Runtime env var changes between totopo versions now trigger automatic container recreation on next session start, using a hashed label for change detection — no image rebuild required.
+
+---
+
 ## [3.3.1] — 2026-04-14
 
 ### Changed

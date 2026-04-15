@@ -1,7 +1,17 @@
 in_progress:
-  base_version: 3.3.2
+  base_version: 3.3.3
   entries: []
 releases:
+  - version: 3.3.2
+    date: "2026-04-15"
+    added:
+      - >-
+        Containers now inject runtime environment variables for AI CLIs automatically. Initial set disables the Claude
+        Code feedback survey prompt inside the sandbox.
+    changed:
+      - >-
+        Runtime env var changes between totopo versions now trigger automatic container recreation on next session
+        start, using a hashed label for change detection — no image rebuild required.
   - version: 3.3.1
     date: "2026-04-14"
     changed:
