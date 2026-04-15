@@ -38,7 +38,7 @@ bin/
                                  Imports compiled modules from dist/ - never imports from src/ directly.
 
 src/commands/                  - Command modules (compiled to dist/commands/ by pnpm build)
-  dev.ts                       - Session start: profile selection, shadow sync, container lifecycle, agent context
+  dev.ts                       - Session start: profile selection, shadow sync, container lifecycle, agent context, runtime env
                                  Exports: StartContainerOpts, ContainerStartResult, startContainer()
   doctor.ts                    - Host readiness checks (Docker installed and running)
   global.ts                    - "Manage totopo" menu: stop containers, clear memory, remove images, uninstall
@@ -122,10 +122,11 @@ schema/
 1. Read `totopo.yaml` -> select profile -> expand shadow patterns
 2. Build Dockerfile in memory (base template + profile hook + USER devuser)
 3. Write to temp file -> `docker build` -> clean up temp file
-4. Create container with bind mounts (workspace + shadows + agent dirs)
-5. Detect stale images via `isImageStale()` -> prompt user to rebuild if outdated
-6. Run startup script via `docker exec -u root` (AI CLI updates + readiness checks)
-7. Connect via `docker exec -it bash`
+4. Create container with bind mounts (workspace + shadows + agent dirs) + runtime env vars
+5. Detect stale containers (shadow/profile/runtime-env mismatch) -> recreate if needed
+6. Detect stale images via `isImageStale()` -> prompt user to rebuild if outdated
+7. Run startup script via `docker exec -u root` (AI CLI updates + readiness checks)
+8. Connect via `docker exec -it bash`
 
 **Agent context (`agent-context.ts`):** Markdown templates from `templates/context/*.md` are assembled with `{{variable}}` substitution, then written to agent dirs on the host (bind-mounted into container).
 
