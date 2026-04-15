@@ -36,6 +36,7 @@ export const CONTAINER_NAME_PREFIX = "totopo-";
 export const LABEL_MANAGED = "totopo.managed";
 export const LABEL_SHADOWS = "totopo.shadows";
 export const LABEL_PROFILE = "totopo.profile";
+export const LABEL_RUNTIME_ENV = "totopo.runtime-env";
 
 // Built-in profile names (must match keys in buildDefaultTotopoYaml in totopo-yaml.ts)
 export const PROFILE = {
@@ -43,3 +44,8 @@ export const PROFILE = {
     extended: "extended",
 } as const;
 export type BuiltInProfile = (typeof PROFILE)[keyof typeof PROFILE];
+
+// Runtime env vars injected into every container via docker run -e
+export const RUNTIME_ENV: Record<string, string> = {
+    CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY: "1",
+};
