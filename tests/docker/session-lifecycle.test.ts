@@ -97,11 +97,11 @@ describe("session lifecycle", () => {
         cacheDir = createTempDir();
     });
 
-    afterEach(() => {
+    afterEach(async () => {
         forceRemoveContainer(containerName);
         forceRemoveImage(containerName);
-        cleanTempDir(workspaceRoot);
-        cleanTempDir(cacheDir);
+        await cleanTempDir(workspaceRoot);
+        await cleanTempDir(cacheDir);
     });
 
     test("creates container and returns 'created'", () => {
@@ -198,11 +198,11 @@ describe("shadow path mounts", () => {
         cacheDir = createTempDir();
     });
 
-    afterEach(() => {
+    afterEach(async () => {
         forceRemoveContainer(containerName);
         forceRemoveImage(containerName);
-        cleanTempDir(workspaceRoot);
-        cleanTempDir(cacheDir);
+        await cleanTempDir(workspaceRoot);
+        await cleanTempDir(cacheDir);
     });
 
     test("shadow mount overlays workspace directory with empty container-local copy", () => {
@@ -286,12 +286,12 @@ describe("profile hooks", () => {
         writeFileSync(join(profileTemplatesDir, "Dockerfile"), MINIMAL_DOCKERFILE_TEMPLATE);
     });
 
-    afterEach(() => {
+    afterEach(async () => {
         forceRemoveContainer(containerName);
         forceRemoveImage(containerName);
-        cleanTempDir(workspaceRoot);
-        cleanTempDir(cacheDir);
-        cleanTempDir(profileTemplatesDir);
+        await cleanTempDir(workspaceRoot);
+        await cleanTempDir(cacheDir);
+        await cleanTempDir(profileTemplatesDir);
     });
 
     test("profile hook creates a file visible inside the container", () => {
@@ -334,11 +334,11 @@ describe("startup script", () => {
         cacheDir = createTempDir();
     });
 
-    afterEach(() => {
+    afterEach(async () => {
         forceRemoveContainer(containerName);
         forceRemoveImage(containerName);
-        cleanTempDir(workspaceRoot);
-        cleanTempDir(cacheDir);
+        await cleanTempDir(workspaceRoot);
+        await cleanTempDir(cacheDir);
     });
 
     test("build-time timestamp file exists in production image", () => {
@@ -400,11 +400,11 @@ describe("image staleness", () => {
         cacheDir = createTempDir();
     });
 
-    afterEach(() => {
+    afterEach(async () => {
         forceRemoveContainer(containerName);
         forceRemoveImage(containerName);
-        cleanTempDir(workspaceRoot);
-        cleanTempDir(cacheDir);
+        await cleanTempDir(workspaceRoot);
+        await cleanTempDir(cacheDir);
     });
 
     test("isImageStale returns false for current production image", () => {
@@ -412,7 +412,7 @@ describe("image staleness", () => {
         assert.equal(isImageStale(containerName), false);
     });
 
-    test("isImageStale returns true for container missing startup.mjs", () => {
+    test("isImageStale returns true for container missing startup.mjs", async () => {
         // Build a minimal image without startup.mjs to simulate an outdated container
         const contextDir = createTempDir();
         try {
@@ -421,7 +421,7 @@ describe("image staleness", () => {
             spawnSync("docker", ["run", "-d", "--name", containerName, containerName, "sleep", "infinity"], { stdio: "pipe" });
             assert.equal(isImageStale(containerName), true);
         } finally {
-            cleanTempDir(contextDir);
+            await cleanTempDir(contextDir);
         }
     });
 
@@ -456,7 +456,7 @@ CMD ["sleep", "infinity"]
         assert.equal(isImageStale(containerName), true);
     });
 
-    test("startup script fails on stale container (startup.mjs missing)", () => {
+    test("startup script fails on stale container (startup.mjs missing)", async () => {
         // Minimal image has no startup.mjs -- docker exec should fail
         const contextDir = createTempDir();
         try {
@@ -469,7 +469,7 @@ CMD ["sleep", "infinity"]
             });
             assert.notEqual(startup.status, 0, "startup should fail when script is missing");
         } finally {
-            cleanTempDir(contextDir);
+            await cleanTempDir(contextDir);
         }
     });
 });

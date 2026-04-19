@@ -36,9 +36,9 @@ describe("migrate-to-latest", () => {
         ];
     });
 
-    afterEach(() => {
+    afterEach(async () => {
         for (const restore of restoreEnv) restore();
-        cleanTempDir(tmp);
+        await cleanTempDir(tmp);
     });
 
     // ---- migrateLegacyV1WorkspaceArtifacts ----------------------------------------------------------------------------------------------

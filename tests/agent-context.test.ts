@@ -61,15 +61,15 @@ describe("buildAgentContextDocs - content", () => {
 // ---- buildAgentMountArgs ----------------------------------------------------------------------------------------------------------------
 
 describe("buildAgentMountArgs", () => {
-    test("returns correct number of mount args", () => {
+    test("returns correct number of mount args", async () => {
         const tmp = createTempDir();
         const args = buildAgentMountArgs(tmp);
         // 5 mounts (claude, opencode config, opencode data, codex, .claude.json file) = 10 args (-v + path each)
         assert.equal(args.length, 10);
-        cleanTempDir(tmp);
+        await cleanTempDir(tmp);
     });
 
-    test("contains expected container paths", () => {
+    test("contains expected container paths", async () => {
         const tmp = createTempDir();
         const args = buildAgentMountArgs(tmp);
         const joined = args.join(" ");
@@ -78,27 +78,27 @@ describe("buildAgentMountArgs", () => {
         assert.ok(joined.includes("/home/devuser/.local/share/opencode"));
         assert.ok(joined.includes("/home/devuser/.codex"));
         assert.ok(joined.includes("/home/devuser/.claude.json"));
-        cleanTempDir(tmp);
+        await cleanTempDir(tmp);
     });
 
-    test("creates agent directories on host", () => {
+    test("creates agent directories on host", async () => {
         const tmp = createTempDir();
         buildAgentMountArgs(tmp);
         assert.ok(existsSync(join(tmp, "agents", "claude")));
         assert.ok(existsSync(join(tmp, "agents", "codex")));
-        cleanTempDir(tmp);
+        await cleanTempDir(tmp);
     });
 
-    test("creates .claude.json as empty JSON when missing", () => {
+    test("creates .claude.json as empty JSON when missing", async () => {
         const tmp = createTempDir();
         buildAgentMountArgs(tmp);
         const claudeJson = join(tmp, "agents", "claude", ".claude.json");
         assert.ok(existsSync(claudeJson), ".claude.json should be created");
         assert.doesNotThrow(() => JSON.parse(readFileSync(claudeJson, "utf8")), "should be valid JSON");
-        cleanTempDir(tmp);
+        await cleanTempDir(tmp);
     });
 
-    test("does not overwrite existing .claude.json", () => {
+    test("does not overwrite existing .claude.json", async () => {
         const tmp = createTempDir();
         // First call creates the file
         buildAgentMountArgs(tmp);
@@ -108,29 +108,29 @@ describe("buildAgentMountArgs", () => {
         // Second call must not overwrite it
         buildAgentMountArgs(tmp);
         assert.equal(readFileSync(claudeJson, "utf8"), content, "existing .claude.json should not be overwritten");
-        cleanTempDir(tmp);
+        await cleanTempDir(tmp);
     });
 
-    test(".claude.json mount arg points to correct host and container paths", () => {
+    test(".claude.json mount arg points to correct host and container paths", async () => {
         const tmp = createTempDir();
         const args = buildAgentMountArgs(tmp);
         const mountIndex = args.indexOf(`${join(tmp, "agents", "claude", ".claude.json")}:/home/devuser/.claude.json`);
         assert.notEqual(mountIndex, -1, ".claude.json file mount should be present");
         assert.equal(args[mountIndex - 1], "-v", "mount arg should be preceded by -v");
-        cleanTempDir(tmp);
+        await cleanTempDir(tmp);
     });
 });
 
 // ---- injectAgentContext -----------------------------------------------------------------------------------------------------------------
 
 describe("injectAgentContext", () => {
-    test("writes context files to correct paths", () => {
+    test("writes context files to correct paths", async () => {
         const tmp = createTempDir();
         const docs = buildAgentContextDocs(true, ["node_modules"]);
         injectAgentContext(tmp, docs);
         assert.ok(existsSync(join(tmp, "agents", "claude", "CLAUDE.md")));
         assert.ok(existsSync(join(tmp, "agents", "opencode", "config", "AGENTS.md")));
         assert.ok(existsSync(join(tmp, "agents", "codex", "AGENTS.md")));
-        cleanTempDir(tmp);
+        await cleanTempDir(tmp);
     });
 });

@@ -6,7 +6,7 @@ import { removeWorkspaceFiles } from "../src/commands/global.js";
 import { cleanTempDir, createTempDir } from "./helpers.js";
 
 describe("removeWorkspaceFiles", () => {
-    test("removes workspaceDir and totopo.yaml when removeTotopoYaml is true", () => {
+    test("removes workspaceDir and totopo.yaml when removeTotopoYaml is true", async () => {
         const workspaceRoot = createTempDir();
         const workspaceDir = createTempDir();
         const yamlPath = join(workspaceRoot, "totopo.yaml");
@@ -19,10 +19,10 @@ describe("removeWorkspaceFiles", () => {
         assert.ok(!existsSync(workspaceDir), "workspaceDir should be removed");
         assert.ok(!existsSync(yamlPath), "totopo.yaml should be removed");
 
-        cleanTempDir(workspaceRoot);
+        await cleanTempDir(workspaceRoot);
     });
 
-    test("removes workspaceDir but keeps totopo.yaml when removeTotopoYaml is false", () => {
+    test("removes workspaceDir but keeps totopo.yaml when removeTotopoYaml is false", async () => {
         const workspaceRoot = createTempDir();
         const workspaceDir = createTempDir();
         const yamlPath = join(workspaceRoot, "totopo.yaml");
@@ -34,15 +34,15 @@ describe("removeWorkspaceFiles", () => {
         assert.ok(!existsSync(workspaceDir), "workspaceDir should be removed");
         assert.ok(existsSync(yamlPath), "totopo.yaml should be kept");
 
-        cleanTempDir(workspaceRoot);
+        await cleanTempDir(workspaceRoot);
     });
 
-    test("does not throw when totopo.yaml is absent and removeTotopoYaml is true", () => {
+    test("does not throw when totopo.yaml is absent and removeTotopoYaml is true", async () => {
         const workspaceRoot = createTempDir();
         const workspaceDir = createTempDir();
 
         assert.doesNotThrow(() => removeWorkspaceFiles(workspaceRoot, workspaceDir, true));
 
-        cleanTempDir(workspaceRoot);
+        await cleanTempDir(workspaceRoot);
     });
 });
