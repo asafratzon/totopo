@@ -5,6 +5,16 @@ import { describe, test } from "node:test";
 import { buildShadowMountArgs, countPatternHits, ensureShadowsInSync, expandShadowPatterns } from "../src/lib/shadows.js";
 import { cleanTempDir, createTempDir } from "./helpers.js";
 
+// Invariant: no path in the list equals or is nested under another.
+function assertNoNesting(paths: string[]): void {
+    assert.equal(new Set(paths).size, paths.length, `duplicates in ${JSON.stringify(paths)}`);
+    for (const a of paths) {
+        for (const b of paths) {
+            if (a !== b) assert.ok(!b.startsWith(`${a}/`), `${b} is nested under ${a} in ${JSON.stringify(paths)}`);
+        }
+    }
+}
+
 // ---- expandShadowPatterns ---------------------------------------------------------------------------------------------------------------
 
 describe("expandShadowPatterns", () => {
@@ -53,6 +63,56 @@ describe("expandShadowPatterns", () => {
         const tmp = createTempDir();
         const result = expandShadowPatterns(["nonexistent*"], tmp);
         assert.deepEqual(result, []);
+        cleanTempDir(tmp);
+    });
+
+    test("result has no nested or duplicate paths across a complex tree", () => {
+        const tmp = createTempDir();
+        // Shadowed dirs whose descendants would themselves match other patterns
+        mkdirSync(join(tmp, "apps", "orot-core", ".next", "dev", "node_modules"), { recursive: true });
+        mkdirSync(join(tmp, "apps", "orot-core", ".next", "server"), { recursive: true });
+        mkdirSync(join(tmp, "apps", "api", "dist", "node_modules"), { recursive: true });
+        mkdirSync(join(tmp, "apps", "api", "dist", "src"), { recursive: true });
+        mkdirSync(join(tmp, "packages", "core", "build", "out", "deep", "node_modules"), { recursive: true });
+        // Siblings at various depths, each their own outermost shadow
+        mkdirSync(join(tmp, "packages", "core", "node_modules"), { recursive: true });
+        mkdirSync(join(tmp, "packages", "ui", "dist"), { recursive: true });
+        mkdirSync(join(tmp, "packages", "ui", "build"), { recursive: true });
+        mkdirSync(join(tmp, "node_modules"), { recursive: true });
+        mkdirSync(join(tmp, "dist"), { recursive: true });
+        // Name-prefix traps (foo vs foobar, dist vs distribution)
+        mkdirSync(join(tmp, "foo"), { recursive: true });
+        mkdirSync(join(tmp, "foobar"), { recursive: true });
+        mkdirSync(join(tmp, "distribution"), { recursive: true });
+        // File matches via wildcard
+        writeFileSync(join(tmp, ".env.production"), "");
+        writeFileSync(join(tmp, "apps", "orot-core", ".env.production.local"), "");
+
+        const result = expandShadowPatterns(
+            ["node_modules", ".next", "dist", "build", "out", ".env.production*", "foo", "foobar", "distribution"],
+            tmp,
+        );
+
+        assertNoNesting(result);
+
+        // Every outermost shadow must survive (guards against over-filtering)
+        for (const p of [
+            ".env.production",
+            "apps/api/dist",
+            "apps/orot-core/.env.production.local",
+            "apps/orot-core/.next",
+            "dist",
+            "distribution",
+            "foo",
+            "foobar",
+            "node_modules",
+            "packages/core/build",
+            "packages/core/node_modules",
+            "packages/ui/build",
+            "packages/ui/dist",
+        ]) {
+            assert.ok(result.includes(p), `missing ${p} in ${JSON.stringify(result)}`);
+        }
         cleanTempDir(tmp);
     });
 });
