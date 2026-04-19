@@ -18,23 +18,23 @@ function assertNoNesting(paths: string[]): void {
 // ---- expandShadowPatterns ---------------------------------------------------------------------------------------------------------------
 
 describe("expandShadowPatterns", () => {
-    test("empty patterns returns empty array", () => {
+    test("empty patterns returns empty array", async () => {
         const tmp = createTempDir();
         assert.deepEqual(expandShadowPatterns([], tmp), []);
-        cleanTempDir(tmp);
+        await cleanTempDir(tmp);
     });
 
-    test("pattern without / matches recursively", () => {
+    test("pattern without / matches recursively", async () => {
         const tmp = createTempDir();
         mkdirSync(join(tmp, "node_modules"), { recursive: true });
         mkdirSync(join(tmp, "packages", "a", "node_modules"), { recursive: true });
         const result = expandShadowPatterns(["node_modules"], tmp);
         assert.ok(result.includes("node_modules"));
         assert.ok(result.includes("packages/a/node_modules"));
-        cleanTempDir(tmp);
+        await cleanTempDir(tmp);
     });
 
-    test("wildcard pattern matches multiple files", () => {
+    test("wildcard pattern matches multiple files", async () => {
         const tmp = createTempDir();
         writeFileSync(join(tmp, ".env"), "");
         writeFileSync(join(tmp, ".env.local"), "");
@@ -45,10 +45,10 @@ describe("expandShadowPatterns", () => {
         assert.ok(result.includes(".env"));
         assert.ok(result.includes(".env.local"));
         assert.ok(result.includes(".env.production"));
-        cleanTempDir(tmp);
+        await cleanTempDir(tmp);
     });
 
-    test("results are sorted", () => {
+    test("results are sorted", async () => {
         const tmp = createTempDir();
         writeFileSync(join(tmp, ".env.z"), "");
         writeFileSync(join(tmp, ".env.a"), "");
@@ -56,17 +56,17 @@ describe("expandShadowPatterns", () => {
         const result = expandShadowPatterns([".env*"], tmp);
         const sorted = [...result].sort();
         assert.deepEqual(result, sorted);
-        cleanTempDir(tmp);
+        await cleanTempDir(tmp);
     });
 
-    test("no matches returns empty array", () => {
+    test("no matches returns empty array", async () => {
         const tmp = createTempDir();
         const result = expandShadowPatterns(["nonexistent*"], tmp);
         assert.deepEqual(result, []);
-        cleanTempDir(tmp);
+        await cleanTempDir(tmp);
     });
 
-    test("result has no nested or duplicate paths across a complex tree", () => {
+    test("result has no nested or duplicate paths across a complex tree", async () => {
         const tmp = createTempDir();
         // Shadowed dirs whose descendants would themselves match other patterns
         mkdirSync(join(tmp, "apps", "orot-core", ".next", "dev", "node_modules"), { recursive: true });
@@ -113,32 +113,32 @@ describe("expandShadowPatterns", () => {
         ]) {
             assert.ok(result.includes(p), `missing ${p} in ${JSON.stringify(result)}`);
         }
-        cleanTempDir(tmp);
+        await cleanTempDir(tmp);
     });
 });
 
 // ---- countPatternHits -------------------------------------------------------------------------------------------------------------------
 
 describe("countPatternHits", () => {
-    test("returns 0 for no matches", () => {
+    test("returns 0 for no matches", async () => {
         const tmp = createTempDir();
         assert.equal(countPatternHits("nonexistent", tmp), 0);
-        cleanTempDir(tmp);
+        await cleanTempDir(tmp);
     });
 
-    test("returns correct count", () => {
+    test("returns correct count", async () => {
         const tmp = createTempDir();
         writeFileSync(join(tmp, ".env"), "");
         writeFileSync(join(tmp, ".env.local"), "");
         assert.equal(countPatternHits(".env*", tmp), 2);
-        cleanTempDir(tmp);
+        await cleanTempDir(tmp);
     });
 });
 
 // ---- ensureShadowsInSync ----------------------------------------------------------------------------------------------------------------
 
 describe("ensureShadowsInSync", () => {
-    test("creates shadow dirs for expanded paths", () => {
+    test("creates shadow dirs for expanded paths", async () => {
         const tmp = createTempDir();
         const workspace = join(tmp, "workspace");
         const cache = join(tmp, "cache");
@@ -147,10 +147,10 @@ describe("ensureShadowsInSync", () => {
 
         ensureShadowsInSync(cache, ["node_modules"], workspace);
         assert.ok(existsSync(join(cache, "shadows", "node_modules")));
-        cleanTempDir(tmp);
+        await cleanTempDir(tmp);
     });
 
-    test("removes stale shadow entries", () => {
+    test("removes stale shadow entries", async () => {
         const tmp = createTempDir();
         const workspace = join(tmp, "workspace");
         const cache = join(tmp, "cache");
@@ -159,10 +159,10 @@ describe("ensureShadowsInSync", () => {
 
         ensureShadowsInSync(cache, [], workspace);
         assert.ok(!existsSync(join(cache, "shadows", "old-dir")));
-        cleanTempDir(tmp);
+        await cleanTempDir(tmp);
     });
 
-    test("idempotent - running twice is safe", () => {
+    test("idempotent - running twice is safe", async () => {
         const tmp = createTempDir();
         const workspace = join(tmp, "workspace");
         const cache = join(tmp, "cache");
@@ -172,10 +172,10 @@ describe("ensureShadowsInSync", () => {
         ensureShadowsInSync(cache, ["node_modules"], workspace);
         ensureShadowsInSync(cache, ["node_modules"], workspace);
         assert.ok(existsSync(join(cache, "shadows", "node_modules")));
-        cleanTempDir(tmp);
+        await cleanTempDir(tmp);
     });
 
-    test("creates empty file for file sources", () => {
+    test("creates empty file for file sources", async () => {
         const tmp = createTempDir();
         const workspace = join(tmp, "workspace");
         const cache = join(tmp, "cache");
@@ -185,7 +185,7 @@ describe("ensureShadowsInSync", () => {
 
         ensureShadowsInSync(cache, [".env"], workspace);
         assert.ok(existsSync(join(cache, "shadows", ".env")));
-        cleanTempDir(tmp);
+        await cleanTempDir(tmp);
     });
 });
 

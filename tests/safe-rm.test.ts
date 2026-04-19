@@ -18,9 +18,9 @@ describe("safeRmSync", () => {
         restoreHome = overrideEnv("HOME", fakeHome);
     });
 
-    afterEach(() => {
+    afterEach(async () => {
         restoreHome();
-        cleanTempDir(homeRoot);
+        await cleanTempDir(homeRoot);
     });
 
     // --- Allowed: ~/.totopo/ paths -------------------------------------------------------------------------------------------------------
@@ -49,24 +49,24 @@ describe("safeRmSync", () => {
 
     // --- Allowed: legacy workspace-local .totopo/ ----------------------------------------------------------------------------------------
 
-    test("deletes a directory named .totopo in any directory", () => {
+    test("deletes a directory named .totopo in any directory", async () => {
         const tmp = createTempDir();
         const dir = join(tmp, TOTOPO_DIR);
         mkdirSync(dir, { recursive: true });
         safeRmSync(dir, { recursive: true });
         assert.ok(!existsSync(dir));
-        cleanTempDir(tmp);
+        await cleanTempDir(tmp);
     });
 
     // --- Allowed: totopo.yaml anywhere ---------------------------------------------------------------------------------------------------
 
-    test("deletes a file named totopo.yaml in any directory", () => {
+    test("deletes a file named totopo.yaml in any directory", async () => {
         const tmp = createTempDir();
         const yaml = join(tmp, "totopo.yaml");
         writeFileSync(yaml, "workspace_id: test");
         safeRmSync(yaml);
         assert.ok(!existsSync(yaml));
-        cleanTempDir(tmp);
+        await cleanTempDir(tmp);
     });
 
     // --- Allowed: test temp dirs ---------------------------------------------------------------------------------------------------------
