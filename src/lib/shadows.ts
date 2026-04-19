@@ -34,7 +34,7 @@ export function expandShadowPatterns(patterns: string[], workspaceRoot: string):
         ignore: ignorePatterns,
     });
 
-    return results.sort();
+    return removeNestedPaths(results.sort());
 }
 
 // --- Hit counting (for menu UX) ----------------------------------------------------------------------------------------------------------
@@ -118,7 +118,7 @@ function removeStaleEntries(baseDir: string, currentDir: string, expected: Set<s
 
         if (entry.isDirectory()) {
             // Check if any expected path is nested under this directory
-            const hasExpectedChild = [...expected].some((p) => p.startsWith(`${rel}/`));
+            const hasExpectedChild = [...expected].some((p) => isDescendantOf(p, rel));
             if (hasExpectedChild) {
                 // Recurse into the directory to clean stale children
                 removeStaleEntries(baseDir, fullPath, expected);
@@ -136,4 +136,18 @@ function removeStaleEntries(baseDir: string, currentDir: string, expected: Set<s
     if (currentDir !== baseDir && readdirSync(currentDir).length === 0) {
         safeRmSync(currentDir, { recursive: true, force: true });
     }
+}
+
+/**
+ * Drop paths that descend from another path in the input (keeps only the outermost path per subtree),
+ * so nested matches (e.g. node_modules inside a shadowed .next dir) don't become redundant bind mounts.
+ */
+function removeNestedPaths(paths: string[]): string[] {
+    const unique = [...new Set(paths)];
+    return unique.filter((p) => !unique.some((a) => a !== p && isDescendantOf(p, a)));
+}
+
+// Expects forward-slash paths (fast-glob output and shadows/ relative paths on POSIX).
+function isDescendantOf(child: string, ancestor: string): boolean {
+    return child.startsWith(`${ancestor}/`);
 }
