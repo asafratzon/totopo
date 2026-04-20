@@ -34,29 +34,29 @@ describe("deriveContainerName", () => {
 // ---- findTotopoYamlDir (uses own temp dirs, no HOME needed) -----------------------------------------------------------------------------
 
 describe("findTotopoYamlDir", () => {
-    test("finds totopo.yaml in current dir", () => {
+    test("finds totopo.yaml in current dir", async () => {
         const tmp = createTempDir();
         writeFileSync(join(tmp, "totopo.yaml"), "workspace_id: test\n");
         assert.equal(findTotopoYamlDir(tmp), tmp);
-        cleanTempDir(tmp);
+        await cleanTempDir(tmp);
     });
 
-    test("walks up to find totopo.yaml", () => {
+    test("walks up to find totopo.yaml", async () => {
         const tmp = createTempDir();
         writeFileSync(join(tmp, "totopo.yaml"), "workspace_id: test\n");
         const deep = join(tmp, "a", "b", "c");
         mkdirSync(deep, { recursive: true });
         assert.equal(findTotopoYamlDir(deep), tmp);
-        cleanTempDir(tmp);
+        await cleanTempDir(tmp);
     });
 
-    test("returns null when not found", () => {
+    test("returns null when not found", async () => {
         const tmp = createTempDir();
         // Search from a deep subdir; temp dirs are under /tmp/totopo-test-* which won't have totopo.yaml
         const deep = join(tmp, "x", "y");
         mkdirSync(deep, { recursive: true });
         assert.equal(findTotopoYamlDir(deep), null);
-        cleanTempDir(tmp);
+        await cleanTempDir(tmp);
     });
 });
 
@@ -75,111 +75,111 @@ describe("with isolated home", () => {
         restoreHome = overrideEnv("HOME", fakeHome);
     });
 
-    afterEach(() => {
+    afterEach(async () => {
         restoreHome();
-        cleanTempDir(homeRoot);
+        await cleanTempDir(homeRoot);
     });
 
     // ---- Lock file operations -----------------------------------------------------------------------------------------------------------
 
     describe("lock file operations", () => {
-        test("initWorkspaceDir creates .lock, agents/, shadows/", () => {
+        test("initWorkspaceDir creates .lock, agents/, shadows/", async () => {
             const tmp = createTempDir();
             initWorkspaceDir("test-ws", tmp);
             const wsDir = getWorkspaceDir("test-ws");
             assert.ok(existsSync(join(wsDir, LOCK_FILE)));
             assert.ok(existsSync(join(wsDir, "agents")));
             assert.ok(existsSync(join(wsDir, "shadows")));
-            cleanTempDir(tmp);
+            await cleanTempDir(tmp);
         });
 
-        test("readLockFile returns workspace root path", () => {
+        test("readLockFile returns workspace root path", async () => {
             const tmp = createTempDir();
             initWorkspaceDir("test-ws", tmp);
             assert.equal(readLockFile("test-ws"), tmp);
-            cleanTempDir(tmp);
+            await cleanTempDir(tmp);
         });
 
         test("readLockFile returns null for missing lock", () => {
             assert.equal(readLockFile("nonexistent-ws-id-xyz"), null);
         });
 
-        test("readActiveProfile returns default on fresh init", () => {
+        test("readActiveProfile returns default on fresh init", async () => {
             const tmp = createTempDir();
             initWorkspaceDir("test-ws", tmp);
             assert.equal(readActiveProfile("test-ws"), PROFILE.default);
-            cleanTempDir(tmp);
+            await cleanTempDir(tmp);
         });
 
         test("readActiveProfile returns null for missing lock", () => {
             assert.equal(readActiveProfile("nonexistent-ws-id-xyz"), null);
         });
 
-        test("writeActiveProfile updates profile without changing path", () => {
+        test("writeActiveProfile updates profile without changing path", async () => {
             const tmp = createTempDir();
             initWorkspaceDir("test-ws", tmp);
             writeActiveProfile("test-ws", PROFILE.extended);
             assert.equal(readActiveProfile("test-ws"), PROFILE.extended);
             assert.equal(readLockFile("test-ws"), tmp);
-            cleanTempDir(tmp);
+            await cleanTempDir(tmp);
         });
 
-        test("writeLockFile updates path without changing profile", () => {
+        test("writeLockFile updates path without changing profile", async () => {
             const tmp1 = createTempDir();
             const tmp2 = createTempDir();
             initWorkspaceDir("test-ws", tmp1, PROFILE.extended);
             writeLockFile("test-ws", tmp2);
             assert.equal(readLockFile("test-ws"), tmp2);
             assert.equal(readActiveProfile("test-ws"), PROFILE.extended);
-            cleanTempDir(tmp1);
-            cleanTempDir(tmp2);
+            await cleanTempDir(tmp1);
+            await cleanTempDir(tmp2);
         });
 
-        test("initWorkspaceDir with custom profile", () => {
+        test("initWorkspaceDir with custom profile", async () => {
             const tmp = createTempDir();
             initWorkspaceDir("test-ws", tmp, PROFILE.extended);
             assert.equal(readActiveProfile("test-ws"), PROFILE.extended);
-            cleanTempDir(tmp);
+            await cleanTempDir(tmp);
         });
 
-        test("lock file is written in key=value format", () => {
+        test("lock file is written in key=value format", async () => {
             const tmp = createTempDir();
             initWorkspaceDir("test-ws", tmp);
             const raw = readFileSync(join(getWorkspaceDir("test-ws"), LOCK_FILE), "utf8");
             assert.ok(raw.includes(`${LOCK_KEYS.workspaceRoot}=`), "should contain root= key");
             assert.ok(raw.includes(`${LOCK_KEYS.activeProfile}=`), "should contain profile= key");
             assert.ok(!raw.includes("last-cli-update="), "should not contain last-cli-update= key");
-            cleanTempDir(tmp);
+            await cleanTempDir(tmp);
         });
     });
 
     // ---- listWorkspaceIds ---------------------------------------------------------------------------------------------------------------
 
     describe("listWorkspaceIds", () => {
-        test("includes initialized workspaces", () => {
+        test("includes initialized workspaces", async () => {
             const tmp = createTempDir();
             initWorkspaceDir("test-ws", tmp);
             const ids = listWorkspaceIds();
             assert.ok(ids.includes("test-ws"));
-            cleanTempDir(tmp);
+            await cleanTempDir(tmp);
         });
     });
 
     // ---- checkCollision -----------------------------------------------------------------------------------------------------------------
 
     describe("checkCollision", () => {
-        test("returns ok when lock matches path", () => {
+        test("returns ok when lock matches path", async () => {
             const tmp = createTempDir();
             initWorkspaceDir("test-ws", tmp);
             assert.equal(checkCollision("test-ws", tmp), "ok");
-            cleanTempDir(tmp);
+            await cleanTempDir(tmp);
         });
 
-        test("returns collision when lock points elsewhere", () => {
+        test("returns collision when lock points elsewhere", async () => {
             const tmp = createTempDir();
             initWorkspaceDir("test-ws", tmp);
             assert.equal(checkCollision("test-ws", "/some/other/path"), "collision");
-            cleanTempDir(tmp);
+            await cleanTempDir(tmp);
         });
 
         test("returns ok when no lock exists", () => {
@@ -190,11 +190,11 @@ describe("with isolated home", () => {
     // ---- findOrphanWorkspaceDir ---------------------------------------------------------------------------------------------------------
 
     describe("findOrphanWorkspaceDir", () => {
-        test("finds orphan by path", () => {
+        test("finds orphan by path", async () => {
             const tmp = createTempDir();
             initWorkspaceDir("test-ws", tmp);
             assert.equal(findOrphanWorkspaceDir(tmp), "test-ws");
-            cleanTempDir(tmp);
+            await cleanTempDir(tmp);
         });
 
         test("returns null when no orphan", () => {

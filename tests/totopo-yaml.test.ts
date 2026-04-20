@@ -83,46 +83,46 @@ describe("slugifyForWorkspaceId", () => {
 describe("readTotopoYaml", () => {
     let tmp: string;
 
-    test("returns null when file is missing", () => {
+    test("returns null when file is missing", async () => {
         tmp = createTempDir();
         assert.equal(readTotopoYaml(tmp), null);
-        cleanTempDir(tmp);
+        await cleanTempDir(tmp);
     });
 
-    test("reads a valid minimal file", () => {
+    test("reads a valid minimal file", async () => {
         tmp = createTempDir();
         writeFileSync(join(tmp, "totopo.yaml"), "workspace_id: my-project\n");
         const config = readTotopoYaml(tmp);
         assert.equal(config?.workspace_id, "my-project");
-        cleanTempDir(tmp);
+        await cleanTempDir(tmp);
     });
 
-    test("throws on empty file", () => {
+    test("throws on empty file", async () => {
         tmp = createTempDir();
         writeFileSync(join(tmp, "totopo.yaml"), "");
         assert.throws(() => readTotopoYaml(tmp), /empty or not a valid YAML/);
-        cleanTempDir(tmp);
+        await cleanTempDir(tmp);
     });
 
-    test("throws on schema violation (missing workspace_id)", () => {
+    test("throws on schema violation (missing workspace_id)", async () => {
         tmp = createTempDir();
         writeFileSync(join(tmp, "totopo.yaml"), "env_file: .env\n");
         assert.throws(() => readTotopoYaml(tmp), /Invalid totopo\.yaml/);
-        cleanTempDir(tmp);
+        await cleanTempDir(tmp);
     });
 
-    test("throws on unknown properties", () => {
+    test("throws on unknown properties", async () => {
         tmp = createTempDir();
         writeFileSync(join(tmp, "totopo.yaml"), "workspace_id: my-project\nbogus_field: true\n");
         assert.throws(() => readTotopoYaml(tmp), /unknown property "bogus_field"/);
-        cleanTempDir(tmp);
+        await cleanTempDir(tmp);
     });
 });
 
 // ---- writeTotopoYaml / roundtrip --------------------------------------------------------------------------------------------------------
 
 describe("writeTotopoYaml", () => {
-    test("write then read roundtrip preserves config", () => {
+    test("write then read roundtrip preserves config", async () => {
         const tmp = createTempDir();
         const config = buildDefaultTotopoYaml("roundtrip-test");
         writeTotopoYaml(tmp, config);
@@ -131,7 +131,7 @@ describe("writeTotopoYaml", () => {
         assert.deepEqual(read?.shadow_paths, ["node_modules", ".env*"]);
         assert.ok(read?.profiles?.default);
         assert.ok(read?.profiles?.extended);
-        cleanTempDir(tmp);
+        await cleanTempDir(tmp);
     });
 });
 
@@ -160,24 +160,24 @@ describe("buildDefaultTotopoYaml", () => {
 // ---- repairTotopoYaml -------------------------------------------------------------------------------------------------------------------
 
 describe("repairTotopoYaml", () => {
-    test("returns null when file is missing", () => {
+    test("returns null when file is missing", async () => {
         const tmp = createTempDir();
         const result = repairTotopoYaml(tmp);
         assert.equal(result.repairedYaml, null);
         assert.equal(result.error, undefined);
-        cleanTempDir(tmp);
+        await cleanTempDir(tmp);
     });
 
-    test("returns null when file is already valid", () => {
+    test("returns null when file is already valid", async () => {
         const tmp = createTempDir();
         const config = buildDefaultTotopoYaml("valid-ws");
         writeTotopoYaml(tmp, config);
         const result = repairTotopoYaml(tmp);
         assert.equal(result.repairedYaml, null);
-        cleanTempDir(tmp);
+        await cleanTempDir(tmp);
     });
 
-    test("repairs missing workspace_id using dirname", () => {
+    test("repairs missing workspace_id using dirname", async () => {
         const tmp = createTempDir();
         const sub = join(tmp, "my-cool-project");
         mkdirSync(sub);
@@ -186,10 +186,10 @@ describe("repairTotopoYaml", () => {
         assert.ok(result.repairedYaml);
         assert.ok(result.repairedYaml.workspace_id.length > 0);
         assert.ok(result.message?.includes("workspace_id"));
-        cleanTempDir(tmp);
+        await cleanTempDir(tmp);
     });
 
-    test("strips unknown fields", () => {
+    test("strips unknown fields", async () => {
         const tmp = createTempDir();
         writeFileSync(join(tmp, "totopo.yaml"), "workspace_id: strip-test\nbogus: true\n");
         const result = repairTotopoYaml(tmp);
@@ -198,6 +198,6 @@ describe("repairTotopoYaml", () => {
         // Verify it was actually stripped - re-read should succeed
         const read = readTotopoYaml(tmp);
         assert.equal(read?.workspace_id, "strip-test");
-        cleanTempDir(tmp);
+        await cleanTempDir(tmp);
     });
 });

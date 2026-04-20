@@ -35,10 +35,10 @@ describe("migrateProjectsDir - does not stop unrelated containers", () => {
         spawnSync("docker", ["run", "-d", "--name", bystander, "debian:bookworm-slim", "sleep", "infinity"], { stdio: "pipe" });
     });
 
-    afterEach(() => {
+    afterEach(async () => {
         for (const restore of restoreEnv) restore();
         forceRemoveContainer(bystander);
-        cleanTempDir(tmp);
+        await cleanTempDir(tmp);
     });
 
     test("leaves a running totopo-* container untouched when its workspace is not in projects/", async () => {

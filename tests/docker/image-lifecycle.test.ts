@@ -41,18 +41,18 @@ describe("image lifecycle", () => {
         cleanupAllTestArtifacts();
     });
 
-    test("builds minimal image successfully", () => {
+    test("builds minimal image successfully", async () => {
         const contextDir = createTempDir();
         try {
             const result = buildImageWithTempfile(MINIMAL_DOCKERFILE, contextDir, imageName, false, true);
             assert.equal(result.status, 0, "build should succeed");
             assert.ok(dockerImageExists(imageName), "image should exist after build");
         } finally {
-            cleanTempDir(contextDir);
+            await cleanTempDir(contextDir);
         }
     });
 
-    test("buildDockerfile with profile hook produces buildable image", () => {
+    test("buildDockerfile with profile hook produces buildable image", async () => {
         // Verifies buildDockerfile() assembles a valid Dockerfile with a profile hook.
         // Uses the minimal template (not the full production Dockerfile) to keep the build fast.
         const contextDir = createTempDir();
@@ -63,11 +63,11 @@ describe("image lifecycle", () => {
             assert.equal(result.status, 0, "build with profile hook should succeed");
             assert.ok(dockerImageExists(imageName));
         } finally {
-            cleanTempDir(contextDir);
+            await cleanTempDir(contextDir);
         }
     });
 
-    test("noCache flag triggers full rebuild without error", () => {
+    test("noCache flag triggers full rebuild without error", async () => {
         const contextDir = createTempDir();
         try {
             const first = buildImageWithTempfile(MINIMAL_DOCKERFILE, contextDir, imageName, false, true);
@@ -75,11 +75,11 @@ describe("image lifecycle", () => {
             const second = buildImageWithTempfile(MINIMAL_DOCKERFILE, contextDir, imageName, true, true);
             assert.equal(second.status, 0, "rebuild with noCache should succeed");
         } finally {
-            cleanTempDir(contextDir);
+            await cleanTempDir(contextDir);
         }
     });
 
-    test("invalid Dockerfile returns non-zero status", () => {
+    test("invalid Dockerfile returns non-zero status", async () => {
         const broken = "FROM debian:bookworm-slim\nRUN this_command_does_not_exist_at_all_xyz_abc\n";
         const contextDir = createTempDir();
         try {
@@ -87,11 +87,11 @@ describe("image lifecycle", () => {
             assert.notEqual(result.status, 0, "build with invalid Dockerfile should fail");
             assert.ok(!dockerImageExists(imageName), "image should not exist after failed build");
         } finally {
-            cleanTempDir(contextDir);
+            await cleanTempDir(contextDir);
         }
     });
 
-    test("image can be removed after build", () => {
+    test("image can be removed after build", async () => {
         const contextDir = createTempDir();
         try {
             buildImageWithTempfile(MINIMAL_DOCKERFILE, contextDir, imageName, false, true);
@@ -99,7 +99,7 @@ describe("image lifecycle", () => {
             forceRemoveImage(imageName);
             assert.ok(!dockerImageExists(imageName), "image should be gone after removal");
         } finally {
-            cleanTempDir(contextDir);
+            await cleanTempDir(contextDir);
         }
     });
 });
