@@ -1,20 +1,19 @@
 in_progress:
-  base_version: 3.3.3
-  entries:
-    - rc_version: "3.3.3-rc-1"
-      date: "2026-04-19"
-      fixed:
-        - >-
-          Shadow path expansion now deduplicates nested matches — when one expanded path is a descendant of another
-          (e.g. a node_modules match inside an already-shadowed .next directory), the inner one is dropped so only
-          the outermost path per subtree becomes a bind mount. Fixes ownership and permission issues on macOS
-          caused by container-created directories embedded inside outer shadow dirs that the host user could not
-          cleanly remove.
-      changed:
-        - >-
-          Shadow path internals consolidated behind a shared path-ancestor helper, with a general no-nesting
-          invariant test exercising the deduper across a complex multi-branch workspace tree.
+  base_version: 3.3.4
+  entries: []
 releases:
+  - version: 3.3.3
+    date: "2026-04-20"
+    changed:
+      - >-
+        Shadow path internals consolidated behind a shared path-ancestor helper, with a general no-nesting invariant
+        test exercising the deduper across a complex multi-branch workspace tree.
+    fixed:
+      - >-
+        Shadow path expansion now deduplicates nested matches — when one expanded path is a descendant of another (e.g.
+        a node_modules match inside an already-shadowed .next directory), the inner one is dropped so only the outermost
+        path per subtree becomes a bind mount. Fixes ownership and permission issues on macOS caused by
+        container-created directories embedded inside outer shadow dirs that the host user could not cleanly remove.
   - version: 3.3.2
     date: "2026-04-15"
     added:

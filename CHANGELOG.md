@@ -7,6 +7,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [3.3.3] — 2026-04-20
+
+### Changed
+
+- Shadow path internals consolidated behind a shared path-ancestor helper, with a general no-nesting invariant test exercising the deduper across a complex multi-branch workspace tree.
+
+### Fixed
+
+- Shadow path expansion now deduplicates nested matches — when one expanded path is a descendant of another (e.g. a node_modules match inside an already-shadowed .next directory), the inner one is dropped so only the outermost path per subtree becomes a bind mount. Fixes ownership and permission issues on macOS caused by container-created directories embedded inside outer shadow dirs that the host user could not cleanly remove.
+
+---
+
 ## [3.3.2] — 2026-04-15
 
 ### Added
