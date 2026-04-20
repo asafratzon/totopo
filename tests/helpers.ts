@@ -1,6 +1,7 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
 import { safeRmSync } from "../src/lib/safe-rm.js";
 
 export function createTempDir(): string {
@@ -9,11 +10,20 @@ export function createTempDir(): string {
 
 const TEMP_PREFIX = join(tmpdir(), "totopo-test-");
 
-export function cleanTempDir(dir: string): void {
+export async function cleanTempDir(dir: string): Promise<void> {
     if (!resolve(dir).startsWith(TEMP_PREFIX)) {
         throw new Error(`cleanTempDir: refusing to delete '${dir}' — must be under ${TEMP_PREFIX}*`);
     }
-    safeRmSync(dir, { recursive: true, force: true });
+    try {
+        safeRmSync(dir, { recursive: true, force: true });
+    } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== "EACCES") throw err;
+        // On macOS Docker Desktop, the host-side bind-mount target can briefly hold a
+        // macOS indexing handle and a com.apple.provenance xattr after `docker rm -f`
+        // returns. Give them a moment to settle and retry once before surfacing the error.
+        await sleep(250);
+        safeRmSync(dir, { recursive: true, force: true });
+    }
 }
 
 /**
