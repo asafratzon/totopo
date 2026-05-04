@@ -14,15 +14,20 @@ export async function cleanTempDir(dir: string): Promise<void> {
     if (!resolve(dir).startsWith(TEMP_PREFIX)) {
         throw new Error(`cleanTempDir: refusing to delete '${dir}' — must be under ${TEMP_PREFIX}*`);
     }
-    try {
-        safeRmSync(dir, { recursive: true, force: true });
-    } catch (err) {
-        if ((err as NodeJS.ErrnoException).code !== "EACCES") throw err;
-        // On macOS Docker Desktop, the host-side bind-mount target can briefly hold a
-        // macOS indexing handle and a com.apple.provenance xattr after `docker rm -f`
-        // returns. Give them a moment to settle and retry once before surfacing the error.
-        await sleep(250);
-        safeRmSync(dir, { recursive: true, force: true });
+    // On macOS Docker Desktop, the host-side bind-mount target can briefly hold a
+    // macOS indexing handle and a com.apple.provenance xattr after `docker rm -f`
+    // returns. Retry with exponential backoff before surfacing EACCES.
+    const delays = [0, 250, 500, 1000, 2000];
+    for (let attempt = 0; attempt < delays.length; attempt++) {
+        if (delays[attempt]) await sleep(delays[attempt]);
+        try {
+            safeRmSync(dir, { recursive: true, force: true });
+            return;
+        } catch (err) {
+            const code = (err as NodeJS.ErrnoException).code;
+            if (code !== "EACCES" && code !== "ENOTEMPTY") throw err;
+            if (attempt === delays.length - 1) throw err;
+        }
     }
 }
 

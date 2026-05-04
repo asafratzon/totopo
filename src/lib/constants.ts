@@ -37,6 +37,7 @@ export const LABEL_MANAGED = "totopo.managed";
 export const LABEL_SHADOWS = "totopo.shadows";
 export const LABEL_PROFILE = "totopo.profile";
 export const LABEL_RUNTIME_ENV = "totopo.runtime-env";
+export const LABEL_GIT_MODE = "totopo.git-mode";
 
 // Built-in profile names (must match keys in buildDefaultTotopoYaml in totopo-yaml.ts)
 export const PROFILE = {
@@ -44,6 +45,17 @@ export const PROFILE = {
     extended: "extended",
 } as const;
 export type BuiltInProfile = (typeof PROFILE)[keyof typeof PROFILE];
+
+// Git guardrails modes (per-workspace, stored in .lock).
+// Single source of truth lives in templates/runtime-constants.mjs so container-side
+// scripts (startup.mjs, startup-git-mode.mjs) and TS code can both reference the
+// same values without drift. We re-export here so internal code keeps importing
+// from "./constants.js" as before.
+import { GIT_MODE, GIT_WRAPPER_PATH, GIT_WRAPPER_SOURCE } from "../../templates/runtime-constants.mjs";
+
+export { GIT_MODE, GIT_WRAPPER_PATH, GIT_WRAPPER_SOURCE };
+export type GitMode = (typeof GIT_MODE)[keyof typeof GIT_MODE];
+export const GIT_MODES: readonly GitMode[] = Object.values(GIT_MODE);
 
 // Runtime env vars injected into every container via docker run -e
 export const RUNTIME_ENV: Record<string, string> = {

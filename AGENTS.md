@@ -44,7 +44,7 @@ src/commands/                  - Command modules (compiled to dist/commands/ by 
   global.ts                    - "Manage totopo" menu: stop containers, clear memory, remove images, uninstall
   menu.ts                      - Workspace menu (per-workspace actions and status display)
   onboard.ts                   - First-time setup: workspace root, workspace_id, totopo.yaml creation
-  workspace.ts                 - "Manage Workspace" submenu: shadow paths, rebuild, reset config
+  workspace.ts                 - "Manage Workspace" submenu: git mode, shadow paths, rebuild, reset config
                                  Exports: stop(), resetImage() for workspace container lifecycle
 
 src/lib/                       - Shared utilities (compiled to dist/lib/ by pnpm build)
@@ -70,6 +70,9 @@ scripts/                       - Release tooling (excluded from npm package, not
 templates/                     - Bundled assets (included in npm package)
   Dockerfile                   - Base image (debian:bookworm-slim + Node.js + git + AI CLIs)
   startup.mjs                  - Runs inside container as root on every session; AI CLI updates + readiness checks
+  startup-git-mode.mjs         - Apply + verify git mode (strict/local/unrestricted); imported by startup.mjs
+  runtime-constants.mjs        - Shared constants (GIT_MODE, wrapper paths) used by both container scripts and src/
+  git-readonly-wrapper.mjs     - Read-only git wrapper baked into the image; symlinked to /usr/local/bin/git in strict mode
   context/                     - Markdown templates for agent context injection ({{var}} placeholders)
 
 tests/                         - Unit test suite (run via tsx, not compiled to dist/)
@@ -77,12 +80,13 @@ tests/                         - Unit test suite (run via tsx, not compiled to d
   agent-context.test.ts        - Agent context template rendering and mount args
   changelog-utils.test.ts      - Version bumping, changelog validation, git tag checks
   dockerfile-builder.test.ts   - Dockerfile assembly and profile hook ordering
+  git-readonly-wrapper.test.ts - classify/findSubcommand: read vs mutating subcommands and global flag handling
   global.test.ts               - removeWorkspaceFiles: removes workspace dir and optional totopo.yaml
   migrate-to-latest.test.ts    - All migration steps with isolated HOME and DOCKER_HOST
   safe-rm.test.ts              - safeRmSync: allowlist guard, path traversal, and temp dir coverage
   shadows.test.ts              - Shadow pattern expansion, sync, and Docker mount args
   totopo-yaml.test.ts          - YAML read/write/validate/repair and workspace ID slug
-  workspace-identity.test.ts   - Container naming, lock files, collision and orphan detection
+  workspace-identity.test.ts   - Container naming, lock files (root/profile/git_mode), collision and orphan detection
 
 tests/docker/                  - Docker integration tests (pnpm test:docker, requires Docker, host-only)
   docker-helpers.ts            - uniqueName, dockerContainerStatus/Label/Exec, forceRemove*, cleanupAllTestArtifacts
@@ -101,7 +105,7 @@ schema/
 ~/.totopo/
   workspaces/
     <workspace_id>/
-      .lock                    - Key-value file: root=<workspace path>, profile=<active profile name>
+      .lock                    - Key-value file: root=<workspace path>, profile=<active profile>, git_mode=<strict|local|unrestricted>
       agents/
         claude/                - Mounted as ~/.claude/ inside the container
           .claude.json         - Mounted as ~/.claude.json (file mount - persists Claude Code settings)
@@ -152,7 +156,7 @@ Example: `migrateProjectsDir` uses `".totopo"` and `"projects"` for the old dir 
 ## Security boundaries (non-negotiable)
 
 The container isolation model is the core value proposition. Never weaken:
-- Git remote block (`protocol.allow = never` in `/etc/gitconfig`)
+- Default git mode (`local`) blocks remote operations via `protocol.allow = never` while allowing local mutations. The opt-in `strict` mode additionally blocks mutating subcommands via the read-only wrapper. Only the user-opt-in `unrestricted` mode lifts the remote block — never bypass these guardrails in code.
 - Non-root user (`devuser` uid 1001)
 - `no-new-privileges:true` security opt
 - No host credentials inside container

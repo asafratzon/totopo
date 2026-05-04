@@ -5,9 +5,11 @@
 import { spawnSync } from "node:child_process";
 import { relative } from "node:path";
 import { cancel, confirm, isCancel, log, multiselect, note, outro, path, select, text } from "@clack/prompts";
+import { GIT_MODE, type GitMode } from "../lib/constants.js";
 import { countPatternHits } from "../lib/shadows.js";
 import { buildDefaultTotopoYaml, readTotopoYaml, writeTotopoYaml } from "../lib/totopo-yaml.js";
 import type { WorkspaceContext } from "../lib/workspace-identity.js";
+import { readGitMode, writeGitMode } from "../lib/workspace-identity.js";
 
 // --- Shadow paths menu -------------------------------------------------------------------------------------------------------------------
 async function shadowPathsMenu(ctx: WorkspaceContext): Promise<void> {
@@ -133,6 +135,54 @@ async function removeShadowPatterns(ctx: WorkspaceContext): Promise<void> {
     await promptStopContainer(ctx);
 }
 
+// --- Git mode menu -----------------------------------------------------------------------------------------------------------------------
+async function gitModeMenu(ctx: WorkspaceContext): Promise<void> {
+    const current = readGitMode(ctx.workspaceId) ?? GIT_MODE.local;
+
+    note(
+        "Local         — local mutations allowed; remote blocked\n" +
+            "Strict        — read-only; mutations and remote blocked\n" +
+            "Unrestricted  — no totopo-enforced restrictions",
+        "Git mode",
+    );
+
+    const choice = await select<GitMode>({
+        message: "Git mode:",
+        options: [
+            {
+                value: GIT_MODE.local,
+                label: "Local",
+                hint: current === GIT_MODE.local ? "current · default" : "default",
+            },
+            { value: GIT_MODE.strict, label: "Strict", ...(current === GIT_MODE.strict ? { hint: "current" } : {}) },
+            {
+                value: GIT_MODE.unrestricted,
+                label: "Unrestricted",
+                ...(current === GIT_MODE.unrestricted ? { hint: "current" } : {}),
+            },
+        ],
+        initialValue: current,
+    });
+
+    if (isCancel(choice)) return;
+    if (choice === current) return;
+
+    if (choice === GIT_MODE.unrestricted) {
+        const confirmed = await confirm({
+            message: "Unrestricted mode disables totopo's built-in git restrictions (allows remote push/pull/fetch). Continue?",
+            initialValue: false,
+        });
+        if (isCancel(confirmed) || !confirmed) {
+            log.info("Git mode unchanged.");
+            return;
+        }
+    }
+
+    writeGitMode(ctx.workspaceId, choice);
+    log.success(`Git mode set to ${choice}.`);
+    await promptStopContainer(ctx);
+}
+
 // --- Prompt to stop container ------------------------------------------------------------------------------------------------------------
 async function promptStopContainer(ctx: WorkspaceContext): Promise<void> {
     const containerName = ctx.containerName;
@@ -187,7 +237,9 @@ async function resetTotopoYaml(ctx: WorkspaceContext): Promise<void> {
 // --- Manage Workspace submenu ------------------------------------------------------------------------------------------------------------
 export async function run(ctx: WorkspaceContext): Promise<"back" | "rebuild" | "clean-rebuild" | undefined> {
     while (true) {
+        const currentGitMode = readGitMode(ctx.workspaceId) ?? GIT_MODE.local;
         const options: { value: string; label: string; hint?: string }[] = [
+            { value: "git-mode", label: "Git mode", hint: `current: ${currentGitMode}` },
             { value: "shadow-paths", label: "Shadow paths", hint: "manage shadow patterns" },
             { value: "rebuild", label: "Rebuild container", hint: "force a fresh image build" },
             { value: "clean-rebuild", label: "Clean rebuild", hint: "fresh build, no cache" },
@@ -202,6 +254,9 @@ export async function run(ctx: WorkspaceContext): Promise<"back" | "rebuild" | "
         }
 
         switch (action) {
+            case "git-mode":
+                await gitModeMenu(ctx);
+                break;
             case "shadow-paths":
                 await shadowPathsMenu(ctx);
                 break;

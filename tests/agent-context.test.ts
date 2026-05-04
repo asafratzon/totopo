@@ -3,6 +3,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import { buildAgentContextDocs, buildAgentMountArgs, injectAgentContext } from "../src/lib/agent-context.js";
+import { GIT_MODE } from "../src/lib/constants.js";
 import { cleanTempDir, createTempDir } from "./helpers.js";
 
 const UNRESOLVED = /\{\{[^}]+\}\}/;
@@ -55,6 +56,36 @@ describe("buildAgentContextDocs - content", () => {
         assert.ok(typeof docs.claude === "string");
         assert.ok(typeof docs.opencode === "string");
         assert.ok(typeof docs.codex === "string");
+    });
+
+    test("strict mode - contains read-only language", () => {
+        const docs = buildAgentContextDocs(true, undefined, GIT_MODE.strict);
+        assert.match(docs.claude, /strict/i);
+        assert.match(docs.claude, /read-only/i);
+    });
+
+    test("local mode - mentions remote is blocked but local allowed", () => {
+        const docs = buildAgentContextDocs(true, undefined, GIT_MODE.local);
+        assert.match(docs.claude, /local/);
+        assert.match(docs.claude, /remote/);
+    });
+
+    test("unrestricted mode - mentions totopo enforces no git-specific restrictions", () => {
+        const docs = buildAgentContextDocs(true, undefined, GIT_MODE.unrestricted);
+        assert.match(docs.claude, /unrestricted/);
+        assert.match(docs.claude, /does not enforce any git-specific restrictions/i);
+    });
+
+    test("local mode default when gitMode arg omitted", () => {
+        const docs = buildAgentContextDocs(true);
+        assert.match(docs.claude, /local/);
+        assert.match(docs.claude, /remote/);
+    });
+
+    test("hasGit=false - falls back to git-unavailable regardless of mode", () => {
+        const docs = buildAgentContextDocs(false, undefined, GIT_MODE.unrestricted);
+        assert.match(docs.claude, /not available/i);
+        assert.doesNotMatch(docs.claude, /does not enforce any git-specific restrictions/i);
     });
 });
 
