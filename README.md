@@ -108,7 +108,7 @@ Each workspace has a git mode (set via **Manage Workspace > Git mode**) that con
 |---|---|---|
 | **local** *(default)* | Allowed | Blocked at the gitconfig protocol layer |
 | **strict** | Blocked — a read-only `git` wrapper allows inspection (`status`, `log`, `diff`, `blame`, `show`, etc.) and rejects mutations (`commit`, `add`, `reset`, `checkout`, etc.) | Blocked at the gitconfig protocol layer |
-| **unrestricted** | Allowed | Allowed — totopo enforces no git-specific restrictions |
+| **unrestricted** | Allowed | Allowed |
 
 The active mode is recorded per workspace in `.lock`, exposed inside the container as `TOTOPO_GIT_MODE`, and reflected in the agent context so each session knows what is permitted. Switching modes recreates the container on the next session.
 
