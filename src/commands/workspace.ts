@@ -137,11 +137,11 @@ async function removeShadowPatterns(ctx: WorkspaceContext): Promise<void> {
 
 // --- Git mode menu -----------------------------------------------------------------------------------------------------------------------
 async function gitModeMenu(ctx: WorkspaceContext): Promise<void> {
-    const current = readGitMode(ctx.workspaceId) ?? GIT_MODE.strict;
+    const current = readGitMode(ctx.workspaceId) ?? GIT_MODE.local;
 
     note(
-        "Strict        — read-only local, no remote (recommended)\n" +
-            "Local         — local mutations allowed; remote blocked\n" +
+        "Local         — local mutations allowed; remote blocked\n" +
+            "Strict        — read-only; mutations and remote blocked\n" +
             "Unrestricted  — no totopo-enforced restrictions",
         "Git mode",
     );
@@ -150,11 +150,11 @@ async function gitModeMenu(ctx: WorkspaceContext): Promise<void> {
         message: "Git mode:",
         options: [
             {
-                value: GIT_MODE.strict,
-                label: "Strict",
-                hint: current === GIT_MODE.strict ? "current · recommended" : "recommended",
+                value: GIT_MODE.local,
+                label: "Local",
+                hint: current === GIT_MODE.local ? "current · default" : "default",
             },
-            { value: GIT_MODE.local, label: "Local", ...(current === GIT_MODE.local ? { hint: "current" } : {}) },
+            { value: GIT_MODE.strict, label: "Strict", ...(current === GIT_MODE.strict ? { hint: "current" } : {}) },
             {
                 value: GIT_MODE.unrestricted,
                 label: "Unrestricted",
@@ -237,7 +237,7 @@ async function resetTotopoYaml(ctx: WorkspaceContext): Promise<void> {
 // --- Manage Workspace submenu ------------------------------------------------------------------------------------------------------------
 export async function run(ctx: WorkspaceContext): Promise<"back" | "rebuild" | "clean-rebuild" | undefined> {
     while (true) {
-        const currentGitMode = readGitMode(ctx.workspaceId) ?? GIT_MODE.strict;
+        const currentGitMode = readGitMode(ctx.workspaceId) ?? GIT_MODE.local;
         const options: { value: string; label: string; hint?: string }[] = [
             { value: "git-mode", label: "Git mode", hint: `current: ${currentGitMode}` },
             { value: "shadow-paths", label: "Shadow paths", hint: "manage shadow patterns" },

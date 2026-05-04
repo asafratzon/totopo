@@ -76,9 +76,10 @@ describe("buildAgentContextDocs - content", () => {
         assert.match(docs.claude, /does not enforce any git-specific restrictions/i);
     });
 
-    test("strict mode default when gitMode arg omitted", () => {
+    test("local mode default when gitMode arg omitted", () => {
         const docs = buildAgentContextDocs(true);
-        assert.match(docs.claude, /strict/i);
+        assert.match(docs.claude, /local/);
+        assert.match(docs.claude, /remote/);
     });
 
     test("hasGit=false - falls back to git-unavailable regardless of mode", () => {

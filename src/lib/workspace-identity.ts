@@ -88,7 +88,7 @@ function parseLockFile(workspaceId: string): LockFile | null {
         return {
             workspaceRoot: partial.workspaceRoot,
             activeProfile: partial.activeProfile ?? PROFILE.default,
-            gitMode: partial.gitMode ?? GIT_MODE.strict,
+            gitMode: partial.gitMode ?? GIT_MODE.local,
         };
     } catch {
         return null;
@@ -114,7 +114,7 @@ export function writeLockFile(workspaceId: string, workspaceRoot: string): void 
     writeLockFileInternal(workspaceId, {
         workspaceRoot,
         activeProfile: existing?.activeProfile ?? PROFILE.default,
-        gitMode: existing?.gitMode ?? GIT_MODE.strict,
+        gitMode: existing?.gitMode ?? GIT_MODE.local,
     });
 }
 
@@ -130,12 +130,12 @@ export function writeActiveProfile(workspaceId: string, profile: string): void {
     writeLockFileInternal(workspaceId, { ...existing, activeProfile: profile });
 }
 
-/** Read the active git mode. Returns null if lock file is missing. Coerces unknown values to strict. */
+/** Read the active git mode. Returns null if lock file is missing. Coerces unknown values to local. */
 export function readGitMode(workspaceId: string): GitMode | null {
     const parsed = parseLockFile(workspaceId);
     if (!parsed) return null;
     const value = parsed.gitMode;
-    return (GIT_MODES as readonly string[]).includes(value) ? (value as GitMode) : GIT_MODE.strict;
+    return (GIT_MODES as readonly string[]).includes(value) ? (value as GitMode) : GIT_MODE.local;
 }
 
 /** Write the active git mode. Preserves workspace root path and active profile. */
@@ -152,7 +152,7 @@ export function initWorkspaceDir(
     workspaceId: string,
     workspaceRoot: string,
     activeProfile: string = PROFILE.default,
-    gitMode: GitMode = GIT_MODE.strict,
+    gitMode: GitMode = GIT_MODE.local,
 ): void {
     const dir = getWorkspaceDir(workspaceId);
     mkdirSync(join(dir, AGENTS_DIR), { recursive: true });

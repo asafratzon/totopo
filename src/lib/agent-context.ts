@@ -122,7 +122,7 @@ function renderTemplate(template: string, vars: Record<string, string>): string 
 /**
  * Assembles the agent context markdown injected into each supported agent's config dir at session start.
  */
-export function buildAgentContextDocs(hasGit: boolean, shadowPatterns?: string[], gitMode: GitMode = GIT_MODE.strict): AgentContextDocs {
+export function buildAgentContextDocs(hasGit: boolean, shadowPatterns?: string[], gitMode: GitMode = GIT_MODE.local): AgentContextDocs {
     const gitSection = loadTemplate(hasGit ? `git-mode-${gitMode}` : "git-unavailable");
 
     const shadowSection =

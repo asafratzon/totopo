@@ -459,12 +459,11 @@ function migrateRemoveLastCliUpdate(): void {
 }
 
 /**
- * Pre-v3.4.0: Add the git_mode field to .lock files. Existing workspaces are kept on
- * git_mode=local to preserve their behavior; new workspaces created via initWorkspaceDir
- * default to git_mode=strict instead. Idempotent - skips files that already have the field.
- * Prints a one-time clack note() when any workspace was newly migrated, so users discover
- * the new feature without rediscovering it on every subsequent startup. Returns the count
- * for testing purposes; the registered Migration entry ignores it.
+ * Pre-v3.4.0: Add the git_mode=local field to .lock files. Local is the default, so this
+ * is a cosmetic write that makes the field visible on disk; runtime behavior is unchanged
+ * for existing workspaces. Idempotent - skips files that already have the field. Prints a
+ * one-time clack note() when any workspace was newly migrated so users discover the new
+ * feature. Returns the count for testing purposes; the registered Migration entry ignores it.
  */
 export function migrateAddGitMode(): number {
     const baseDir = getWorkspacesBaseDir();
@@ -486,7 +485,7 @@ export function migrateAddGitMode(): number {
 
     if (migrated > 0) {
         note(
-            `totopo v3.4.0 introduces git modes for workspaces.\nYour existing workspace${migrated > 1 ? "s have" : " has"} been kept on 'local' (today's behavior — local commits allowed, remote blocked).\nA new 'strict' mode is available (read-only, recommended for new agent sessions).\nSwitch via the totopo menu > Manage Workspace > Git mode.`,
+            `totopo v3.4.0 introduces git modes for workspaces.\nDefault is 'local' (previous behavior — local commits allowed, remote blocked).\nTwo opt-in modes are available: 'strict' (read-only, all mutations blocked) and 'unrestricted' (no totopo-enforced restrictions).\nSwitch via the totopo menu > Manage Workspace > Git mode.`,
             "Git modes",
         );
     }
