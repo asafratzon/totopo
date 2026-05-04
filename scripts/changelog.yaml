@@ -1,6 +1,16 @@
 in_progress:
-  base_version: 3.3.4
-  entries: []
+  base_version: 3.4.0
+  entries:
+    - rc_version: 3.4.0-rc-1
+      date: "2026-05-04"
+      added:
+        - >-
+          Per-workspace git modes — strict (read-only, blocks mutating subcommands), local (local commits allowed,
+          remote blocked — prior behavior), and unrestricted (no totopo-enforced restrictions). Configure via
+          Manage Workspace > Git mode. Strict installs a read-only git wrapper that allows status/log/diff/blame/show
+          and blocks commit/add/reset/checkout/push/fetch/etc. Agent context, container labels, and the
+          TOTOPO_GIT_MODE env var all reflect the active mode, and the container is recreated when the mode changes.
+          Existing workspaces are migrated to local on first run; new workspaces default to strict.
 releases:
   - version: 3.3.3
     date: "2026-04-20"

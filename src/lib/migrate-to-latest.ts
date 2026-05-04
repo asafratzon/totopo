@@ -26,9 +26,20 @@ import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { confirm, isCancel, log } from "@clack/prompts";
+import { confirm, isCancel, log, note } from "@clack/prompts";
 import { load as loadYaml } from "js-yaml";
-import { AGENTS_DIR, CONTAINER_STARTUP, LOCK_FILE, PROFILE, SHADOWS_DIR, TOTOPO_DIR, TOTOPO_YAML, WORKSPACES_DIR } from "./constants.js";
+import {
+    AGENTS_DIR,
+    CONTAINER_STARTUP,
+    GIT_MODE,
+    GIT_WRAPPER_SOURCE,
+    LOCK_FILE,
+    PROFILE,
+    SHADOWS_DIR,
+    TOTOPO_DIR,
+    TOTOPO_YAML,
+    WORKSPACES_DIR,
+} from "./constants.js";
 import { safeRmSync } from "./safe-rm.js";
 import {
     buildDefaultTotopoYaml,
@@ -448,6 +459,41 @@ function migrateRemoveLastCliUpdate(): void {
 }
 
 /**
+ * Pre-v3.4.0: Add the git_mode field to .lock files. Existing workspaces are kept on
+ * git_mode=local to preserve their behavior; new workspaces created via initWorkspaceDir
+ * default to git_mode=strict instead. Idempotent - skips files that already have the field.
+ * Prints a one-time clack note() when any workspace was newly migrated, so users discover
+ * the new feature without rediscovering it on every subsequent startup. Returns the count
+ * for testing purposes; the registered Migration entry ignores it.
+ */
+export function migrateAddGitMode(): number {
+    const baseDir = getWorkspacesBaseDir();
+    if (!existsSync(baseDir)) return 0;
+
+    let migrated = 0;
+    for (const entry of readdirSync(baseDir)) {
+        const lockPath = join(baseDir, entry, LOCK_FILE);
+        try {
+            const content = readFileSync(lockPath, "utf8");
+            if (content.includes(`${LOCK_KEYS.gitMode}=`)) continue;
+            const trimmed = content.endsWith("\n") ? content : `${content}\n`;
+            writeFileSync(lockPath, `${trimmed}${LOCK_KEYS.gitMode}=${GIT_MODE.local}\n`);
+            migrated++;
+        } catch {
+            // unreadable -- skip, will surface as a broken workspace elsewhere
+        }
+    }
+
+    if (migrated > 0) {
+        note(
+            `totopo v3.4.0 introduces git modes for workspaces.\nYour existing workspace${migrated > 1 ? "s have" : " has"} been kept on 'local' (today's behavior — local commits allowed, remote blocked).\nA new 'strict' mode is available (read-only, recommended for new agent sessions).\nSwitch via the totopo menu > Manage Workspace > Git mode.`,
+            "Git modes",
+        );
+    }
+    return migrated;
+}
+
+/**
  * v3.2.1 and earlier: Remove deprecated fields from totopo.yaml.
  * - schema_version: redundant, totopo validates with the bundled JSON schema at runtime
  * - yaml-language-server header: created stale versioned URLs
@@ -517,6 +563,7 @@ function buildMigrations(cwd: string, skipAnyConfirmations: boolean): Migration[
             description: "Remove deprecated fields (schema_version, name, yaml-language-server) from totopo.yaml",
             run: () => migrateRemoveDeprecatedYamlFields(cwd),
         },
+        { from: "v3.4.0", description: "Add git_mode=local to .lock files (preserves pre-v3.4.0 behavior)", run: migrateAddGitMode },
     ];
 }
 
@@ -546,6 +593,18 @@ export function isImageStale(containerName: string): boolean {
     // v3.3.0: bubblewrap added for Codex sandboxing prerequisites
     const bubblewrapCheck = spawnSync("docker", ["exec", containerName, "test", "-x", "/usr/bin/bwrap"], { stdio: "pipe" });
     if (bubblewrapCheck.status !== 0) return true;
+
+    // v3.4.0: git read-only wrapper baked in for strict git mode
+    const wrapperCheck = spawnSync("docker", ["exec", containerName, "test", "-x", GIT_WRAPPER_SOURCE], {
+        stdio: "pipe",
+    });
+    if (wrapperCheck.status !== 0) return true;
+
+    // v3.4.0: runtime-constants module imported by startup-git-mode.mjs
+    const constantsCheck = spawnSync("docker", ["exec", containerName, "test", "-f", "/home/devuser/runtime-constants.mjs"], {
+        stdio: "pipe",
+    });
+    if (constantsCheck.status !== 0) return true;
 
     return false;
 }

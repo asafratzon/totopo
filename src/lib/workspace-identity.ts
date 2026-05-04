@@ -9,6 +9,9 @@ import { dirname, join } from "node:path";
 import {
     AGENTS_DIR,
     CONTAINER_NAME_PREFIX,
+    GIT_MODE,
+    GIT_MODES,
+    type GitMode,
     LOCK_FILE,
     PROFILE,
     SHADOWS_DIR,
@@ -31,6 +34,7 @@ export interface WorkspaceContext {
 export const LOCK_KEYS = {
     workspaceRoot: "root",
     activeProfile: "profile",
+    gitMode: "git_mode",
 } as const;
 
 /** Parsed representation of a workspace .lock file. All fields are strings. */
@@ -84,6 +88,7 @@ function parseLockFile(workspaceId: string): LockFile | null {
         return {
             workspaceRoot: partial.workspaceRoot,
             activeProfile: partial.activeProfile ?? PROFILE.default,
+            gitMode: partial.gitMode ?? GIT_MODE.strict,
         };
     } catch {
         return null;
@@ -103,12 +108,13 @@ export function readLockFile(workspaceId: string): string | null {
     return parseLockFile(workspaceId)?.workspaceRoot ?? null;
 }
 
-/** Write a workspace's lock file with the owning workspace root path. Preserves active profile. */
+/** Write a workspace's lock file with the owning workspace root path. Preserves active profile and git mode. */
 export function writeLockFile(workspaceId: string, workspaceRoot: string): void {
     const existing = parseLockFile(workspaceId);
     writeLockFileInternal(workspaceId, {
         workspaceRoot,
         activeProfile: existing?.activeProfile ?? PROFILE.default,
+        gitMode: existing?.gitMode ?? GIT_MODE.strict,
     });
 }
 
@@ -117,21 +123,41 @@ export function readActiveProfile(workspaceId: string): string | null {
     return parseLockFile(workspaceId)?.activeProfile ?? null;
 }
 
-/** Write the active profile name. Preserves workspace root path. */
+/** Write the active profile name. Preserves workspace root path and git mode. */
 export function writeActiveProfile(workspaceId: string, profile: string): void {
     const existing = parseLockFile(workspaceId);
     if (!existing) return;
     writeLockFileInternal(workspaceId, { ...existing, activeProfile: profile });
 }
 
+/** Read the active git mode. Returns null if lock file is missing. Coerces unknown values to strict. */
+export function readGitMode(workspaceId: string): GitMode | null {
+    const parsed = parseLockFile(workspaceId);
+    if (!parsed) return null;
+    const value = parsed.gitMode;
+    return (GIT_MODES as readonly string[]).includes(value) ? (value as GitMode) : GIT_MODE.strict;
+}
+
+/** Write the active git mode. Preserves workspace root path and active profile. */
+export function writeGitMode(workspaceId: string, gitMode: GitMode): void {
+    const existing = parseLockFile(workspaceId);
+    if (!existing) return;
+    writeLockFileInternal(workspaceId, { ...existing, gitMode });
+}
+
 // --- Workspace directory initialization --------------------------------------------------------------------------------------------------
 
 /** Initialize ~/.totopo/workspaces/<workspace_id>/ with lock file and subdirs. */
-export function initWorkspaceDir(workspaceId: string, workspaceRoot: string, activeProfile: string = PROFILE.default): void {
+export function initWorkspaceDir(
+    workspaceId: string,
+    workspaceRoot: string,
+    activeProfile: string = PROFILE.default,
+    gitMode: GitMode = GIT_MODE.strict,
+): void {
     const dir = getWorkspaceDir(workspaceId);
     mkdirSync(join(dir, AGENTS_DIR), { recursive: true });
     mkdirSync(join(dir, SHADOWS_DIR), { recursive: true });
-    writeLockFileInternal(workspaceId, { workspaceRoot, activeProfile });
+    writeLockFileInternal(workspaceId, { workspaceRoot, activeProfile, gitMode });
 }
 
 // --- Listing -----------------------------------------------------------------------------------------------------------------------------
