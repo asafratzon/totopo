@@ -355,7 +355,7 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
     const hasGit = existsSync(join(workspaceDir, ".git"));
 
     // --- Git mode (per-workspace, host-side .lock) ---------------------------------------------------------------------------------------
-    const gitMode = readGitMode(ctx.workspaceId) ?? GIT_MODE.strict;
+    const gitMode = readGitMode(ctx.workspaceId) ?? GIT_MODE.local;
 
     // --- Start container -----------------------------------------------------------------------------------------------------------------
     const containerOpts: StartContainerOpts = {

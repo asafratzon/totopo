@@ -155,10 +155,10 @@ describe("with isolated home", () => {
             await cleanTempDir(tmp);
         });
 
-        test("readGitMode returns strict by default on fresh init", async () => {
+        test("readGitMode returns local by default on fresh init", async () => {
             const tmp = createTempDir();
             initWorkspaceDir("test-ws", tmp);
-            assert.equal(readGitMode("test-ws"), GIT_MODE.strict);
+            assert.equal(readGitMode("test-ws"), GIT_MODE.local);
             await cleanTempDir(tmp);
         });
 

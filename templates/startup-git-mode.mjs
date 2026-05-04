@@ -129,7 +129,7 @@ function verifyRemoteBlocked(gitMode, ok, fail, skip) {
  * through the main startup script's section formatting and error counter.
  */
 export function checkGitMode({ ok, fail, skip, run, isRoot }) {
-    const gitMode = VALID_GIT_MODES.includes(process.env.TOTOPO_GIT_MODE) ? process.env.TOTOPO_GIT_MODE : GIT_MODE.strict;
+    const gitMode = VALID_GIT_MODES.includes(process.env.TOTOPO_GIT_MODE) ? process.env.TOTOPO_GIT_MODE : GIT_MODE.local;
     const protocolValue = gitMode === GIT_MODE.unrestricted ? "always" : "never";
 
     if (isRoot) {

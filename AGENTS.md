@@ -156,7 +156,7 @@ Example: `migrateProjectsDir` uses `".totopo"` and `"projects"` for the old dir 
 ## Security boundaries (non-negotiable)
 
 The container isolation model is the core value proposition. Never weaken:
-- Default git mode (`strict`) blocks mutating subcommands via the read-only wrapper and remote operations via `protocol.allow = never`. The `local` mode keeps the remote block but allows local mutations. Only the user-opt-in `unrestricted` mode lifts the remote block — never bypass these guardrails in code.
+- Default git mode (`local`) blocks remote operations via `protocol.allow = never` while allowing local mutations. The opt-in `strict` mode additionally blocks mutating subcommands via the read-only wrapper. Only the user-opt-in `unrestricted` mode lifts the remote block — never bypass these guardrails in code.
 - Non-root user (`devuser` uid 1001)
 - `no-new-privileges:true` security opt
 - No host credentials inside container
