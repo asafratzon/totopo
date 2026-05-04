@@ -8,6 +8,7 @@
 
 import { execSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
+import { checkGitMode } from "./startup-git-mode.mjs";
 
 const run = (cmd) => {
     try {
@@ -84,19 +85,8 @@ if (idOutput?.includes("uid=1001")) {
     fail("non-root user", "devuser not found or wrong uid -- container is misconfigured");
 }
 
-const gitProtocol = run("git config --system protocol.allow");
-if (gitProtocol === "never") {
-    ok("git remote block", "protocol.allow = never");
-} else {
-    fail("git remote block", "not set -- rebuild the container");
-}
-
-try {
-    execSync("/usr/bin/git -C /workspace push", { stdio: "pipe" });
-    fail("push blocked", "git push succeeded -- remote access is NOT blocked");
-} catch {
-    ok("push blocked", "remote push not possible");
-}
+// -- Git mode (strict / local / unrestricted) - applied + verified by separate module --
+checkGitMode({ ok, fail, skip, run, isRoot });
 
 // -- AI tools -----------------------------------------------------------------
 section("AI tools");

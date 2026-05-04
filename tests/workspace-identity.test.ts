@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, test } from "node:test";
-import { LOCK_FILE, PROFILE } from "../src/lib/constants.js";
+import { GIT_MODE, LOCK_FILE, PROFILE } from "../src/lib/constants.js";
 import {
     checkCollision,
     deriveContainerName,
@@ -13,8 +13,10 @@ import {
     LOCK_KEYS,
     listWorkspaceIds,
     readActiveProfile,
+    readGitMode,
     readLockFile,
     writeActiveProfile,
+    writeGitMode,
     writeLockFile,
 } from "../src/lib/workspace-identity.js";
 import { cleanTempDir, createTempDir, overrideEnv } from "./helpers.js";
@@ -148,7 +150,46 @@ describe("with isolated home", () => {
             const raw = readFileSync(join(getWorkspaceDir("test-ws"), LOCK_FILE), "utf8");
             assert.ok(raw.includes(`${LOCK_KEYS.workspaceRoot}=`), "should contain root= key");
             assert.ok(raw.includes(`${LOCK_KEYS.activeProfile}=`), "should contain profile= key");
+            assert.ok(raw.includes(`${LOCK_KEYS.gitMode}=`), "should contain git_mode= key");
             assert.ok(!raw.includes("last-cli-update="), "should not contain last-cli-update= key");
+            await cleanTempDir(tmp);
+        });
+
+        test("readGitMode returns strict by default on fresh init", async () => {
+            const tmp = createTempDir();
+            initWorkspaceDir("test-ws", tmp);
+            assert.equal(readGitMode("test-ws"), GIT_MODE.strict);
+            await cleanTempDir(tmp);
+        });
+
+        test("readGitMode returns null for missing lock", () => {
+            assert.equal(readGitMode("nonexistent-ws-id-xyz"), null);
+        });
+
+        test("writeGitMode updates mode without changing other fields", async () => {
+            const tmp = createTempDir();
+            initWorkspaceDir("test-ws", tmp, PROFILE.extended);
+            writeGitMode("test-ws", GIT_MODE.local);
+            assert.equal(readGitMode("test-ws"), GIT_MODE.local);
+            assert.equal(readActiveProfile("test-ws"), PROFILE.extended);
+            assert.equal(readLockFile("test-ws"), tmp);
+            await cleanTempDir(tmp);
+        });
+
+        test("writeActiveProfile preserves git mode", async () => {
+            const tmp = createTempDir();
+            initWorkspaceDir("test-ws", tmp);
+            writeGitMode("test-ws", GIT_MODE.unrestricted);
+            writeActiveProfile("test-ws", PROFILE.extended);
+            assert.equal(readGitMode("test-ws"), GIT_MODE.unrestricted);
+            assert.equal(readActiveProfile("test-ws"), PROFILE.extended);
+            await cleanTempDir(tmp);
+        });
+
+        test("initWorkspaceDir with custom git mode", async () => {
+            const tmp = createTempDir();
+            initWorkspaceDir("test-ws", tmp, PROFILE.default, GIT_MODE.local);
+            assert.equal(readGitMode("test-ws"), GIT_MODE.local);
             await cleanTempDir(tmp);
         });
     });

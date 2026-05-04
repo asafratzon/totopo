@@ -77,7 +77,7 @@ On every run, totopo shows the workspace menu:
 
 - **Open session** — start or resume the dev container and connect
 - **Stop container** — stop the running container
-- **Manage Workspace** — shadow paths, rebuild, reset config
+- **Manage Workspace** — git mode, shadow paths, rebuild, reset config
 - **Manage totopo** — multi-workspace management (stop containers, clear memory, uninstall)
 
 ### Working directory
@@ -96,11 +96,21 @@ Every session runs inside a Docker container. Your code is bind-mounted from the
 | No host credentials | Host git credentials are never copied into the container |
 | No privilege escalation | `no-new-privileges:true` prevents any process from gaining elevated permissions |
 | Filesystem isolation | Only the workspace directory is mounted; the rest of the host is not visible |
-| Git remote block | `protocol.allow = never` in `/etc/gitconfig` — push, pull, fetch, and clone are refused |
+| Git guardrails | Per-workspace **git mode** controls what git can do inside the container — see [Git Modes](#git-modes) |
 | Shadow mounts | Selected paths overlaid with isolated container-local copies — see [Shadow Paths](#shadow-paths) |
 | Environment vars | Injected from a host file at session start (`env_file`) |
 
-Remote git operations are blocked inside the container. Run them from your host terminal.
+### Git Modes
+
+Each workspace has a git mode (set via **Manage Workspace > Git mode**) that controls what git operations are permitted inside the container:
+
+| Mode | Local mutations | Remote (push/pull/fetch/clone) |
+|---|---|---|
+| **strict** *(default for new workspaces)* | Blocked — a read-only `git` wrapper allows inspection (`status`, `log`, `diff`, `blame`, `show`, etc.) and rejects mutations (`commit`, `add`, `reset`, `checkout`, etc.) | Blocked at the gitconfig protocol layer |
+| **local** *(default for workspaces upgraded from earlier versions)* | Allowed | Blocked at the gitconfig protocol layer |
+| **unrestricted** | Allowed | Allowed — totopo enforces no git-specific restrictions |
+
+The active mode is recorded per workspace in `.lock`, exposed inside the container as `TOTOPO_GIT_MODE`, and reflected in the agent context so each session knows what is permitted. Switching modes recreates the container on the next session.
 
 ### Profiles
 
@@ -203,7 +213,7 @@ To clear memory: `npx totopo` → **Manage totopo > Clear agent memory**.
 ~/.totopo/
 └── workspaces/
     └── <workspace_id>/
-        ├── .lock       # workspace root path + active profile
+        ├── .lock       # workspace root path, active profile, and git mode
         ├── agents/     # agent session data (persists across rebuilds)
         │   ├── claude/
         │   ├── opencode/

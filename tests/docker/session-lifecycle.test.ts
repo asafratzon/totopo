@@ -12,7 +12,15 @@ import { join } from "node:path";
 import { after, afterEach, before, beforeEach, describe, test } from "node:test";
 import type { StartContainerOpts } from "../../src/commands/dev.js";
 import { startContainer } from "../../src/commands/dev.js";
-import { CONTAINER_STARTUP, LABEL_MANAGED, LABEL_PROFILE, LABEL_SHADOWS, PROFILE } from "../../src/lib/constants.js";
+import {
+    CONTAINER_STARTUP,
+    GIT_MODE,
+    LABEL_GIT_MODE,
+    LABEL_MANAGED,
+    LABEL_PROFILE,
+    LABEL_SHADOWS,
+    PROFILE,
+} from "../../src/lib/constants.js";
 import { buildDockerfile, buildImageWithTempfile } from "../../src/lib/dockerfile-builder.js";
 import { isImageStale } from "../../src/lib/migrate-to-latest.js";
 import { expandShadowPatterns } from "../../src/lib/shadows.js";
@@ -75,6 +83,7 @@ function makeOpts(
         expandedShadows: [],
         envFilePath: undefined,
         hasGit: false,
+        gitMode: GIT_MODE.local,
         shadowPatterns: [],
         workspaceName: "test-workspace",
         quiet: true,
@@ -180,6 +189,22 @@ describe("session lifecycle", () => {
         startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { envFilePath: envFile }));
         const result = dockerExec(containerName, ["sh", "-c", "echo $TOTOPO_TEST_VAR"]);
         assert.equal(result.stdout, "hello123");
+    });
+
+    test("git mode label and env var reflect the active mode", () => {
+        startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { gitMode: GIT_MODE.strict }));
+        assert.equal(dockerContainerLabel(containerName, LABEL_GIT_MODE), GIT_MODE.strict);
+        const env = dockerExec(containerName, ["printenv", "TOTOPO_GIT_MODE"]);
+        assert.equal(env.stdout, GIT_MODE.strict);
+    });
+
+    test("git mode change triggers container recreation", () => {
+        startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { gitMode: GIT_MODE.local }));
+        assert.equal(dockerContainerLabel(containerName, LABEL_GIT_MODE), GIT_MODE.local);
+
+        const result = startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { gitMode: GIT_MODE.strict }));
+        assert.equal(result, "created", "container should be recreated when git mode changes");
+        assert.equal(dockerContainerLabel(containerName, LABEL_GIT_MODE), GIT_MODE.strict);
     });
 });
 
@@ -445,6 +470,24 @@ CMD ["sleep", "infinity"]
 LABEL totopo.managed=true
 RUN groupadd --gid 1001 devuser && useradd --uid 1001 --gid devuser --shell /bin/bash --create-home devuser
 RUN touch /usr/bin/file && chmod +x /usr/bin/file
+COPY startup.mjs /home/devuser/startup.mjs
+WORKDIR /workspace
+USER devuser
+CMD ["sleep", "infinity"]
+`;
+        const result = buildImageWithTempfile(dockerfile, TEMPLATES_DIR, containerName, false, true);
+        assert.equal(result.status, 0);
+        spawnSync("docker", ["run", "-d", "--name", containerName, containerName, "sleep", "infinity"], { stdio: "pipe" });
+        assert.equal(isImageStale(containerName), true);
+    });
+
+    test("isImageStale returns true for container missing the v3.4.0 git read-only wrapper", () => {
+        // Image satisfies all prior staleness checks but lacks the v3.4.0 wrapper.
+        const dockerfile = `FROM debian:bookworm-slim
+LABEL totopo.managed=true
+RUN groupadd --gid 1001 devuser && useradd --uid 1001 --gid devuser --shell /bin/bash --create-home devuser
+RUN touch /usr/bin/file && chmod +x /usr/bin/file
+RUN touch /usr/bin/bwrap && chmod +x /usr/bin/bwrap
 COPY startup.mjs /home/devuser/startup.mjs
 WORKDIR /workspace
 USER devuser
