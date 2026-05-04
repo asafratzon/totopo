@@ -12,6 +12,9 @@ import { buildAgentContextDocs, buildAgentMountArgs, injectAgentContext } from "
 import {
     CONTAINER_STARTUP,
     CONTAINER_WORKSPACE,
+    GIT_MODE,
+    type GitMode,
+    LABEL_GIT_MODE,
     LABEL_MANAGED,
     LABEL_PROFILE,
     LABEL_RUNTIME_ENV,
@@ -25,7 +28,7 @@ import { buildShadowMountArgs, ensureShadowsInSync, expandShadowPatterns } from 
 import type { ProfileConfig } from "../lib/totopo-yaml.js";
 import { readTotopoYaml } from "../lib/totopo-yaml.js";
 import type { WorkspaceContext } from "../lib/workspace-identity.js";
-import { readActiveProfile, writeActiveProfile } from "../lib/workspace-identity.js";
+import { readActiveProfile, readGitMode, writeActiveProfile } from "../lib/workspace-identity.js";
 
 // --- Prompt: working directory selection -------------------------------------------------------------------------------------------------
 async function promptWorkdir(workspaceDir: string, cwd: string): Promise<string> {
@@ -85,16 +88,23 @@ interface ContainerInfo {
     shadowLabel: string;
     profileLabel: string;
     runtimeEnvLabel: string;
+    gitModeLabel: string;
 }
 
 // Returns null when the container does not exist (docker inspect exits non-zero).
 function inspectContainer(containerName: string): ContainerInfo | null {
-    const fmt = `{{.State.Status}}|{{index .Config.Labels "${LABEL_SHADOWS}"}}|{{index .Config.Labels "${LABEL_PROFILE}"}}|{{index .Config.Labels "${LABEL_RUNTIME_ENV}"}}`;
+    const fmt = `{{.State.Status}}|{{index .Config.Labels "${LABEL_SHADOWS}"}}|{{index .Config.Labels "${LABEL_PROFILE}"}}|{{index .Config.Labels "${LABEL_RUNTIME_ENV}"}}|{{index .Config.Labels "${LABEL_GIT_MODE}"}}`;
     const result = spawnSync("docker", ["inspect", "--format", fmt, containerName], { encoding: "utf8", stdio: "pipe" });
     if (result.status !== 0) return null;
     const clean = (s: string) => (s === "<no value>" ? "" : s);
-    const [status = "", shadows = "", profile = "", runtimeEnv = ""] = result.stdout.trim().split("|");
-    return { status, shadowLabel: clean(shadows), profileLabel: clean(profile), runtimeEnvLabel: clean(runtimeEnv) };
+    const [status = "", shadows = "", profile = "", runtimeEnv = "", gitMode = ""] = result.stdout.trim().split("|");
+    return {
+        status,
+        shadowLabel: clean(shadows),
+        profileLabel: clean(profile),
+        runtimeEnvLabel: clean(runtimeEnv),
+        gitModeLabel: clean(gitMode),
+    };
 }
 
 // --- Shadow label ------------------------------------------------------------------------------------------------------------------------
@@ -143,6 +153,7 @@ export interface StartContainerOpts {
     expandedShadows: string[]; // Already expanded by expandShadowPatterns()
     envFilePath: string | undefined; // Resolved absolute path, or undefined if not set/missing
     hasGit: boolean;
+    gitMode: GitMode;
     shadowPatterns: string[]; // Raw patterns from totopo.yaml, used for agent context docs
     workspaceName: string;
     noCache?: boolean;
@@ -162,6 +173,7 @@ export function startContainer(opts: StartContainerOpts): ContainerStartResult {
         expandedShadows,
         envFilePath,
         hasGit,
+        gitMode,
         shadowPatterns,
         workspaceName,
         noCache,
@@ -174,7 +186,7 @@ export function startContainer(opts: StartContainerOpts): ContainerStartResult {
     const shadowMountArgs = buildShadowMountArgs(cacheDir, expandedShadows);
 
     // --- Agent context -------------------------------------------------------------------------------------------------------------------
-    const agentDocs = buildAgentContextDocs(hasGit, shadowPatterns);
+    const agentDocs = buildAgentContextDocs(hasGit, shadowPatterns, gitMode);
 
     // --- Env file args -------------------------------------------------------------------------------------------------------------------
     const envFileArgs: string[] = [];
@@ -197,6 +209,8 @@ export function startContainer(opts: StartContainerOpts): ContainerStartResult {
         `${LABEL_PROFILE}=${activeProfile}`,
         "--label",
         `${LABEL_RUNTIME_ENV}=${runtimeEnvLabel()}`,
+        "--label",
+        `${LABEL_GIT_MODE}=${gitMode}`,
     ];
 
     // --- Runtime env vars -----------------------------------------------------------------------------------------------------------------
@@ -204,20 +218,23 @@ export function startContainer(opts: StartContainerOpts): ContainerStartResult {
         ...Object.entries(RUNTIME_ENV).flatMap(([k, v]) => ["-e", `${k}=${v}`]),
         "-e",
         `TOTOPO_WORKSPACE=${workspaceName}`,
+        "-e",
+        `TOTOPO_GIT_MODE=${gitMode}`,
     ];
 
     // --- Inspect container state ---------------------------------------------------------------------------------------------------------
     const info = inspectContainer(containerName);
     let containerStatus = info?.status ?? null;
 
-    // --- Check for shadow, profile, or runtime env mismatch ------------------------------------------------------------------------------
+    // --- Check for shadow, profile, runtime env, or git mode mismatch --------------------------------------------------------------------
     if (info !== null) {
         const expectedShadowLabel = shadowLabel(expandedShadows);
         const shadowChanged = info.shadowLabel !== expectedShadowLabel;
         const profileChanged = info.profileLabel !== activeProfile;
         const runtimeEnvChanged = info.runtimeEnvLabel !== runtimeEnvLabel();
+        const gitModeChanged = info.gitModeLabel !== gitMode;
 
-        if (shadowChanged || profileChanged || runtimeEnvChanged) {
+        if (shadowChanged || profileChanged || runtimeEnvChanged || gitModeChanged) {
             stopAndRemoveContainer(containerName);
             containerStatus = null;
 
@@ -227,6 +244,8 @@ export function startContainer(opts: StartContainerOpts): ContainerStartResult {
                 spawnSync("docker", ["rmi", containerName], { stdio: "pipe" });
             } else if (shadowChanged) {
                 if (!quiet) log.info("Shadow paths changed — recreating container...");
+            } else if (gitModeChanged) {
+                if (!quiet) log.info(`Git mode changed (${info.gitModeLabel || "<unset>"} -> ${gitMode}) — recreating container...`);
             } else {
                 if (!quiet) log.info("Runtime environment updated — recreating container...");
             }
@@ -335,6 +354,9 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
 
     const hasGit = existsSync(join(workspaceDir, ".git"));
 
+    // --- Git mode (per-workspace, host-side .lock) ---------------------------------------------------------------------------------------
+    const gitMode = readGitMode(ctx.workspaceId) ?? GIT_MODE.local;
+
     // --- Start container -----------------------------------------------------------------------------------------------------------------
     const containerOpts: StartContainerOpts = {
         containerName,
@@ -346,6 +368,7 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
         expandedShadows,
         envFilePath,
         hasGit,
+        gitMode,
         shadowPatterns,
         workspaceName: ctx.workspaceId,
         ...(options?.noCache !== undefined && { noCache: options.noCache }),

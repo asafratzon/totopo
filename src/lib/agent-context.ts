@@ -12,7 +12,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { AGENTS_DIR, CONTAINER_HOME } from "./constants.js";
+import { AGENTS_DIR, CONTAINER_HOME, GIT_MODE, type GitMode } from "./constants.js";
 
 // --- Types -------------------------------------------------------------------------------------------------------------------------------
 
@@ -122,8 +122,8 @@ function renderTemplate(template: string, vars: Record<string, string>): string 
 /**
  * Assembles the agent context markdown injected into each supported agent's config dir at session start.
  */
-export function buildAgentContextDocs(hasGit: boolean, shadowPatterns?: string[]): AgentContextDocs {
-    const gitSection = loadTemplate(hasGit ? "git-available" : "git-unavailable");
+export function buildAgentContextDocs(hasGit: boolean, shadowPatterns?: string[], gitMode: GitMode = GIT_MODE.local): AgentContextDocs {
+    const gitSection = loadTemplate(hasGit ? `git-mode-${gitMode}` : "git-unavailable");
 
     const shadowSection =
         shadowPatterns && shadowPatterns.length > 0

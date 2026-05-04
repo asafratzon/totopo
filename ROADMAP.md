@@ -1,15 +1,15 @@
 ## Backlog
 
+## Ideas
+
 - Voice to text support for claude
 
-## Ideas
+- container-only paths (like pnpm-store)?
 
 - Base image sharing - a shared `totopo-base:latest` built from `templates/Dockerfile`, with profile images layered on top (`FROM totopo-base` + hook). Saves disk when multiple profiles are defined, faster profile rebuilds since only the hook layer runs.
 
 - Stale image detection improvements - replace the current hardcoded file check in `isImageStale()` with hash comparison of the Dockerfile template and profile hook content baked into image labels. More robust, catches more staleness cases.
 
 - Support readonly mounts? (possibly to refer to dirs outside the workspace)
-
-- Make the blocking git remote disableable via .lock - not via the yaml (Default to on)
 
 - Local LLM Support? probably not relevant for a sandbox

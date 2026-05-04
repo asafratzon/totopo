@@ -90,10 +90,20 @@ RUN groupadd --gid 1001 devuser && \
     chown -R devuser:devuser /home/devuser
 
 # ---------------------------------------------------------------------------
-# Layer 9 — Bake startup script into image
+# Layer 9 — Bake startup script + git mode helper + shared constants into image
 # ---------------------------------------------------------------------------
 COPY startup.mjs /home/devuser/startup.mjs
-RUN chown devuser:devuser /home/devuser/startup.mjs
+COPY startup-git-mode.mjs /home/devuser/startup-git-mode.mjs
+COPY runtime-constants.mjs /home/devuser/runtime-constants.mjs
+RUN chown devuser:devuser /home/devuser/startup.mjs /home/devuser/startup-git-mode.mjs /home/devuser/runtime-constants.mjs
+
+# ---------------------------------------------------------------------------
+# Layer 10 — Bake git read-only wrapper into image
+# Symlinked to /usr/local/bin/git by startup.mjs when git_mode=strict.
+# ---------------------------------------------------------------------------
+RUN mkdir -p /usr/local/share/totopo
+COPY git-readonly-wrapper.mjs /usr/local/share/totopo/git-readonly
+RUN chmod +x /usr/local/share/totopo/git-readonly
 
 WORKDIR /workspace
 

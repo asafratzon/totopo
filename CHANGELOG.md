@@ -7,6 +7,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [3.4.0] — 2026-05-04
+
+### Added
+
+- Per-workspace git modes — local (default; local commits allowed, remote blocked — prior behavior), strict (read-only; blocks mutating subcommands and remote), and unrestricted (no totopo-enforced restrictions). Configure via Manage Workspace > Git mode. Strict installs a read-only git wrapper that allows status/log/diff/blame/show and blocks commit/add/reset/checkout/push/fetch/etc. Agent context, container labels, and the TOTOPO_GIT_MODE env var all reflect the active mode, and the container is recreated when the mode changes. All workspaces default to local; strict and unrestricted are opt-in.
+
+---
+
 ## [3.3.3] — 2026-04-20
 
 ### Changed
