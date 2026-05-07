@@ -1,36 +1,36 @@
 in_progress:
-  base_version: 3.5.0
-  entries:
-    - rc_version: 3.5.0-rc-1
-      date: "2026-05-07"
-      added:
-        - >-
-          Default Claude status line shipped with every container. Three segments separated by mid-dot: model + reasoning
-          effort, tokens used / context size (percentage), and a 10-block 5-hour rate-limit gauge with relative time until
-          reset (subscriber accounts only). Token count is colored green below 100k, yellow up to 500k, red beyond; the
-          quota gauge is green below 50%, yellow below 80%, red at or above 80%. The quota parenthesis
-          (`<rate>% used, resets in <hr> hr <min> min`) matches the format Claude.ai's web app uses. Script is baked into
-          the image at
-          /usr/local/share/totopo/claude-statusline.sh and referenced from ~/.claude/settings.json on first session start.
-          settings.json updates are non-destructive — any user-set statusLine is preserved. The script degrades gracefully
-          if Claude Code changes the JSON schema in the future: missing or renamed fields are skipped rather than crashing.
-        - >-
-          New /totopo-statusline skill bundled with Claude inside totopo containers. Guides users through inspecting the
-          current status line, customizing it (fork-and-edit a copy or write a new one from scratch), or reverting to the
-          totopo default. Skill files are written into ~/.claude/skills/ at every session start, establishing a generic
-          templates/skills/ injection pattern that future totopo-managed Claude skills can reuse.
-      changed:
-        - >-
-          Stale image detection now compares the SHA-256 hash of the baked Claude status line script against the version
-          shipped by totopo. Refinements to the script content are detected automatically and trigger a rebuild prompt on
-          next session start - no need to clean-rebuild manually after totopo updates.
-      fixed:
-        - >-
-          Suppressed the persistent "Auto-update failed" warning Claude Code displayed inside totopo sandboxes.
-          DISABLE_AUTOUPDATER is now injected into every container; totopo's startup script already keeps the CLI on the
-          latest version, so the in-process updater was redundant. Existing containers will be recreated automatically on
-          first 3.5.0 session via the runtime-env mismatch check.
+  base_version: 3.5.1
+  entries: []
 releases:
+  - version: 3.5.0
+    date: "2026-05-07"
+    added:
+      - >-
+        Default Claude status line shipped with every container. Three segments separated by mid-dot: model + reasoning
+        effort, tokens used / context size (percentage), and a 10-block 5-hour rate-limit gauge with relative time until
+        reset (subscriber accounts only). Token count is colored green below 100k, yellow up to 500k, red beyond; the
+        quota gauge is green below 50%, yellow below 80%, red at or above 80%. The quota parenthesis (`<rate>% used,
+        resets in <hr> hr <min> min`) matches the format Claude.ai's web app uses. Script is baked into the image at
+        /usr/local/share/totopo/claude-statusline.sh and referenced from ~/.claude/settings.json on first session start.
+        settings.json updates are non-destructive — any user-set statusLine is preserved. The script degrades gracefully
+        if Claude Code changes the JSON schema in the future: missing or renamed fields are skipped rather than
+        crashing.
+      - >-
+        New /totopo-statusline skill bundled with Claude inside totopo containers. Guides users through inspecting the
+        current status line, customizing it (fork-and-edit a copy or write a new one from scratch), or reverting to the
+        totopo default. Skill files are written into ~/.claude/skills/ at every session start, establishing a generic
+        templates/skills/ injection pattern that future totopo-managed Claude skills can reuse.
+    changed:
+      - >-
+        Stale image detection now compares the SHA-256 hash of the baked Claude status line script against the version
+        shipped by totopo. Refinements to the script content are detected automatically and trigger a rebuild prompt on
+        next session start - no need to clean-rebuild manually after totopo updates.
+    fixed:
+      - >-
+        Suppressed the persistent "Auto-update failed" warning Claude Code displayed inside totopo sandboxes.
+        DISABLE_AUTOUPDATER is now injected into every container; totopo's startup script already keeps the CLI on the
+        latest version, so the in-process updater was redundant. Existing containers will be recreated automatically on
+        first 3.5.0 session via the runtime-env mismatch check.
   - version: 3.4.0
     date: "2026-05-04"
     added:
