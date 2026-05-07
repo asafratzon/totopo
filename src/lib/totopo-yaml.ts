@@ -3,11 +3,10 @@
 // =========================================================================================================================================
 
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { basename, join } from "node:path";
 import AjvModule from "ajv";
 import { dump as dumpYaml, load as loadYaml } from "js-yaml";
-import { DEFAULT_SHADOW_PATHS, TOTOPO_YAML, WORKSPACE_ID_MAX, WORKSPACE_ID_MIN } from "./constants.js";
+import { DEFAULT_SHADOW_PATHS, PACKAGE_ROOT, TOTOPO_YAML, WORKSPACE_ID_MAX, WORKSPACE_ID_MIN } from "./constants.js";
 
 // --- Interfaces --------------------------------------------------------------------------------------------------------------------------
 
@@ -50,8 +49,7 @@ export function slugifyForWorkspaceId(name: string): string {
 
 // --- Schema validation -------------------------------------------------------------------------------------------------------------------
 
-const packageRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
-const schemaPath = join(packageRoot, "schema", "totopo.schema.json");
+const schemaPath = join(PACKAGE_ROOT, "schema", "totopo.schema.json");
 
 // ajv is a CJS module - under nodenext resolution the class is nested under .default
 const Ajv = AjvModule.default ?? AjvModule;
@@ -109,7 +107,7 @@ export function readTotopoYaml(dir: string): TotopoYamlConfig | null {
 
 // Every published version (rc or release) has a corresponding git tag created by pnpm rc / pnpm rc:promote.
 // We rely on that tag existing so these URLs resolve correctly for every installed version.
-const { version } = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8")) as { version: string };
+const { version } = JSON.parse(readFileSync(join(PACKAGE_ROOT, "package.json"), "utf8")) as { version: string };
 export const GITHUB_README_URL = `https://github.com/asafratzon/totopo/blob/v${version}/README.md`;
 
 // Inline comments injected before specific YAML keys (preceded by a blank line)

@@ -105,6 +105,13 @@ RUN mkdir -p /usr/local/share/totopo
 COPY git-readonly-wrapper.mjs /usr/local/share/totopo/git-readonly
 RUN chmod +x /usr/local/share/totopo/git-readonly
 
+# ---------------------------------------------------------------------------
+# Layer 11 — Bake Claude default status line script
+# Referenced from ~/.claude/settings.json (statusLine.command) at session start.
+# ---------------------------------------------------------------------------
+COPY claude-statusline.sh /usr/local/share/totopo/claude-statusline.sh
+RUN chmod +x /usr/local/share/totopo/claude-statusline.sh
+
 WORKDIR /workspace
 
 # ---------------------------------------------------------------------------

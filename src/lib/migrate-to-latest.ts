@@ -23,6 +23,7 @@
 // =========================================================================================================================================
 
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -30,10 +31,12 @@ import { confirm, isCancel, log, note } from "@clack/prompts";
 import { load as loadYaml } from "js-yaml";
 import {
     AGENTS_DIR,
+    CLAUDE_STATUSLINE_PATH,
     CONTAINER_STARTUP,
     GIT_MODE,
     GIT_WRAPPER_SOURCE,
     LOCK_FILE,
+    PACKAGE_ROOT,
     PROFILE,
     SHADOWS_DIR,
     TOTOPO_DIR,
@@ -604,6 +607,20 @@ export function isImageStale(containerName: string): boolean {
         stdio: "pipe",
     });
     if (constantsCheck.status !== 0) return true;
+
+    // SHA-256 of the host claude-statusline.sh vs the file inside the container - any refinement to
+    // the shipped script triggers an automatic rebuild prompt on next session.
+    const hostScriptPath = join(PACKAGE_ROOT, "templates", "claude-statusline.sh");
+    if (existsSync(hostScriptPath)) {
+        const expectedHash = createHash("sha256").update(readFileSync(hostScriptPath)).digest("hex");
+        const sumResult = spawnSync("docker", ["exec", containerName, "sha256sum", CLAUDE_STATUSLINE_PATH], {
+            encoding: "utf8",
+            stdio: "pipe",
+        });
+        if (sumResult.status !== 0) return true;
+        const actualHash = sumResult.stdout.trim().split(/\s+/)[0] ?? "";
+        if (actualHash !== expectedHash) return true;
+    }
 
     return false;
 }

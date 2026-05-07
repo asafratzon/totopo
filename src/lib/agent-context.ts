@@ -9,10 +9,9 @@
 //   OpenCode:    https://github.com/opencode-ai/opencode
 //   Codex:       https://github.com/openai/codex
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { AGENTS_DIR, CONTAINER_HOME, GIT_MODE, type GitMode } from "./constants.js";
+import { AGENTS_DIR, CLAUDE_STATUSLINE_PATH, CONTAINER_HOME, GIT_MODE, type GitMode, PACKAGE_ROOT } from "./constants.js";
 
 // --- Types -------------------------------------------------------------------------------------------------------------------------------
 
@@ -107,14 +106,17 @@ export function buildAgentMountArgs(workspaceDir: string): string[] {
 
 // --- Template helpers --------------------------------------------------------------------------------------------------------------------
 
-const packageRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
-
 function loadTemplate(name: string): string {
-    return readFileSync(join(packageRoot, "templates", "context", `${name}.md`), "utf8").trimEnd();
+    return readFileSync(join(PACKAGE_ROOT, "templates", "context", `${name}.md`), "utf8").trimEnd();
 }
 
 function renderTemplate(template: string, vars: Record<string, string>): string {
     return template.replace(/\{\{(\w+)\}\}/g, (_, key: string) => vars[key] ?? `{{${key}}}`);
+}
+
+function writeFileEnsuringDir(filePath: string, content: string): void {
+    mkdirSync(dirname(filePath), { recursive: true });
+    writeFileSync(filePath, content);
 }
 
 // --- Build agent context documents -------------------------------------------------------------------------------------------------------
@@ -152,6 +154,53 @@ export function buildAgentContextDocs(hasGit: boolean, shadowPatterns?: string[]
     };
 }
 
+// --- Claude settings.json bootstrap ------------------------------------------------------------------------------------------------------
+
+function readSettingsObject(path: string): Record<string, unknown> {
+    try {
+        const parsed = JSON.parse(readFileSync(path, "utf8"));
+        if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+            return parsed as Record<string, unknown>;
+        }
+    } catch {
+        // Missing file or malformed JSON: caller proceeds with an empty object.
+    }
+    return {};
+}
+
+// Sets ~/.claude/settings.json -> statusLine to the totopo default if no value is set.
+// Non-destructive: preserves other fields and never overwrites a user-set statusLine.
+export function ensureClaudeStatusLine(workspaceDir: string): void {
+    const settingsPath = join(workspaceDir, AGENTS_DIR, "claude", "settings.json");
+    const settings = readSettingsObject(settingsPath);
+
+    if (settings.statusLine === undefined) {
+        settings.statusLine = { type: "command", command: CLAUDE_STATUSLINE_PATH };
+        writeFileEnsuringDir(settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
+    }
+}
+
+// --- Claude skills injection -------------------------------------------------------------------------------------------------------------
+
+// Renders every templates/skills/<name>/SKILL.md into agents/claude/skills/<name>/SKILL.md. Drop a
+// new directory under templates/skills/ to ship a new skill - no other code changes needed.
+export function injectClaudeSkills(workspaceDir: string): void {
+    const templatesSkillsDir = join(PACKAGE_ROOT, "templates", "skills");
+    if (!existsSync(templatesSkillsDir)) return;
+
+    const targetSkillsDir = join(workspaceDir, AGENTS_DIR, "claude", "skills");
+    const vars = { statusline_path: CLAUDE_STATUSLINE_PATH };
+
+    for (const entry of readdirSync(templatesSkillsDir, { withFileTypes: true })) {
+        if (!entry.isDirectory()) continue;
+        const sourcePath = join(templatesSkillsDir, entry.name, "SKILL.md");
+        if (!existsSync(sourcePath)) continue;
+
+        const rendered = renderTemplate(readFileSync(sourcePath, "utf8"), vars);
+        writeFileEnsuringDir(join(targetSkillsDir, entry.name, "SKILL.md"), rendered);
+    }
+}
+
 // --- Inject agent context ----------------------------------------------------------------------------------------------------------------
 
 /**
@@ -167,7 +216,9 @@ export function injectAgentContext(workspaceDir: string, docs: AgentContextDocs)
     ];
 
     for (const { path: filePath, content } of files) {
-        mkdirSync(dirname(filePath), { recursive: true });
-        writeFileSync(filePath, content);
+        writeFileEnsuringDir(filePath, content);
     }
+
+    ensureClaudeStatusLine(workspaceDir);
+    injectClaudeSkills(workspaceDir);
 }

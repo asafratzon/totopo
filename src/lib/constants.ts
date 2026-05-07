@@ -2,6 +2,13 @@
 // src/lib/constants.ts - Canonical constants used across the totopo codebase
 // =========================================================================================================================================
 
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+
+// Resolve the package root (repo root in dev, npm package root when installed).
+// All compiled lib modules sit at dist/lib/*.js, so dirname x3 from this file lands at the package root.
+export const PACKAGE_ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
+
 // ~/.totopo/ structure
 export const TOTOPO_DIR = ".totopo";
 export const WORKSPACES_DIR = "workspaces";
@@ -28,6 +35,9 @@ export const CONTAINER_USER = "devuser";
 export const CONTAINER_HOME = `/home/${CONTAINER_USER}`;
 export const CONTAINER_WORKSPACE = "/workspace";
 export const CONTAINER_STARTUP = `${CONTAINER_HOME}/startup.mjs`;
+
+// Claude Code default status line script - baked into the image, referenced from ~/.claude/settings.json
+export const CLAUDE_STATUSLINE_PATH = "/usr/local/share/totopo/claude-statusline.sh";
 
 // Docker container/image naming
 export const CONTAINER_NAME_PREFIX = "totopo-";
@@ -57,7 +67,11 @@ export { GIT_MODE, GIT_WRAPPER_PATH, GIT_WRAPPER_SOURCE };
 export type GitMode = (typeof GIT_MODE)[keyof typeof GIT_MODE];
 export const GIT_MODES: readonly GitMode[] = Object.values(GIT_MODE);
 
-// Runtime env vars injected into every container via docker run -e
+// Runtime env vars injected into every container via docker run -e.
+// DISABLE_AUTOUPDATER suppresses Claude Code's in-process auto-updater, which always fails inside
+// the container (devuser can't write to the root-owned global npm prefix). totopo's startup script
+// already keeps Claude on the latest version - see templates/startup.mjs.
 export const RUNTIME_ENV: Record<string, string> = {
     CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY: "1",
+    DISABLE_AUTOUPDATER: "1",
 };
