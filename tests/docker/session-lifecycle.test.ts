@@ -499,6 +499,26 @@ CMD ["sleep", "infinity"]
         assert.equal(isImageStale(containerName), true);
     });
 
+    test("isImageStale returns true when claude-statusline.sh hash mismatches host", () => {
+        // Start a fresh production-image container, then overwrite the baked statusline script
+        // with different content. The SHA-256 check should detect the drift and report stale.
+        startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
+        spawnSync(
+            "docker",
+            [
+                "exec",
+                "-u",
+                "root",
+                containerName,
+                "sh",
+                "-c",
+                'echo "totopo-test: drifted statusline" > /usr/local/share/totopo/claude-statusline.sh',
+            ],
+            { stdio: "pipe" },
+        );
+        assert.equal(isImageStale(containerName), true);
+    });
+
     test("startup script fails on stale container (startup.mjs missing)", async () => {
         // Minimal image has no startup.mjs -- docker exec should fail
         const contextDir = createTempDir();
