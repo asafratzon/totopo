@@ -1,9 +1,15 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { buildAgentContextDocs, buildAgentMountArgs, injectAgentContext } from "../src/lib/agent-context.js";
-import { GIT_MODE } from "../src/lib/constants.js";
+import {
+    buildAgentContextDocs,
+    buildAgentMountArgs,
+    ensureClaudeStatusLine,
+    injectAgentContext,
+    injectClaudeSkills,
+} from "../src/lib/agent-context.js";
+import { CLAUDE_STATUSLINE_PATH, GIT_MODE } from "../src/lib/constants.js";
 import { cleanTempDir, createTempDir } from "./helpers.js";
 
 const UNRESOLVED = /\{\{[^}]+\}\}/;
@@ -162,6 +168,112 @@ describe("injectAgentContext", () => {
         assert.ok(existsSync(join(tmp, "agents", "claude", "CLAUDE.md")));
         assert.ok(existsSync(join(tmp, "agents", "opencode", "config", "AGENTS.md")));
         assert.ok(existsSync(join(tmp, "agents", "codex", "AGENTS.md")));
+        await cleanTempDir(tmp);
+    });
+
+    test("writes statusLine and skill alongside markdown context", async () => {
+        const tmp = createTempDir();
+        const docs = buildAgentContextDocs(true);
+        injectAgentContext(tmp, docs);
+        assert.ok(existsSync(join(tmp, "agents", "claude", "CLAUDE.md")));
+        assert.ok(existsSync(join(tmp, "agents", "claude", "settings.json")));
+        assert.ok(existsSync(join(tmp, "agents", "claude", "skills", "totopo-statusline", "SKILL.md")));
+        await cleanTempDir(tmp);
+    });
+});
+
+// ---- ensureClaudeStatusLine -------------------------------------------------------------------------------------------------------------
+
+describe("ensureClaudeStatusLine", () => {
+    test("creates settings.json with totopo default statusLine when missing", async () => {
+        const tmp = createTempDir();
+        ensureClaudeStatusLine(tmp);
+        const settingsPath = join(tmp, "agents", "claude", "settings.json");
+        assert.ok(existsSync(settingsPath));
+        const settings = JSON.parse(readFileSync(settingsPath, "utf8"));
+        assert.deepEqual(settings.statusLine, { type: "command", command: CLAUDE_STATUSLINE_PATH });
+        await cleanTempDir(tmp);
+    });
+
+    test("adds statusLine to empty settings.json", async () => {
+        const tmp = createTempDir();
+        const settingsPath = join(tmp, "agents", "claude", "settings.json");
+        mkdirSync(join(tmp, "agents", "claude"), { recursive: true });
+        writeFileSync(settingsPath, "{}");
+        ensureClaudeStatusLine(tmp);
+        const settings = JSON.parse(readFileSync(settingsPath, "utf8"));
+        assert.deepEqual(settings.statusLine, { type: "command", command: CLAUDE_STATUSLINE_PATH });
+        await cleanTempDir(tmp);
+    });
+
+    test("preserves other fields when adding statusLine", async () => {
+        const tmp = createTempDir();
+        const settingsPath = join(tmp, "agents", "claude", "settings.json");
+        mkdirSync(join(tmp, "agents", "claude"), { recursive: true });
+        writeFileSync(settingsPath, JSON.stringify({ theme: "dark", env: { FOO: "bar" } }));
+        ensureClaudeStatusLine(tmp);
+        const settings = JSON.parse(readFileSync(settingsPath, "utf8"));
+        assert.equal(settings.theme, "dark");
+        assert.deepEqual(settings.env, { FOO: "bar" });
+        assert.equal(settings.statusLine.command, CLAUDE_STATUSLINE_PATH);
+        await cleanTempDir(tmp);
+    });
+
+    test("does not overwrite an existing statusLine", async () => {
+        const tmp = createTempDir();
+        const settingsPath = join(tmp, "agents", "claude", "settings.json");
+        mkdirSync(join(tmp, "agents", "claude"), { recursive: true });
+        const customStatusLine = { type: "command", command: "/home/devuser/.claude/my-statusline.sh" };
+        writeFileSync(settingsPath, JSON.stringify({ statusLine: customStatusLine }));
+        ensureClaudeStatusLine(tmp);
+        const settings = JSON.parse(readFileSync(settingsPath, "utf8"));
+        assert.deepEqual(settings.statusLine, customStatusLine);
+        await cleanTempDir(tmp);
+    });
+
+    test("treats malformed JSON as empty and overwrites with valid JSON", async () => {
+        const tmp = createTempDir();
+        const settingsPath = join(tmp, "agents", "claude", "settings.json");
+        mkdirSync(join(tmp, "agents", "claude"), { recursive: true });
+        writeFileSync(settingsPath, "{ not valid json");
+        assert.doesNotThrow(() => ensureClaudeStatusLine(tmp));
+        assert.doesNotThrow(() => JSON.parse(readFileSync(settingsPath, "utf8")));
+        const settings = JSON.parse(readFileSync(settingsPath, "utf8"));
+        assert.equal(settings.statusLine.command, CLAUDE_STATUSLINE_PATH);
+        await cleanTempDir(tmp);
+    });
+});
+
+// ---- injectClaudeSkills -----------------------------------------------------------------------------------------------------------------
+
+describe("injectClaudeSkills", () => {
+    test("writes totopo-statusline SKILL.md to claude skills dir", async () => {
+        const tmp = createTempDir();
+        injectClaudeSkills(tmp);
+        const skillPath = join(tmp, "agents", "claude", "skills", "totopo-statusline", "SKILL.md");
+        assert.ok(existsSync(skillPath));
+        await cleanTempDir(tmp);
+    });
+
+    test("resolves all placeholders (no unresolved {{...}} remain)", async () => {
+        const tmp = createTempDir();
+        injectClaudeSkills(tmp);
+        const skillPath = join(tmp, "agents", "claude", "skills", "totopo-statusline", "SKILL.md");
+        const content = readFileSync(skillPath, "utf8");
+        assert.doesNotMatch(content, /\{\{[^}]+\}\}/, "skill file has unresolved placeholders");
+        assert.ok(content.includes(CLAUDE_STATUSLINE_PATH), "skill should reference the resolved statusline path");
+        await cleanTempDir(tmp);
+    });
+
+    test("overwrites existing skill files (totopo-managed)", async () => {
+        const tmp = createTempDir();
+        const skillPath = join(tmp, "agents", "claude", "skills", "totopo-statusline", "SKILL.md");
+        mkdirSync(join(tmp, "agents", "claude", "skills", "totopo-statusline"), { recursive: true });
+        writeFileSync(skillPath, "stale content");
+        injectClaudeSkills(tmp);
+        const content = readFileSync(skillPath, "utf8");
+        assert.notEqual(content, "stale content");
+        assert.ok(content.includes("totopo-statusline"));
         await cleanTempDir(tmp);
     });
 });

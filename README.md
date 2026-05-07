@@ -189,6 +189,16 @@ Agents are self-aware — sandbox constraints, git remote block, and any active 
 
 totopo keeps all three CLIs on their latest published versions, checking for updates automatically.
 
+#### Claude status line
+
+For convenience, every Claude session opens with a status line at the bottom of the terminal:
+
+```
+Opus 4.7 high · 174k / 1M (17%) · ▓░░░░░░░░░ (13% used, resets in 3 hr 35 min)
+```
+
+Model and reasoning effort, current context usage with token count colored by absolute size (green below 100k, yellow up to 500k, red beyond), and a 10-block gauge of the 5-hour rate-limit window with current usage and time-to-reset (subscriber accounts only). Ask Claude `/totopo-statusline` to customize or restore the default.
+
 ### Persistent Agent Memory
 
 Agent session data (conversation history, settings) is stored per workspace and survives container restarts and rebuilds.
