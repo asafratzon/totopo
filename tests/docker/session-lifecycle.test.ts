@@ -141,6 +141,27 @@ describe("session lifecycle", () => {
         assert.equal(cat.stdout, "hello-from-host");
     });
 
+    test("pnpm-store bind mount is present, writable, and sourced from cache dir", () => {
+        startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
+        // Mount target must exist and be writable as devuser.
+        const probe = dockerExec(containerName, ["sh", "-c", "touch /home/devuser/.local/share/pnpm/store/.totopo-mount-probe && echo OK"]);
+        assert.equal(probe.stdout, "OK", "pnpm store mount must be writable as devuser");
+
+        // Source must be the per-workspace cache subdir, so the store stays on the host bind FS
+        // (same device as /workspace) and pnpm never needs to fall back to a per-project store.
+        const inspect = spawnSync(
+            "docker",
+            [
+                "inspect",
+                "--format",
+                '{{range .Mounts}}{{if eq .Destination "/home/devuser/.local/share/pnpm/store"}}{{.Source}}{{end}}{{end}}',
+                containerName,
+            ],
+            { encoding: "utf8", stdio: "pipe" },
+        );
+        assert.equal(inspect.stdout.trim(), join(cacheDir, "pnpm-store"));
+    });
+
     test("second call to running container returns 'connected'", () => {
         startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
         const result = startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
