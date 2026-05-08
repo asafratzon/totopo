@@ -7,7 +7,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, afterEach, before, beforeEach, describe, test } from "node:test";
 import type { StartContainerOpts } from "../../src/commands/dev.js";
@@ -143,9 +143,20 @@ describe("session lifecycle", () => {
 
     test("pnpm-store bind mount is present, writable, and sourced from cache dir", () => {
         startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
-        // Mount target must exist and be writable as devuser.
+        // Mount target itself must be writable as devuser.
         const probe = dockerExec(containerName, ["sh", "-c", "touch /home/devuser/.local/share/pnpm/store/.totopo-mount-probe && echo OK"]);
         assert.equal(probe.stdout, "OK", "pnpm store mount must be writable as devuser");
+
+        // The mount's parent directory must also be devuser-writable so pnpm can create siblings of
+        // store/ at runtime (.tools/, .modules-yaml, ...). If the image does not pre-create
+        // /home/devuser/.local/share/pnpm, Docker auto-creates it as root when materializing the
+        // bind mount path, leaving devuser unable to write next to store/.
+        const siblingProbe = dockerExec(containerName, [
+            "sh",
+            "-c",
+            "touch /home/devuser/.local/share/pnpm/.totopo-sibling-probe && echo OK",
+        ]);
+        assert.equal(siblingProbe.stdout, "OK", "pnpm store mount's parent dir must be writable as devuser");
 
         // Source must be the per-workspace cache subdir, so the store stays on the host bind FS
         // (same device as /workspace) and pnpm never needs to fall back to a per-project store.
@@ -160,6 +171,16 @@ describe("session lifecycle", () => {
             { encoding: "utf8", stdio: "pipe" },
         );
         assert.equal(inspect.stdout.trim(), join(cacheDir, "pnpm-store"));
+    });
+
+    test("pnpm install runs cleanly and does not create .pnpm-store in the workspace", () => {
+        // Minimal package.json with no deps - pnpm still bootstraps its tools dir on first run,
+        // which is what triggers the sibling-write requirement covered above.
+        writeFileSync(join(workspaceRoot, "package.json"), JSON.stringify({ name: "totopo-test", version: "0.0.0", private: true }));
+        startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
+        const install = dockerExec(containerName, ["sh", "-c", "cd /workspace && pnpm install --offline 2>&1"]);
+        assert.equal(install.status, 0, `pnpm install must succeed; output:\n${install.stdout}`);
+        assert.ok(!existsSync(join(workspaceRoot, ".pnpm-store")), ".pnpm-store must not appear in the workspace after pnpm install");
     });
 
     test("second call to running container returns 'connected'", () => {
