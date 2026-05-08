@@ -563,6 +563,14 @@ CMD ["sleep", "infinity"]
         assert.equal(isImageStale(containerName), true);
     });
 
+    test("isImageStale returns true for container missing the v3.5.1 pnpm store-dir in ~/.npmrc", () => {
+        // Container starts from production image (which has the new ~/.npmrc), but we wipe the file
+        // to simulate a pre-v3.5.1 image. The grep check in isImageStale must detect the absence.
+        startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
+        spawnSync("docker", ["exec", "-u", "root", containerName, "rm", "-f", "/home/devuser/.npmrc"], { stdio: "pipe" });
+        assert.equal(isImageStale(containerName), true);
+    });
+
     test("isImageStale returns true when claude-statusline.sh hash mismatches host", () => {
         // Start a fresh production-image container, then overwrite the baked statusline script
         // with different content. The SHA-256 check should detect the drift and report stale.
