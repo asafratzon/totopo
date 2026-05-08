@@ -158,8 +158,9 @@ describe("session lifecycle", () => {
         ]);
         assert.equal(siblingProbe.stdout, "OK", "pnpm store mount's parent dir must be writable as devuser");
 
-        // Source must be the per-workspace cache subdir, so the store stays on the host bind FS
-        // (same device as /workspace) and pnpm never needs to fall back to a per-project store.
+        // Source must be the per-workspace cache subdir so the store persists across rebuilds.
+        // The store's same-device guarantee is provided by the explicit store-dir npmrc setting,
+        // not by the bind mount alone (each Docker -v can register as its own device).
         const inspect = spawnSync(
             "docker",
             [
@@ -174,13 +175,34 @@ describe("session lifecycle", () => {
     });
 
     test("pnpm install runs cleanly and does not create .pnpm-store in the workspace", () => {
-        // Minimal package.json with no deps - pnpm still bootstraps its tools dir on first run,
-        // which is what triggers the sibling-write requirement covered above.
         writeFileSync(join(workspaceRoot, "package.json"), JSON.stringify({ name: "totopo-test", version: "0.0.0", private: true }));
         startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
+
+        // Confirm the image-baked config is actually visible to pnpm. Without this, a config that
+        // never gets read produces the same symptom as a config that doesn't work, and we cannot
+        // tell the two failure modes apart. store-dir is the load-bearing setting: without it,
+        // pnpm's volume-check relocation puts the store at /workspace/.pnpm-store regardless of
+        // package-import-method.
+        const storeDir = dockerExec(containerName, ["sh", "-c", "cd /workspace && pnpm config get store-dir"]);
+        assert.equal(storeDir.stdout, "/home/devuser/.local/share/pnpm/store", `pnpm store-dir not honored; got '${storeDir.stdout}'`);
+        const importMethod = dockerExec(containerName, ["sh", "-c", "cd /workspace && pnpm config get package-import-method"]);
+        assert.equal(importMethod.stdout, "copy", `pnpm package-import-method not honored; got '${importMethod.stdout}'`);
+
         const install = dockerExec(containerName, ["sh", "-c", "cd /workspace && pnpm install --offline 2>&1"]);
         assert.equal(install.status, 0, `pnpm install must succeed; output:\n${install.stdout}`);
-        assert.ok(!existsSync(join(workspaceRoot, ".pnpm-store")), ".pnpm-store must not appear in the workspace after pnpm install");
+
+        if (existsSync(join(workspaceRoot, ".pnpm-store"))) {
+            // Diagnostic dump - tell us exactly what pnpm decided to put in the workspace.
+            const ls = dockerExec(containerName, [
+                "sh",
+                "-c",
+                "ls -la /workspace/.pnpm-store && find /workspace/.pnpm-store -maxdepth 3 -print",
+            ]);
+            const cfg = dockerExec(containerName, ["sh", "-c", "pnpm config list 2>&1"]);
+            assert.fail(
+                `.pnpm-store appeared in the workspace.\n--- install output ---\n${install.stdout}\n--- .pnpm-store contents ---\n${ls.stdout}\n--- pnpm config list ---\n${cfg.stdout}`,
+            );
+        }
     });
 
     test("second call to running container returns 'connected'", () => {
