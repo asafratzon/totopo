@@ -4,11 +4,15 @@
 # Baked into the container image at /usr/local/share/totopo/claude-statusline.sh
 # Referenced from ~/.claude/settings.json -> statusLine.command
 #
-# Render pattern:
-#   <model> <effort> · <tokens>k / <ctx> (<pct>%) · <bar> (<rate>% used, resets in <hr> hr <min> min)
+# Render pattern (4 segments separated by mid-dot):
+#   1. <tokens>k / <ctx> (<pct>%)
+#   2. <model> <effort>
+#   3. Claude Code v<version> (<age>[, hint])
+#   4. <bar> (<rate>% used, resets in <hr> hr <min> min)
 #
 # Designed to degrade gracefully: every field uses jq's // fallback, and any field that goes
 # missing in a future Claude Code release is silently skipped rather than failing the script.
+# The Claude Code segment is also skipped silently when its data sources are unavailable.
 #
 # To customize or revert, ask Claude: /totopo-statusline
 # =============================================================================
@@ -57,6 +61,7 @@ YELLOW='\033[33m'
 RED='\033[31m'
 BLUE='\033[34m'
 GREY='\033[90m'
+GREY_LIGHT='\033[38;5;245m'
 RESET='\033[0m'
 
 # Normalize tokens & pct (may arrive empty when current_usage is null).
@@ -82,7 +87,17 @@ awk_out=$(awk -v t="$used_tokens" -v r="$rate_pct" 'BEGIN {
   if (r != "") {
     if (r > 100) r = 100;
     if (r < 0) r = 0;
-    filled = int(r / 10);
+    # Rounding tiers protect the two endpoints from misleading reads:
+    #   exactly 0  -> empty bar; any non-zero usage rounds up to at least 1 block
+    #   1-9        -> 1 block (round up so a sliver never reads as empty)
+    #   10-90      -> nearest 10 (round half up via int((r+5)/10))
+    #   91-99      -> 9 blocks (round down so the bar never reads as full until truly 100)
+    #   exactly 100 -> full bar
+    if (r <= 0) filled = 0;
+    else if (r >= 100) filled = 10;
+    else if (r > 90) filled = 9;
+    else if (r < 10) filled = 1;
+    else filled = int((r + 5) / 10);
     bar = "";
     for (i = 0; i < filled; i++) bar = bar "▓";
     for (i = filled; i < 10; i++) bar = bar "░";
@@ -99,11 +114,12 @@ awk_out=$(awk -v t="$used_tokens" -v r="$rate_pct" 'BEGIN {
 $awk_out
 EOF
 
-# Bar color by rate-limit usage: <50% green, <80% yellow, >=80% red.
-bar_color="$GREEN"
+# Bar color by rate-limit usage: <50% light grey, <80% yellow, >=80% red.
+# Light grey at the calm baseline keeps the line quiet until usage actually warrants attention.
+bar_color="$GREY_LIGHT"
 if [ -n "$rate_pct" ]; then
   if [ "$rate_pct" -lt 50 ]; then
-    bar_color="$GREEN"
+    bar_color="$GREY_LIGHT"
   elif [ "$rate_pct" -lt 80 ]; then
     bar_color="$YELLOW"
   else
@@ -143,30 +159,91 @@ case "$rate_resets_at" in
     ;;
 esac
 
+# Claude Code installed version + freshness of last update.
+# Version comes from the npm package metadata; the timestamp file is written at image build time
+# (Dockerfile) and at session start by startup.mjs after a successful `npm install -g ... @latest`.
+# Both paths are stable and outside the default shadow patterns.
+cc_pkg="/usr/lib/node_modules/@anthropic-ai/claude-code/package.json"
+cc_ts_file="/home/devuser/.ai-cli-updated"
+
+cc_version=""
+[ -r "$cc_pkg" ] && cc_version=$(jq -r '.version // ""' "$cc_pkg" 2>/dev/null)
+
+# Days since last successful update; clamped to >= 0 to absorb clock skew.
+# Empty string when the timestamp file is missing or unparseable -- segment then omits the parens.
+cc_age_days=""
+if [ -r "$cc_ts_file" ]; then
+  cc_iso=$(tr -d '[:space:]' < "$cc_ts_file" 2>/dev/null)
+  if [ -n "$cc_iso" ]; then
+    cc_secs=$(date -d "$cc_iso" +%s 2>/dev/null)
+    if [ -n "$cc_secs" ]; then
+      cc_now=$(date +%s)
+      cc_age_days=$(( (cc_now - cc_secs) / 86400 ))
+      [ "$cc_age_days" -lt 0 ] && cc_age_days=0
+    fi
+  fi
+fi
+
+# Build the Claude Code segment. Empty when version is unknown.
+# Age tiers (whole parens content takes the staleness color):
+#   <1d   -> no parens          (fresh: just the version)
+#   1-6d  -> "Nd ago"           grey
+#   7-29d -> "Nw ago, <hint>"   yellow
+#   >=30d -> "Nmo ago, <hint>"  red
+# Hint reads "open a new totopo session to update" -- the auto-update only runs at container start,
+# so restarting Claude inside the same container does not refresh the CLI.
+cc_seg=""
+if [ -n "$cc_version" ]; then
+  cc_seg="${GREY_LIGHT}Claude Code v${cc_version}${RESET}"
+  if [ -n "$cc_age_days" ] && [ "$cc_age_days" -ge 1 ]; then
+    if [ "$cc_age_days" -lt 7 ]; then
+      cc_age_label="${cc_age_days}d ago"
+      cc_age_color="$GREY"
+    elif [ "$cc_age_days" -lt 30 ]; then
+      cc_weeks=$((cc_age_days / 7))
+      cc_age_label="${cc_weeks}w ago, open a new totopo session to update"
+      cc_age_color="$YELLOW"
+    else
+      cc_months=$((cc_age_days / 30))
+      cc_age_label="${cc_months}mo ago, open a new totopo session to update"
+      cc_age_color="$RED"
+    fi
+    cc_seg="${cc_seg} ${cc_age_color}(${cc_age_label})${RESET}"
+  fi
+fi
+
 # Mid-dot separator between segments.
 SEP=" ${GREY}·${RESET} "
 
-# Model + effort
-out=""
-if [ -n "$model_display" ]; then
-  out="${BLUE}${model_display}${RESET}"
-  [ -n "$effort" ] && out="${out} ${GREY}${effort}${RESET}"
-fi
-
-# <tokens> [/ <ctx>] (<pct>%)
+# Segment 1: tokens (always rendered; used_tokens defaults to 0).
 ctx_seg="${tokens_color}${tokens_label}${RESET}"
 [ -n "$ctx_size" ] && ctx_seg="${ctx_seg} ${GREY}/ ${ctx_size}${RESET}"
 ctx_seg="${ctx_seg} ${GREY}(${used_pct}%)${RESET}"
-if [ -n "$out" ]; then
-  out="${out}${SEP}${ctx_seg}"
-else
-  out="${ctx_seg}"
+
+# Segment 2: model + effort (rendered only when model name is present; effort shares model color).
+model_seg=""
+if [ -n "$model_display" ]; then
+  model_seg="${BLUE}${model_display}${RESET}"
+  [ -n "$effort" ] && model_seg="${model_seg} ${BLUE}${effort}${RESET}"
 fi
 
-# <bar> (<rate>% used, resets in <hr> hr <min> min)  -- only when rate-limit data is present
+# Segment 3: cc_seg (computed above; may be empty).
+
+# Segment 4: rate-limit gauge (rendered only when rate-limit data is present).
+quota_seg=""
 if [ -n "$bar" ] && [ -n "$reset_label" ]; then
   quota_seg="${bar_color}${bar}${RESET} ${GREY}(${rate_pct}% used, resets in ${reset_label})${RESET}"
-  out="${out}${SEP}${quota_seg}"
 fi
+
+# Join non-empty segments with SEP, in order: tokens -> model -> claude-code -> gauge.
+out=""
+for seg in "$ctx_seg" "$model_seg" "$cc_seg" "$quota_seg"; do
+  [ -z "$seg" ] && continue
+  if [ -z "$out" ]; then
+    out="$seg"
+  else
+    out="${out}${SEP}${seg}"
+  fi
+done
 
 printf '%b\n' "$out"
