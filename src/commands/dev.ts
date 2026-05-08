@@ -24,6 +24,7 @@ import {
 } from "../lib/constants.js";
 import { buildDockerfile, buildImageWithTempfile } from "../lib/dockerfile-builder.js";
 import { isImageStale } from "../lib/migrate-to-latest.js";
+import { buildPnpmStoreMountArgs } from "../lib/pnpm-store.js";
 import { buildShadowMountArgs, ensureShadowsInSync, expandShadowPatterns } from "../lib/shadows.js";
 import type { ProfileConfig } from "../lib/totopo-yaml.js";
 import { readTotopoYaml } from "../lib/totopo-yaml.js";
@@ -196,8 +197,9 @@ export function startContainer(opts: StartContainerOpts): ContainerStartResult {
 
     // --- Build mount args ----------------------------------------------------------------------------------------------------------------
     const agentMounts = buildAgentMountArgs(cacheDir);
+    const pnpmStoreMounts = buildPnpmStoreMountArgs(cacheDir);
     // Shadow mounts must come AFTER the workspace mount to overlay correctly
-    const mountArgs = ["-v", `${workspaceRoot}:${CONTAINER_WORKSPACE}`, ...shadowMountArgs, ...agentMounts];
+    const mountArgs = ["-v", `${workspaceRoot}:${CONTAINER_WORKSPACE}`, ...shadowMountArgs, ...agentMounts, ...pnpmStoreMounts];
 
     // --- Container labels ----------------------------------------------------------------------------------------------------------------
     const labelArgs = [
