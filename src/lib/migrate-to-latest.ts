@@ -608,6 +608,11 @@ export function isImageStale(containerName: string): boolean {
     });
     if (constantsCheck.status !== 0) return true;
 
+    // v3.5.1: explicit pnpm store-dir baked into ~/.npmrc to prevent pnpm's volume-check
+    // relocation, which would otherwise create .pnpm-store at the repo root.
+    const npmrcCheck = spawnSync("docker", ["exec", containerName, "grep", "-q", "^store-dir=", "/home/devuser/.npmrc"], { stdio: "pipe" });
+    if (npmrcCheck.status !== 0) return true;
+
     // SHA-256 of the host claude-statusline.sh vs the file inside the container - any refinement to
     // the shipped script triggers an automatic rebuild prompt on next session.
     const hostScriptPath = join(PACKAGE_ROOT, "templates", "claude-statusline.sh");

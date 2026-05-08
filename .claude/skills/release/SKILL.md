@@ -74,15 +74,26 @@ The target version is the base version derived from the current `rc` dist-tag (s
 
 If the target RC already has an entry in `in_progress.entries`, show it and ask if changes are needed.
 
-If not, help the user draft a new entry. The entry must use the `rc_version` field and follow these rules:
-- Use only the categories that apply: `added`, `changed`, `fixed`, `security`
-- One line per item — concise language describing what changed and why it matters
-- Include all relevant changes, not just user-facing ones. Test improvements, internal refactors, and tooling changes matter to users who follow the project. However, compact them: multiple related changes (e.g. several test additions) should be grouped into a single bullet rather than listed individually
-- No file paths or internal module names — describe changes in terms of what they affect, not where the code lives
-- Use common sense for grouping and filtering: a single bullet for "improved test coverage for shadow paths" is better than five bullets listing each test file, but omitting test changes entirely loses useful signal
-- Set `date` to today's date (YYYY-MM-DD format)
-- **Cumulative convention**: the new RC entry should describe the **full release** as it would appear in the final release notes, not just the delta from the previous RC. Review all previous RC entries in `in_progress.entries` and carry forward any items that still apply. The latest entry becomes the release notes when promoted. Previous RC entries serve as a development audit trail.
-- **Omit RC-relative fixes**: if a bug was introduced in a previous RC and fixed before this one, do NOT include it. The final release notes describe changes relative to the **last stable release**, not relative to previous RCs.
+If not, help the user draft a new entry. The entry must use the `rc_version` field.
+
+**Audience.** This is the public release notes — read by people who star the repo and want to know what's new. Write for them, not for the team.
+
+**Length.** One bullet per release theme. One sentence per bullet. A "theme" is a single feature, fix, or coherent overhaul — not each sub-aspect of it. A status-line redesign that adds a segment, retunes colors, and improves rounding is **one** bullet, not three. If you can't say it in one sentence, the bullet is too granular.
+
+**Categories.** Use only what applies: `added`, `changed`, `fixed`, `security`. A typical release has 1-3 bullets total across all categories. More than 4 bullets is a strong signal you are over-listing — collapse related items.
+
+**Omit entirely.**
+- Internal refactors with no user-visible effect.
+- New or improved tests (development hygiene, not news).
+- Tooling, lint, or CI changes that don't affect the published behavior.
+- ROADMAP/TODO edits.
+- Anything you cannot explain to a user without naming a file or module.
+
+**Cumulative convention.** The new RC entry describes the **full release** as it would appear in the final notes — not just the delta from the previous RC. Review all previous RC entries in `in_progress.entries` and carry forward any items that still apply. The latest entry becomes the published release notes when promoted; earlier RC entries are development audit trail.
+
+**Omit RC-relative fixes.** If a bug was introduced in a previous RC and fixed before this one, do NOT include it. Final release notes describe changes relative to the **last stable release**, not relative to previous RCs.
+
+**Date.** Set `date` to today (YYYY-MM-DD).
 
 ### For "Direct stable release"
 

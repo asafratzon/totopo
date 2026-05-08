@@ -24,15 +24,18 @@ Tell the user which state they are in, and the exact command path if custom.
 
 ## Step 2 - Explain the totopo default render pattern
 
-Three segments separated by a mid-dot. Example:
+Four segments, left to right, separated by a mid-dot:
 
 ```
-Opus 4.7 high · 174k / 1M (17%) · ▓░░░░░░░░░ (13% used, resets in 3 hr 35 min)
+174k / 1M (17%) · Opus 4.7 high · Claude Code v2.1.132 · ▓░░░░░░░░░ (12% used, resets in 3 hr 35 min)
 ```
 
-- Model name (blue) + reasoning effort (grey, hidden if unsupported).
-- Tokens used / context window size / percentage. Token count is colored: green below 100k, yellow up to 500k, red beyond.
-- 10-block gauge of the 5-hour rate-limit window (each block = 10%; green below 50%, yellow below 80%, red at or above 80%) followed by current usage and time until reset. Whole segment is hidden for free accounts and before the first API response.
+1. **Tokens** - current context-window usage (count / window size / percentage).
+2. **Model** - name and reasoning effort.
+3. **Claude Code** - installed CLI version, with a freshness hint shown only once the install starts to age.
+4. **Rate-limit gauge** - share of the 5-hour window used and time until it resets. Hidden on free accounts and before the first API response.
+
+Most of the line stays calm; individual segments turn **yellow** or **red** when something deserves attention - typically a nudge to *clear or compact the context*, *update the harness by opening a new totopo session*, or *watch the rate-limit window*.
 
 ## Step 3 - Ask the user what they want
 
@@ -48,6 +51,14 @@ Based on the current state:
 "You have a custom status line at `<command>`. Want to (1) keep it, (2) revert to the totopo default, or (3) modify further?"
 
 ## Step 4 - Apply the chosen action
+
+### Permissions: you perform the edits
+
+Every action in this step involves editing `~/.claude/settings.json` and/or writing scripts under `~/.claude/`. **You** make those edits directly with the `Edit` and `Write` tools - do not tell the user to run the change themselves.
+
+If write access to those paths is not pre-approved, Claude Code will surface its standard permission prompt to the user. **That prompt is the expected approval flow, not a refusal signal** - go ahead and call the tool, and the user will grant permission when they see it.
+
+Do not apologise for "lacking permission" and do not redirect the work back to the user. The only correct response to a custom-status-line revert request (or any other action below) is to attempt the edit yourself.
 
 ### Install the default explicitly
 

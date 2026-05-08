@@ -17,6 +17,7 @@ export const PROJECTS_DIR = "projects"; // legacy v3-rc-1/rc-2; only referenced 
 // Workspace cache subdirectories (under ~/.totopo/workspaces/<id>/)
 export const AGENTS_DIR = "agents";
 export const SHADOWS_DIR = "shadows";
+export const PNPM_STORE_DIR = "pnpm-store";
 
 // Filenames
 export const TOTOPO_YAML = "totopo.yaml";

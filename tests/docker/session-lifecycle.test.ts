@@ -7,7 +7,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, afterEach, before, beforeEach, describe, test } from "node:test";
 import type { StartContainerOpts } from "../../src/commands/dev.js";
@@ -139,6 +139,70 @@ describe("session lifecycle", () => {
         startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
         const cat = dockerExec(containerName, ["cat", "/workspace/marker.txt"]);
         assert.equal(cat.stdout, "hello-from-host");
+    });
+
+    test("pnpm-store bind mount is present, writable, and sourced from cache dir", () => {
+        startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
+        // Mount target itself must be writable as devuser.
+        const probe = dockerExec(containerName, ["sh", "-c", "touch /home/devuser/.local/share/pnpm/store/.totopo-mount-probe && echo OK"]);
+        assert.equal(probe.stdout, "OK", "pnpm store mount must be writable as devuser");
+
+        // The mount's parent directory must also be devuser-writable so pnpm can create siblings of
+        // store/ at runtime (.tools/, .modules-yaml, ...). If the image does not pre-create
+        // /home/devuser/.local/share/pnpm, Docker auto-creates it as root when materializing the
+        // bind mount path, leaving devuser unable to write next to store/.
+        const siblingProbe = dockerExec(containerName, [
+            "sh",
+            "-c",
+            "touch /home/devuser/.local/share/pnpm/.totopo-sibling-probe && echo OK",
+        ]);
+        assert.equal(siblingProbe.stdout, "OK", "pnpm store mount's parent dir must be writable as devuser");
+
+        // Source must be the per-workspace cache subdir so the store persists across rebuilds.
+        // The store's same-device guarantee is provided by the explicit store-dir npmrc setting,
+        // not by the bind mount alone (each Docker -v can register as its own device).
+        const inspect = spawnSync(
+            "docker",
+            [
+                "inspect",
+                "--format",
+                '{{range .Mounts}}{{if eq .Destination "/home/devuser/.local/share/pnpm/store"}}{{.Source}}{{end}}{{end}}',
+                containerName,
+            ],
+            { encoding: "utf8", stdio: "pipe" },
+        );
+        assert.equal(inspect.stdout.trim(), join(cacheDir, "pnpm-store"));
+    });
+
+    test("pnpm install runs cleanly and does not create .pnpm-store in the workspace", () => {
+        writeFileSync(join(workspaceRoot, "package.json"), JSON.stringify({ name: "totopo-test", version: "0.0.0", private: true }));
+        startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
+
+        // Confirm the image-baked config is actually visible to pnpm. Without this, a config that
+        // never gets read produces the same symptom as a config that doesn't work, and we cannot
+        // tell the two failure modes apart. store-dir is the load-bearing setting: without it,
+        // pnpm's volume-check relocation puts the store at /workspace/.pnpm-store regardless of
+        // package-import-method.
+        const storeDir = dockerExec(containerName, ["sh", "-c", "cd /workspace && pnpm config get store-dir"]);
+        assert.equal(storeDir.stdout, "/home/devuser/.local/share/pnpm/store", `pnpm store-dir not honored; got '${storeDir.stdout}'`);
+        const importMethod = dockerExec(containerName, ["sh", "-c", "cd /workspace && pnpm config get package-import-method"]);
+        assert.equal(importMethod.stdout, "copy", `pnpm package-import-method not honored; got '${importMethod.stdout}'`);
+
+        const install = dockerExec(containerName, ["sh", "-c", "cd /workspace && pnpm install --offline 2>&1"]);
+        assert.equal(install.status, 0, `pnpm install must succeed; output:\n${install.stdout}`);
+
+        if (existsSync(join(workspaceRoot, ".pnpm-store"))) {
+            // Diagnostic dump - tell us exactly what pnpm decided to put in the workspace.
+            const ls = dockerExec(containerName, [
+                "sh",
+                "-c",
+                "ls -la /workspace/.pnpm-store && find /workspace/.pnpm-store -maxdepth 3 -print",
+            ]);
+            const cfg = dockerExec(containerName, ["sh", "-c", "pnpm config list 2>&1"]);
+            assert.fail(
+                `.pnpm-store appeared in the workspace.\n--- install output ---\n${install.stdout}\n--- .pnpm-store contents ---\n${ls.stdout}\n--- pnpm config list ---\n${cfg.stdout}`,
+            );
+        }
     });
 
     test("second call to running container returns 'connected'", () => {
@@ -496,6 +560,14 @@ CMD ["sleep", "infinity"]
         const result = buildImageWithTempfile(dockerfile, TEMPLATES_DIR, containerName, false, true);
         assert.equal(result.status, 0);
         spawnSync("docker", ["run", "-d", "--name", containerName, containerName, "sleep", "infinity"], { stdio: "pipe" });
+        assert.equal(isImageStale(containerName), true);
+    });
+
+    test("isImageStale returns true for container missing the v3.5.1 pnpm store-dir in ~/.npmrc", () => {
+        // Container starts from production image (which has the new ~/.npmrc), but we wipe the file
+        // to simulate a pre-v3.5.1 image. The grep check in isImageStale must detect the absence.
+        startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
+        spawnSync("docker", ["exec", "-u", "root", containerName, "rm", "-f", "/home/devuser/.npmrc"], { stdio: "pipe" });
         assert.equal(isImageStale(containerName), true);
     });
 

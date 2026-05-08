@@ -7,6 +7,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [3.5.1] — 2026-05-08
+
+### Added
+
+- Status line gained a Claude Code CLI version segment with a freshness hint, calmer baseline color, and sharper bar rounding.
+
+### Fixed
+
+- pnpm install no longer pollutes the host repo with a .pnpm-store directory.
+
+---
+
 ## [3.5.0] — 2026-05-07
 
 ### Added

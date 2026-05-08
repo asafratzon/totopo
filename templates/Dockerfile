@@ -85,8 +85,9 @@ RUN npm install -g \
 # ---------------------------------------------------------------------------
 RUN groupadd --gid 1001 devuser && \
     useradd --uid 1001 --gid devuser --shell /bin/bash --create-home devuser && \
-    mkdir -p /home/devuser/.local/state /home/devuser/.local/share /home/devuser/.local/bin && \
+    mkdir -p /home/devuser/.local/state /home/devuser/.local/share /home/devuser/.local/share/pnpm /home/devuser/.local/bin && \
     date -u +"%Y-%m-%dT%H:%M:%S.000Z" > /home/devuser/.ai-cli-updated && \
+    printf 'store-dir=/home/devuser/.local/share/pnpm/store\npackage-import-method=copy\n' > /home/devuser/.npmrc && \
     chown -R devuser:devuser /home/devuser
 
 # ---------------------------------------------------------------------------
