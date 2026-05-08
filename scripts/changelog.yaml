@@ -7,6 +7,12 @@ in_progress:
         - "Status line gained a Claude Code CLI version segment with a freshness hint, calmer baseline color, and sharper bar rounding."
       fixed:
         - "pnpm install no longer pollutes the host repo with a .pnpm-store directory."
+    - rc_version: "3.5.1-rc-2"
+      date: "2026-05-08"
+      added:
+        - "Status line gained a Claude Code CLI version segment with a freshness hint, calmer baseline color, and sharper bar rounding."
+      fixed:
+        - "pnpm install no longer pollutes the host repo with a .pnpm-store directory."
 releases:
   - version: 3.5.0
     date: "2026-05-07"
