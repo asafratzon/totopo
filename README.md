@@ -10,6 +10,12 @@ Local sandbox for AI agents.
 ![npm downloads](https://img.shields.io/npm/dm/totopo)
 ![license](https://img.shields.io/npm/l/totopo)
 
+## Who this is for
+
+Developers who use `claude`, `codex`, or `opencode` **interactively** — one human pair-programming with one agent.
+
+totopo is not an orchestration tool — no SDK, no parallel agents, no per-run worktrees. If you need those, look at dedicated agent-orchestration tools instead.
+
 ## Motivation
 
 Two fundamental risks when running AI agents locally:
@@ -50,7 +56,7 @@ A few things happen automatically:
 
 - **Agents stay up to date** — totopo keeps all AI CLIs on their latest versions, checking for updates automatically.
 - **Sessions are persistent** — agent memory and settings survive container restarts and rebuilds.
-- **Your machine stays safe** — the container can't push to remote, can't read outside the workspace, and sensitive paths like `.env` can be hidden from agents entirely (see [Shadow Paths](#shadow-paths)).
+- **The blast radius is bounded** — the container can't push to remote or read outside the workspace, and you can hide files like `.env` from the agent (see [Shadow Paths](#shadow-paths)). For what this does and doesn't protect against, see [Threat Model](#threat-model).
 
 For a deeper look at how totopo works and how to configure it, see the sections below.
 
@@ -249,6 +255,20 @@ To clear memory: `npx totopo` → **Manage totopo > Clear agent memory**.
   "when": "terminalFocus"
 }
 ```
+
+## Threat Model
+
+Totopo makes everyday agent mistakes safer. It is not built to stop a determined attacker.
+
+**What it helps with:**
+- Confused-agent mistakes — only the workspace is at risk; the rest of your machine is invisible.
+- Casual prompt injection — the agent can't read your SSH keys or push to your remote, because neither is in the container.
+
+**What it does not help with:**
+- A determined adversarial agent. The network is open, and `/usr/bin/git` is reachable by absolute path even in strict mode. Anything in the workspace can still leave over HTTP.
+- Secrets you didn't shadow. A `.env` tracked in git is visible unless you list it in `shadow_paths`.
+- Container escapes. Totopo uses a non-root user and `no-new-privileges`, but no capability drops or seccomp profiles. For stronger isolation, use a microVM sandbox.
+- Edits to your working tree. The workspace is bind-mounted, so agent changes land on your real files. Commit often.
 
 ## Disclaimer
 
