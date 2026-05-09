@@ -92,11 +92,11 @@ RUN groupadd --gid 1001 devuser && \
 # ---------------------------------------------------------------------------
 # Layer 9 — Bake startup script + git mode helper + shared constants into image
 # ---------------------------------------------------------------------------
-COPY --chown=devuser:devuser npmrc /home/devuser/.npmrc
+COPY npmrc /home/devuser/.npmrc
 COPY startup.mjs /home/devuser/startup.mjs
 COPY startup-git-mode.mjs /home/devuser/startup-git-mode.mjs
 COPY runtime-constants.mjs /home/devuser/runtime-constants.mjs
-RUN chown devuser:devuser /home/devuser/startup.mjs /home/devuser/startup-git-mode.mjs /home/devuser/runtime-constants.mjs
+RUN chown devuser:devuser /home/devuser/.npmrc /home/devuser/startup.mjs /home/devuser/startup-git-mode.mjs /home/devuser/runtime-constants.mjs
 
 # ---------------------------------------------------------------------------
 # Layer 10 — Bake git read-only wrapper into image
