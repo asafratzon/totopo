@@ -21,7 +21,7 @@ import {
     LABEL_SHADOWS,
     PROFILE,
 } from "../../src/lib/constants.js";
-import { buildDockerfile, buildImageWithTempfile } from "../../src/lib/dockerfile-builder.js";
+import { buildDockerfile, buildImageWithTempfile, computeBuildHash } from "../../src/lib/dockerfile-builder.js";
 import { isImageStale } from "../../src/lib/migrate-to-latest.js";
 import { expandShadowPatterns } from "../../src/lib/shadows.js";
 import {
@@ -496,99 +496,38 @@ describe("image staleness", () => {
         await cleanTempDir(cacheDir);
     });
 
-    test("isImageStale returns false for current production image", () => {
+    // Production hash derived from the real Dockerfile + templates dir. Recomputed once per test
+    // so any change to the assembled content is reflected without test setup leaking state.
+    function productionHash(): string {
+        return computeBuildHash(buildDockerfile(join(TEMPLATES_DIR, "Dockerfile")), TEMPLATES_DIR);
+    }
+
+    test("isImageStale returns false when the stamped hash matches the expected hash", () => {
         startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
-        assert.equal(isImageStale(containerName), false);
+        assert.equal(isImageStale(containerName, productionHash()), false);
     });
 
-    test("isImageStale returns true for container missing startup.mjs", async () => {
-        // Build a minimal image without startup.mjs to simulate an outdated container
+    test("isImageStale returns true when the expected hash differs from the stamped hash", () => {
+        // Simulates source-side drift: the package on disk has changed (Dockerfile or any baked
+        // template file edited) so the hash recomputed at session start no longer matches the
+        // label stamped on the running container at build time.
+        startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
+        const wrong = "0".repeat(64);
+        assert.equal(isImageStale(containerName, wrong), true);
+    });
+
+    test("isImageStale returns true when the container's stamped hash differs from the expected hash", async () => {
+        // Simulates a user on an older image: builds a minimal image (different Dockerfile content
+        // -> different stamped hash), then asks "is this stale relative to production?" -> yes.
         const contextDir = createTempDir();
         try {
             const result = buildImageWithTempfile(MINIMAL_DOCKERFILE, contextDir, containerName, false, true);
             assert.equal(result.status, 0);
             spawnSync("docker", ["run", "-d", "--name", containerName, containerName, "sleep", "infinity"], { stdio: "pipe" });
-            assert.equal(isImageStale(containerName), true);
+            assert.equal(isImageStale(containerName, productionHash()), true);
         } finally {
             await cleanTempDir(contextDir);
         }
-    });
-
-    test("isImageStale returns true for container missing file", () => {
-        const dockerfile = `FROM debian:bookworm-slim
-LABEL totopo.managed=true
-RUN groupadd --gid 1001 devuser && useradd --uid 1001 --gid devuser --shell /bin/bash --create-home devuser
-COPY startup.mjs /home/devuser/startup.mjs
-WORKDIR /workspace
-USER devuser
-CMD ["sleep", "infinity"]
-`;
-        const result = buildImageWithTempfile(dockerfile, TEMPLATES_DIR, containerName, false, true);
-        assert.equal(result.status, 0);
-        spawnSync("docker", ["run", "-d", "--name", containerName, containerName, "sleep", "infinity"], { stdio: "pipe" });
-        assert.equal(isImageStale(containerName), true);
-    });
-
-    test("isImageStale returns true for container missing bubblewrap", () => {
-        const dockerfile = `FROM debian:bookworm-slim
-LABEL totopo.managed=true
-RUN groupadd --gid 1001 devuser && useradd --uid 1001 --gid devuser --shell /bin/bash --create-home devuser
-RUN touch /usr/bin/file && chmod +x /usr/bin/file
-COPY startup.mjs /home/devuser/startup.mjs
-WORKDIR /workspace
-USER devuser
-CMD ["sleep", "infinity"]
-`;
-        const result = buildImageWithTempfile(dockerfile, TEMPLATES_DIR, containerName, false, true);
-        assert.equal(result.status, 0);
-        spawnSync("docker", ["run", "-d", "--name", containerName, containerName, "sleep", "infinity"], { stdio: "pipe" });
-        assert.equal(isImageStale(containerName), true);
-    });
-
-    test("isImageStale returns true for container missing the v3.4.0 git read-only wrapper", () => {
-        // Image satisfies all prior staleness checks but lacks the v3.4.0 wrapper.
-        const dockerfile = `FROM debian:bookworm-slim
-LABEL totopo.managed=true
-RUN groupadd --gid 1001 devuser && useradd --uid 1001 --gid devuser --shell /bin/bash --create-home devuser
-RUN touch /usr/bin/file && chmod +x /usr/bin/file
-RUN touch /usr/bin/bwrap && chmod +x /usr/bin/bwrap
-COPY startup.mjs /home/devuser/startup.mjs
-WORKDIR /workspace
-USER devuser
-CMD ["sleep", "infinity"]
-`;
-        const result = buildImageWithTempfile(dockerfile, TEMPLATES_DIR, containerName, false, true);
-        assert.equal(result.status, 0);
-        spawnSync("docker", ["run", "-d", "--name", containerName, containerName, "sleep", "infinity"], { stdio: "pipe" });
-        assert.equal(isImageStale(containerName), true);
-    });
-
-    test("isImageStale returns true for container missing the v3.5.1 pnpm store-dir in ~/.npmrc", () => {
-        // Container starts from production image (which has the new ~/.npmrc), but we wipe the file
-        // to simulate a pre-v3.5.1 image. The grep check in isImageStale must detect the absence.
-        startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
-        spawnSync("docker", ["exec", "-u", "root", containerName, "rm", "-f", "/home/devuser/.npmrc"], { stdio: "pipe" });
-        assert.equal(isImageStale(containerName), true);
-    });
-
-    test("isImageStale returns true when claude-statusline.sh hash mismatches host", () => {
-        // Start a fresh production-image container, then overwrite the baked statusline script
-        // with different content. The SHA-256 check should detect the drift and report stale.
-        startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
-        spawnSync(
-            "docker",
-            [
-                "exec",
-                "-u",
-                "root",
-                containerName,
-                "sh",
-                "-c",
-                'echo "totopo-test: drifted statusline" > /usr/local/share/totopo/claude-statusline.sh',
-            ],
-            { stdio: "pipe" },
-        );
-        assert.equal(isImageStale(containerName), true);
     });
 
     test("startup script fails on stale container (startup.mjs missing)", async () => {
