@@ -22,7 +22,7 @@ import {
     PROFILE,
     RUNTIME_ENV,
 } from "../lib/constants.js";
-import { buildDockerfile, buildImageWithTempfile } from "../lib/dockerfile-builder.js";
+import { buildDockerfile, buildImageWithTempfile, computeBuildHash } from "../lib/dockerfile-builder.js";
 import { isImageStale } from "../lib/migrate-to-latest.js";
 import { buildPnpmStoreMountArgs } from "../lib/pnpm-store.js";
 import { buildShadowMountArgs, ensureShadowsInSync, expandShadowPatterns } from "../lib/shadows.js";
@@ -378,7 +378,9 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
     startContainer(containerOpts);
 
     // --- Stale image check - prompt user to rebuild if image is outdated ------------------------------------------------------------------
-    let stale = isImageStale(containerName);
+    const dockerfileContent = buildDockerfile(join(templatesDir, "Dockerfile"), profileHook);
+    const expectedBuildHash = computeBuildHash(dockerfileContent, templatesDir);
+    let stale = isImageStale(containerName, expectedBuildHash);
     if (stale) {
         log.warn(
             "totopo's latest release includes an updated container image.\n  Please rebuild to update — this will not affect agent memory, settings, or your data.",

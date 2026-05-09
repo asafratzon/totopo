@@ -209,6 +209,29 @@ describe("classify - config", () => {
         // `config --default fallback user.email` is a read; --default consumes "fallback".
         assert.equal(classify(["config", "--default", "fallback", "user.email"]).allow, true);
     });
+
+    test("allows config core.hooksPath <value> (allowlisted write for prepare scripts)", () => {
+        assert.equal(classify(["config", "core.hooksPath", ".githooks"]).allow, true);
+    });
+
+    test("allows config core.hooksPath write regardless of key casing", () => {
+        // Git treats section/variable names case-insensitively.
+        assert.equal(classify(["config", "core.HooksPath", ".githooks"]).allow, true);
+        assert.equal(classify(["config", "CORE.HOOKSPATH", ".githooks"]).allow, true);
+    });
+
+    test("allows config --local core.hooksPath <value>", () => {
+        assert.equal(classify(["config", "--local", "core.hooksPath", ".githooks"]).allow, true);
+    });
+
+    test("still blocks config --unset core.hooksPath", () => {
+        // Allowlist applies only to the implicit two-token write form.
+        assert.equal(classify(["config", "--unset", "core.hooksPath"]).allow, false);
+    });
+
+    test("still blocks config protocol.allow always (allowlist does not weaken remote block)", () => {
+        assert.equal(classify(["config", "protocol.allow", "always"]).allow, false);
+    });
 });
 
 describe("classify - stash", () => {

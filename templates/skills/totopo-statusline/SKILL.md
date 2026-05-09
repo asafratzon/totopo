@@ -27,13 +27,13 @@ Tell the user which state they are in, and the exact command path if custom.
 Four segments, left to right, separated by a mid-dot:
 
 ```
-174k / 1M (17%) · Opus 4.7 high · Claude Code v2.1.132 · ▓░░░░░░░░░ (12% used, resets in 3 hr 35 min)
+174k (17%) · Opus 4.7 (1M context) high · 5h limit ▓░░░░░░░░░ (resets in 2h 15m) · Claude Code v2.1.132
 ```
 
-1. **Tokens** - current context-window usage (count / window size / percentage).
-2. **Model** - name and reasoning effort.
-3. **Claude Code** - installed CLI version, with a freshness hint shown only once the install starts to age.
-4. **Rate-limit gauge** - share of the 5-hour window used and time until it resets. Hidden on free accounts and before the first API response.
+1. **Tokens** - current context-window usage (count and percentage).
+2. **Model** - display name as provided by Claude Code (rendered as-is), followed by reasoning effort in purple (no parentheses, since the model name itself may already contain a parenthetical).
+3. **Rate-limit gauge** - bar showing share of the 5-hour window used, plus a relative countdown until it resets. Hidden on free accounts and before the first API response.
+4. **Claude Code** - installed CLI version, with a freshness hint shown only once the install starts to age.
 
 Most of the line stays calm; individual segments turn **yellow** or **red** when something deserves attention - typically a nudge to *clear or compact the context*, *update the harness by opening a new totopo session*, or *watch the rate-limit window*.
 
@@ -106,4 +106,4 @@ If the user wants something completely different:
 
 - Always preserve other fields in `settings.json` when editing. The file may contain unrelated user settings.
 - If `settings.json` does not exist or is unparseable, create it fresh as `{ "statusLine": { ... } }`.
-- The format Claude Code passes via stdin includes `workspace.current_dir`, `model.display_name`, `context_window.used_percentage`, and `context_window.current_usage.{input_tokens, cache_creation_input_tokens, cache_read_input_tokens}`. Use these as the data sources for any custom script.
+- Any statusline changes must use only the fields documented in the official Claude Code statusline reference: https://code.claude.com/docs/en/statusline#available-data -- consult that page for the full list of available JSON fields, their types, nullability, and conditional presence.

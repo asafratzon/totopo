@@ -1,7 +1,21 @@
 in_progress:
-  base_version: 3.5.2
+  base_version: 3.6.1
   entries: []
 releases:
+  - version: 3.6.0
+    date: "2026-05-09"
+    added:
+      - Strict git mode now allows `git config core.hooksPath` so repos with pnpm-managed git hooks work in strict mode.
+    changed:
+      - >-
+        Stale image detection now hashes the Dockerfile plus every baked template file - any edit auto-prompts a
+        rebuild.
+      - >-
+        Status line redesigned with reordered segments, verbatim model name, purple reasoning effort, and a relative
+        reset countdown.
+      - >-
+        More Claude Code features suppressed inside the container - error reporting, installation checks, telemetry, and
+        /upgrade.
   - version: 3.5.1
     date: "2026-05-08"
     added:

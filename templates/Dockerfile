@@ -87,16 +87,16 @@ RUN groupadd --gid 1001 devuser && \
     useradd --uid 1001 --gid devuser --shell /bin/bash --create-home devuser && \
     mkdir -p /home/devuser/.local/state /home/devuser/.local/share /home/devuser/.local/share/pnpm /home/devuser/.local/bin && \
     date -u +"%Y-%m-%dT%H:%M:%S.000Z" > /home/devuser/.ai-cli-updated && \
-    printf 'store-dir=/home/devuser/.local/share/pnpm/store\npackage-import-method=copy\n' > /home/devuser/.npmrc && \
     chown -R devuser:devuser /home/devuser
 
 # ---------------------------------------------------------------------------
 # Layer 9 — Bake startup script + git mode helper + shared constants into image
 # ---------------------------------------------------------------------------
+COPY npmrc /home/devuser/.npmrc
 COPY startup.mjs /home/devuser/startup.mjs
 COPY startup-git-mode.mjs /home/devuser/startup-git-mode.mjs
 COPY runtime-constants.mjs /home/devuser/runtime-constants.mjs
-RUN chown devuser:devuser /home/devuser/startup.mjs /home/devuser/startup-git-mode.mjs /home/devuser/runtime-constants.mjs
+RUN chown devuser:devuser /home/devuser/.npmrc /home/devuser/startup.mjs /home/devuser/startup-git-mode.mjs /home/devuser/runtime-constants.mjs
 
 # ---------------------------------------------------------------------------
 # Layer 10 — Bake git read-only wrapper into image
