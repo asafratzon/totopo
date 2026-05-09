@@ -130,6 +130,11 @@ const CONFIG_WRITE_FLAGS = new Set([
 // Flags that take their next arg as a value -- skip the value when counting tokens.
 // --file/-f/--blob = scope; --type = value coercion; --default = fallback for --get.
 const CONFIG_TWO_ARG_FLAGS = new Set(["--file", "-f", "--blob", "--type", "--default"]);
+// Keys whose write form is allowed in strict mode. Narrow by design: each entry must be
+// safe (cannot escalate to remote ops or weaken protocol.allow). core.hooksPath unblocks
+// `pnpm install` for repos whose prepare script points git at a tracked hooks directory.
+// Compared lowercased: git treats section/variable names case-insensitively.
+const CONFIG_WRITE_ALLOWLIST = new Set(["core.hookspath"]);
 
 // -- remote: block these subactions, allow the rest (default = list) ----------
 const REMOTE_MUTATING_ACTIONS = new Set(["add", "remove", "rm", "rename", "set-url", "prune", "update", "set-head", "set-branches"]);
@@ -213,9 +218,10 @@ export function classify(argv) {
         }
         // Otherwise count non-flag tokens after the subcommand:
         //   `config <key>`           -> 1 token  -> read
-        //   `config <key> <value>`   -> 2 tokens -> write
+        //   `config <key> <value>`   -> 2 tokens -> write (allowed only if key is in allowlist)
         // Scope flags (--system, --global, ...) are flags and don't count.
         let nonFlagCount = 0;
+        let firstKey = null;
         for (let i = 0; i < rest.length; i++) {
             const a = rest[i];
             if (a.startsWith("-")) {
@@ -223,7 +229,11 @@ export function classify(argv) {
                 continue;
             }
             nonFlagCount++;
-            if (nonFlagCount >= 2) return blocked("config (write)");
+            if (nonFlagCount === 1) firstKey = a;
+            if (nonFlagCount >= 2) {
+                if (firstKey !== null && CONFIG_WRITE_ALLOWLIST.has(firstKey.toLowerCase())) return { allow: true };
+                return blocked("config (write)");
+            }
         }
         return { allow: true };
     }
