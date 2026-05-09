@@ -53,6 +53,7 @@
     },
     "license": "MIT",
     "author": "Asaf Ratzon",
+    "packageManager": "pnpm@10.33.0",
     "repository": {
         "type": "git",
         "url": "https://github.com/asafratzon/totopo"
