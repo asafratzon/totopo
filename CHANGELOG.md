@@ -7,6 +7,20 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [3.6.0] — 2026-05-09
+
+### Added
+
+- Strict git mode now allows `git config core.hooksPath` so repos with pnpm-managed git hooks work in strict mode.
+
+### Changed
+
+- Stale image detection now hashes the Dockerfile plus every baked template file - any edit auto-prompts a rebuild.
+- Status line redesigned with reordered segments, verbatim model name, purple reasoning effort, and a relative reset countdown.
+- More Claude Code features suppressed inside the container - error reporting, installation checks, telemetry, and /upgrade.
+
+---
+
 ## [3.5.1] — 2026-05-08
 
 ### Added
