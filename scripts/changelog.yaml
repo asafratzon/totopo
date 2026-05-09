@@ -1,11 +1,11 @@
 in_progress:
-  base_version: 3.6.1
-  entries:
-    - version: "3.6.1"
-      date: "2026-05-09"
-      changed:
-        - Docs updated and CI workflows fixed.
+  base_version: 3.6.2
+  entries: []
 releases:
+  - version: 3.6.1
+    date: "2026-05-09"
+    changed:
+      - Docs updated and CI workflows fixed.
   - version: 3.6.0
     date: "2026-05-09"
     added:
