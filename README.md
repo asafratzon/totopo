@@ -194,10 +194,10 @@ totopo keeps all three CLIs on their latest published versions, checking for upd
 For convenience, every Claude session opens with a status line at the bottom of the terminal:
 
 ```
-174k / 1M (17%) · Opus 4.7 high · Claude Code v2.1.132 · ▓░░░░░░░░░ (12% used, resets in 3 hr 35 min)
+174k (17%) · Opus 4.7 (1M context) xhigh · 5h limit ▓░░░░░░░░░ (resets in 2h 15m) · Claude Code v2.1.132
 ```
 
-Four segments: current context usage (count / window / percentage), model and reasoning effort, the installed Claude Code CLI version with a freshness hint that escalates as the install ages, and a 10-block gauge of the 5-hour rate-limit window with current usage and time-to-reset (subscriber accounts only). The line stays on a calm grey baseline and only escalates to yellow or red when something genuinely warrants attention. Ask Claude `/totopo-statusline` to customize or restore the default.
+Four segments: current context usage (count and percentage), the model display name as provided by Claude Code followed by reasoning effort in purple, a 10-block gauge of the 5-hour rate-limit window with a relative countdown to reset (subscriber accounts only), and the installed Claude Code CLI version with a freshness hint that escalates as the install ages. The line stays on a calm grey baseline and only escalates to yellow or red when something genuinely warrants attention. Ask Claude `/totopo-statusline` to customize or restore the default.
 
 ### Persistent Agent Memory
 

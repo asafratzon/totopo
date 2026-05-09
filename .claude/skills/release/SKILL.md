@@ -133,6 +133,15 @@ If a structural change is found, check `src/lib/migrate-to-latest.ts` for a corr
 
 If no structural changes are found, say so explicitly and move on.
 
+**Review Dockerfile and template-file changes.** If `templates/Dockerfile` or any file under `templates/` listed in `BAKED_TEMPLATE_FILES` (`src/lib/dockerfile-builder.ts`) changed in this release, every existing user on the prior image will be auto-prompted to rebuild (the build hash will mismatch). Two cases to flag:
+
+- **Substantive changes** (new apt package, env var, layer, RUN content, edited script content) -> rebuild prompt is correct, no action. Note user-visible effects in the changelog.
+- **Cosmetic changes** (comment-only, whitespace, layer reorder with no semantic effect) -> rebuild prompt fires anyway because the build hash treats any change as meaningful. **Warn the user** that this release will force a rebuild for everyone on the prior image, and ask whether the cosmetic edit is worth shipping. If not, suggest reverting the cosmetic portion of the diff.
+
+For a new templated file `COPY`, also remind the user to add the filename to `BAKED_TEMPLATE_FILES` in `src/lib/dockerfile-builder.ts`; the unit test in `tests/dockerfile-builder.test.ts` will fail until they do.
+
+If no Dockerfile or baked-template-file changes are present, say so and move on.
+
 ## Step 8 — Review docs for staleness
 
 Review these three areas and flag anything that needs updating before the release:

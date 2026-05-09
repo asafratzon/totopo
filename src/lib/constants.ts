@@ -49,6 +49,7 @@ export const LABEL_SHADOWS = "totopo.shadows";
 export const LABEL_PROFILE = "totopo.profile";
 export const LABEL_RUNTIME_ENV = "totopo.runtime-env";
 export const LABEL_GIT_MODE = "totopo.git-mode";
+export const LABEL_BUILD_HASH = "totopo.build-hash";
 
 // Built-in profile names (must match keys in buildDefaultTotopoYaml in totopo-yaml.ts)
 export const PROFILE = {
@@ -69,10 +70,12 @@ export type GitMode = (typeof GIT_MODE)[keyof typeof GIT_MODE];
 export const GIT_MODES: readonly GitMode[] = Object.values(GIT_MODE);
 
 // Runtime env vars injected into every container via docker run -e.
-// DISABLE_AUTOUPDATER suppresses Claude Code's in-process auto-updater, which always fails inside
-// the container (devuser can't write to the root-owned global npm prefix). totopo's startup script
-// already keeps Claude on the latest version - see templates/startup.mjs.
+// Each flag suppresses a Claude Code feature that is inapplicable or disruptive inside the container.
 export const RUNTIME_ENV: Record<string, string> = {
     CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY: "1",
-    DISABLE_AUTOUPDATER: "1",
+    DISABLE_AUTOUPDATER: "1", // In-process updater fails (root-owned prefix); startup.mjs handles updates
+    DISABLE_ERROR_REPORTING: "1", // Container errors include sandbox paths not useful to Anthropic
+    DISABLE_INSTALLATION_CHECKS: "1", // npm install is by design; native installer is not applicable
+    DISABLE_TELEMETRY: "1", // Container sessions should not phone home
+    DISABLE_UPGRADE_COMMAND: "1", // /upgrade is wrong path inside container; totopo manages CLI version
 };

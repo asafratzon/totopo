@@ -5,10 +5,10 @@
 # Referenced from ~/.claude/settings.json -> statusLine.command
 #
 # Render pattern (4 segments separated by mid-dot):
-#   1. <tokens>k / <ctx> (<pct>%)
-#   2. <model> <effort>
-#   3. Claude Code v<version> (<age>[, hint])
-#   4. <bar> (<rate>% used, resets in <hr> hr <min> min)
+#   1. <tokens>k (<pct>%)
+#   2. <model_full> <effort>
+#   3. <bar> (resets in <Xh Ym>)
+#   4. Claude Code v<version> (<age>[, hint])
 #
 # Designed to degrade gracefully: every field uses jq's // fallback, and any field that goes
 # missing in a future Claude Code release is silently skipped rather than failing the script.
@@ -24,9 +24,7 @@
 parsed=$(jq -r '
     .model.display_name // "",
     ((.context_window.used_percentage // 0) | round),
-    (((.context_window.current_usage.input_tokens // 0)
-      + (.context_window.current_usage.cache_creation_input_tokens // 0)
-      + (.context_window.current_usage.cache_read_input_tokens // 0)) | floor),
+    (.context_window.total_input_tokens // 0),
     .effort.level // "",
     (.rate_limits.five_hour.used_percentage | if . == null then "" else round end),
     (.rate_limits.five_hour.resets_at // "")
@@ -43,30 +41,20 @@ parsed=$(jq -r '
 $parsed
 EOF
 
-# Split "Opus 4.7 (1M context)" into model "Opus 4.7" + ctx_size "1M" via POSIX parameter expansion.
-ctx_size=""
-model_display="$model_full"
-case "$model_full" in
-  *"("*")"*)
-    inside=${model_full#*\(}
-    inside=${inside%%\)*}
-    ctx_size=${inside% context}
-    model_display=${model_full%% \(*}
-    ;;
-esac
-
 # Colors
 GREEN='\033[32m'
 YELLOW='\033[33m'
 RED='\033[31m'
 BLUE='\033[34m'
+PURPLE='\033[38;5;177m'
 GREY='\033[90m'
 GREY_LIGHT='\033[38;5;245m'
 RESET='\033[0m'
 
-# Normalize tokens & pct (may arrive empty when current_usage is null).
-[ -z "$used_tokens" ] && used_tokens=0
-[ -z "$used_pct" ] && used_pct=0
+# Normalize tokens & pct to integers (may arrive empty, non-numeric, or fractional when
+# current_usage is null or the JSON schema changes in a future Claude Code release).
+case "$used_tokens" in ''|*[!0-9]*) used_tokens=0 ;; esac
+case "$used_pct"    in ''|*[!0-9]*) used_pct=0    ;; esac
 
 # Token color by absolute count: <100k green, 100k-500k yellow, >500k red.
 if [ "$used_tokens" -lt 100000 ]; then
@@ -114,47 +102,36 @@ awk_out=$(awk -v t="$used_tokens" -v r="$rate_pct" 'BEGIN {
 $awk_out
 EOF
 
-# Bar color by rate-limit usage: <50% light grey, <80% yellow, >=80% red.
-# Light grey at the calm baseline keeps the line quiet until usage actually warrants attention.
+# Bar color by rate-limit usage: <50% light grey (calm baseline), 50-79% yellow, >=80% red.
+# Light grey keeps the line quiet until usage actually warrants attention.
 bar_color="$GREY_LIGHT"
-if [ -n "$rate_pct" ]; then
-  if [ "$rate_pct" -lt 50 ]; then
-    bar_color="$GREY_LIGHT"
-  elif [ "$rate_pct" -lt 80 ]; then
+if [ -n "$rate_pct" ] && [ "$rate_pct" -ge 50 ]; then
+  if [ "$rate_pct" -lt 80 ]; then
     bar_color="$YELLOW"
   else
     bar_color="$RED"
   fi
 fi
 
-# Time until the rate-limit window resets, formatted as "X hr Y min" / "Y min" / "X day Y hr".
+# Relative countdown until the rate-limit window resets (e.g. "2h 15m", "43m").
+# Uses a delta from now so the display is correct regardless of container timezone.
 # Skipped silently when resets_at is missing or non-numeric (forward compat with future schemas).
 reset_label=""
 case "$rate_resets_at" in
   '' | *[!0-9]*) ;;
   *)
-    now=$(date +%s)
-    secs=$((rate_resets_at - now))
-    [ "$secs" -lt 60 ] && secs=60
-    total_min=$(((secs + 30) / 60))
-    if [ "$total_min" -lt 60 ]; then
-      reset_label="${total_min} min"
-    elif [ "$total_min" -lt 1440 ]; then
-      hr=$((total_min / 60))
-      min=$((total_min % 60))
-      if [ "$min" -eq 0 ]; then
-        reset_label="${hr} hr"
+    now_epoch=$(date +%s)
+    delta=$(( rate_resets_at - now_epoch ))
+    if [ "$delta" -gt 0 ]; then
+      delta_h=$(( delta / 3600 ))
+      delta_m=$(( (delta % 3600) / 60 ))
+      if [ "$delta_h" -gt 0 ]; then
+        reset_label="${delta_h}h ${delta_m}m"
       else
-        reset_label="${hr} hr ${min} min"
+        reset_label="${delta_m}m"
       fi
     else
-      day=$((total_min / 1440))
-      hr=$(((total_min % 1440) / 60))
-      if [ "$hr" -eq 0 ]; then
-        reset_label="${day} day"
-      else
-        reset_label="${day} day ${hr} hr"
-      fi
+      reset_label="now"
     fi
     ;;
 esac
@@ -216,28 +193,29 @@ fi
 SEP=" ${GREY}·${RESET} "
 
 # Segment 1: tokens (always rendered; used_tokens defaults to 0).
-ctx_seg="${tokens_color}${tokens_label}${RESET}"
-[ -n "$ctx_size" ] && ctx_seg="${ctx_seg} ${GREY}/ ${ctx_size}${RESET}"
-ctx_seg="${ctx_seg} ${GREY}(${used_pct}%)${RESET}"
+ctx_seg="${tokens_color}${tokens_label}${RESET} ${GREY}(${used_pct}%)${RESET}"
 
-# Segment 2: model + effort (rendered only when model name is present; effort shares model color).
+# Segment 2: model display name + effort (rendered only when model name is present).
+# model_full is rendered as-is (e.g. "Opus 4.7 (1M context)") -- future-proof and requires no parsing.
+# Effort renders unparenthesized in purple to avoid double-parens when the model name itself
+# already contains a parenthetical (e.g. "Opus 4.7 (1M context)") -- the color shift is the cue.
 model_seg=""
-if [ -n "$model_display" ]; then
-  model_seg="${BLUE}${model_display}${RESET}"
-  [ -n "$effort" ] && model_seg="${model_seg} ${BLUE}${effort}${RESET}"
+if [ -n "$model_full" ]; then
+  model_seg="${BLUE}${model_full}${RESET}"
+  [ -n "$effort" ] && model_seg="${model_seg} ${PURPLE}${effort}${RESET}"
 fi
 
-# Segment 3: cc_seg (computed above; may be empty).
-
-# Segment 4: rate-limit gauge (rendered only when rate-limit data is present).
+# Segment 3: rate-limit gauge (rendered only when rate-limit data is present).
 quota_seg=""
 if [ -n "$bar" ] && [ -n "$reset_label" ]; then
-  quota_seg="${bar_color}${bar}${RESET} ${GREY}(${rate_pct}% used, resets in ${reset_label})${RESET}"
+  quota_seg="${GREY}5h limit${RESET} ${bar_color}${bar}${RESET} ${GREY}(resets in ${reset_label})${RESET}"
 fi
 
-# Join non-empty segments with SEP, in order: tokens -> model -> claude-code -> gauge.
+# Segment 4: cc_seg (computed above; may be empty).
+
+# Join non-empty segments with SEP, in order: tokens -> model -> gauge -> claude-code.
 out=""
-for seg in "$ctx_seg" "$model_seg" "$cc_seg" "$quota_seg"; do
+for seg in "$ctx_seg" "$model_seg" "$quota_seg" "$cc_seg"; do
   [ -z "$seg" ] && continue
   if [ -z "$out" ]; then
     out="$seg"

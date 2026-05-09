@@ -23,7 +23,6 @@
 // =========================================================================================================================================
 
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -31,12 +30,9 @@ import { confirm, isCancel, log, note } from "@clack/prompts";
 import { load as loadYaml } from "js-yaml";
 import {
     AGENTS_DIR,
-    CLAUDE_STATUSLINE_PATH,
-    CONTAINER_STARTUP,
     GIT_MODE,
-    GIT_WRAPPER_SOURCE,
+    LABEL_BUILD_HASH,
     LOCK_FILE,
-    PACKAGE_ROOT,
     PROFILE,
     SHADOWS_DIR,
     TOTOPO_DIR,
@@ -578,54 +574,34 @@ export async function runMigration(cwd: string, skipAnyConfirmations = true): Pr
 
 // =========================================================================================================================================
 // Image staleness detection
-// Called at session start to detect outdated container images that need rebuilding.
-// Add new conditions here when the base image changes in future releases.
+//
+// Called at session start; returns true if the running container's image is older than the current
+// package and needs a rebuild prompt.
+//
+// Mechanism: at build time, dockerfile-builder.ts stamps every image with a totopo.build-hash label
+// that fingerprints the assembled Dockerfile + every baked template file. At session start we
+// recompute the expected hash from current package sources and compare. Any change to
+// templates/Dockerfile, the active profile hook, or any baked template file produces a different
+// hash -> rebuild prompt fires.
+//
+// When shipping a new bake-time artifact:
+//   - Editing an existing template file or the Dockerfile -> auto-detected. No action.
+//   - Adding a NEW templated COPY -> add the filename to BAKED_TEMPLATE_FILES in
+//     dockerfile-builder.ts. The unit test in tests/dockerfile-builder.test.ts will fail until
+//     you do.
+//
+// Cosmetic Dockerfile edits (comment-only, whitespace) DO trigger a rebuild for users on prior
+// images. This is intentional: the Dockerfile and template files are rarely edited, so any change
+// is treated as meaningful. The release skill warns when a release contains diffs to these files
+// that look cosmetic, so the author can decide whether the rebuild cost is worth it.
 // =========================================================================================================================================
 
-/** Check if a running container's image is stale (missing expected files/features). */
-export function isImageStale(containerName: string): boolean {
-    // v3.2.0: startup.mjs replaced post-start.mjs + update-ai-clis.mjs
-    const startupCheck = spawnSync("docker", ["exec", containerName, "test", "-f", CONTAINER_STARTUP], { stdio: "pipe" });
-    if (startupCheck.status !== 0) return true;
-
-    // v3.3.0: file added to the base image for artifact inspection
-    const fileCheck = spawnSync("docker", ["exec", containerName, "test", "-x", "/usr/bin/file"], { stdio: "pipe" });
-    if (fileCheck.status !== 0) return true;
-
-    // v3.3.0: bubblewrap added for Codex sandboxing prerequisites
-    const bubblewrapCheck = spawnSync("docker", ["exec", containerName, "test", "-x", "/usr/bin/bwrap"], { stdio: "pipe" });
-    if (bubblewrapCheck.status !== 0) return true;
-
-    // v3.4.0: git read-only wrapper baked in for strict git mode
-    const wrapperCheck = spawnSync("docker", ["exec", containerName, "test", "-x", GIT_WRAPPER_SOURCE], {
+/** Returns true if the container's stamped totopo.build-hash label does not match the expected hash. */
+export function isImageStale(containerName: string, expectedBuildHash: string): boolean {
+    const result = spawnSync("docker", ["inspect", "--format", `{{ index .Config.Labels "${LABEL_BUILD_HASH}" }}`, containerName], {
+        encoding: "utf8",
         stdio: "pipe",
     });
-    if (wrapperCheck.status !== 0) return true;
-
-    // v3.4.0: runtime-constants module imported by startup-git-mode.mjs
-    const constantsCheck = spawnSync("docker", ["exec", containerName, "test", "-f", "/home/devuser/runtime-constants.mjs"], {
-        stdio: "pipe",
-    });
-    if (constantsCheck.status !== 0) return true;
-
-    // v3.5.1: explicit pnpm store-dir baked into ~/.npmrc to prevent pnpm's volume-check
-    // relocation, which would otherwise create .pnpm-store at the repo root.
-    const npmrcCheck = spawnSync("docker", ["exec", containerName, "grep", "-q", "^store-dir=", "/home/devuser/.npmrc"], { stdio: "pipe" });
-    if (npmrcCheck.status !== 0) return true;
-
-    // SHA-256 of the host claude-statusline.sh vs the file inside the container - any refinement to
-    // the shipped script triggers an automatic rebuild prompt on next session.
-    const hostScriptPath = join(PACKAGE_ROOT, "templates", "claude-statusline.sh");
-    if (existsSync(hostScriptPath)) {
-        const expectedHash = createHash("sha256").update(readFileSync(hostScriptPath)).digest("hex");
-        const sumResult = spawnSync("docker", ["exec", containerName, "sha256sum", CLAUDE_STATUSLINE_PATH], {
-            encoding: "utf8",
-            stdio: "pipe",
-        });
-        if (sumResult.status !== 0) return true;
-        const actualHash = sumResult.stdout.trim().split(/\s+/)[0] ?? "";
-        if (actualHash !== expectedHash) return true;
-    }
-
-    return false;
+    if (result.status !== 0) return true;
+    return result.stdout.trim() !== expectedBuildHash;
 }

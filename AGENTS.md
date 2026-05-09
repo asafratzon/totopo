@@ -41,7 +41,6 @@ Container isolation is the product. Never weaken:
 
 - Never commit without explicit user instruction
 - Never edit `scripts/changelog.yaml` without explicit user approval
-- Read `ROADMAP.md` at session start to understand current state and open items
 
 ## Skills
 

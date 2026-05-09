@@ -4,11 +4,11 @@
 // =========================================================================================================================================
 
 import { spawnSync } from "node:child_process";
-import { randomBytes } from "node:crypto";
-import { readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { createHash, randomBytes } from "node:crypto";
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CONTAINER_HOME, CONTAINER_NAME_PREFIX, CONTAINER_STARTUP, CONTAINER_USER, LABEL_MANAGED } from "./constants.js";
+import { CONTAINER_HOME, CONTAINER_NAME_PREFIX, CONTAINER_STARTUP, CONTAINER_USER, LABEL_BUILD_HASH, LABEL_MANAGED } from "./constants.js";
 
 // --- User shell config appended after USER instruction -----------------------------------------------------------------------------------
 
@@ -51,6 +51,43 @@ export function buildDockerfile(baseTemplatePath: string, profileHook?: string):
     return content;
 }
 
+// --- Build hash for image staleness detection --------------------------------------------------------------------------------------------
+
+// Filenames (relative to the templates dir) of every artifact that the Dockerfile bakes into the image
+// via COPY. Edits to any of these change the build hash and trigger a rebuild prompt at session start.
+// Kept in sync with templates/Dockerfile by the bidirectional test in tests/dockerfile-builder.test.ts.
+export const BAKED_TEMPLATE_FILES: ReadonlyArray<string> = [
+    "claude-statusline.sh",
+    "git-readonly-wrapper.mjs",
+    "npmrc",
+    "runtime-constants.mjs",
+    "startup-git-mode.mjs",
+    "startup.mjs",
+];
+
+/**
+ * Fingerprint everything the package contributes to the image: the assembled Dockerfile content
+ * plus every file in BAKED_TEMPLATE_FILES, hashed in deterministic order.
+ *
+ * Tolerates missing files in buildContextDir. In production (real package install) all baked files
+ * exist, so the existsSync branch never fires. In tests that build minimal images from a temp
+ * contextDir, missing files naturally produce a different hash than production - exactly the
+ * contract the staleness tests rely on.
+ */
+export function computeBuildHash(dockerfileContent: string, buildContextDir: string): string {
+    const h = createHash("sha256");
+    h.update("dockerfile:\n");
+    h.update(dockerfileContent);
+    for (const name of [...BAKED_TEMPLATE_FILES].sort()) {
+        h.update(`\nfile:${name}\n`);
+        const path = join(buildContextDir, name);
+        if (existsSync(path)) {
+            h.update(readFileSync(path));
+        }
+    }
+    return h.digest("hex");
+}
+
 // --- Build image with temp file ----------------------------------------------------------------------------------------------------------
 
 /**
@@ -68,7 +105,18 @@ export function buildImageWithTempfile(
 
     try {
         writeFileSync(tmpFile, dockerfileContent);
-        const buildArgs = ["build", "--label", `${LABEL_MANAGED}=true`, "-f", tmpFile, "-t", imageName];
+        const buildHash = computeBuildHash(dockerfileContent, buildContextDir);
+        const buildArgs = [
+            "build",
+            "--label",
+            `${LABEL_MANAGED}=true`,
+            "--label",
+            `${LABEL_BUILD_HASH}=${buildHash}`,
+            "-f",
+            tmpFile,
+            "-t",
+            imageName,
+        ];
         if (noCache) buildArgs.push("--no-cache");
         buildArgs.push(buildContextDir);
         const result = spawnSync("docker", buildArgs, { stdio: quiet ? "pipe" : "inherit" });
