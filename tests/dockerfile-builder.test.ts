@@ -101,8 +101,8 @@ describe("computeBuildHash", () => {
             const content = buildDockerfile(BASE_TEMPLATE);
             const baseline = computeBuildHash(content, fixtureDir);
 
-            // Mutate one file and recompute.
-            const target = join(fixtureDir, BAKED_TEMPLATE_FILES[0] ?? "claude-statusline.sh");
+            // Mutate one known baked file and recompute.
+            const target = join(fixtureDir, "claude-statusline.sh");
             writeFileSync(target, `${readFileSync(target, "utf8")}# drift\n`);
             const drifted = computeBuildHash(content, fixtureDir);
 

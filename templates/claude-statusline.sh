@@ -41,6 +41,10 @@ parsed=$(jq -r '
 $parsed
 EOF
 
+# Capture "now" once for both the rate-limit countdown and the Claude Code freshness check.
+# Status line runs on every prompt render, so avoid spawning `date` twice.
+now_epoch=$(date +%s)
+
 # Colors
 GREEN='\033[32m'
 YELLOW='\033[33m'
@@ -120,7 +124,6 @@ reset_label=""
 case "$rate_resets_at" in
   '' | *[!0-9]*) ;;
   *)
-    now_epoch=$(date +%s)
     delta=$(( rate_resets_at - now_epoch ))
     if [ "$delta" -gt 0 ]; then
       delta_h=$(( delta / 3600 ))
@@ -154,8 +157,7 @@ if [ -r "$cc_ts_file" ]; then
   if [ -n "$cc_iso" ]; then
     cc_secs=$(date -d "$cc_iso" +%s 2>/dev/null)
     if [ -n "$cc_secs" ]; then
-      cc_now=$(date +%s)
-      cc_age_days=$(( (cc_now - cc_secs) / 86400 ))
+      cc_age_days=$(( (now_epoch - cc_secs) / 86400 ))
       [ "$cc_age_days" -lt 0 ] && cc_age_days=0
     fi
   fi
