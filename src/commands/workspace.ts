@@ -229,7 +229,7 @@ async function resetTotopoYaml(ctx: WorkspaceContext): Promise<void> {
     if (isCancel(confirmed) || !confirmed) return;
 
     const freshYaml = buildDefaultTotopoYaml(yaml.workspace_id);
-    writeTotopoYaml(ctx.workspaceRoot, freshYaml);
+    writeTotopoYaml(ctx.workspaceRoot, freshYaml, { includeExtendedTemplate: true });
     log.success("totopo.yaml reset to defaults.");
 
     await promptStopContainer(ctx);

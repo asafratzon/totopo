@@ -146,7 +146,7 @@ export async function run(cwd: string): Promise<WorkspaceContext | null> {
 
         // Build and write totopo.yaml
         yaml = buildDefaultTotopoYaml(workspaceId);
-        writeTotopoYaml(workspaceRoot, yaml);
+        writeTotopoYaml(workspaceRoot, yaml, { includeExtendedTemplate: true });
         log.success(`Created ${toTildePath(join(workspaceRoot, TOTOPO_YAML))}`);
     }
 
