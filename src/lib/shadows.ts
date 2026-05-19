@@ -3,6 +3,7 @@
 // Expands patterns like "node_modules", ".env*" into concrete paths, then syncs shadow directories.
 // =========================================================================================================================================
 
+import { spawnSync } from "node:child_process";
 import { existsSync, lstatSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, join, relative } from "node:path";
 import fg from "fast-glob";
@@ -11,15 +12,26 @@ import { safeRmSync } from "./safe-rm.js";
 
 // --- Pattern expansion -------------------------------------------------------------------------------------------------------------------
 
+export interface ExpandShadowsResult {
+    // Shadow paths to apply (post-filter)
+    paths: string[];
+    // Paths dropped because git tracks them (or content beneath them)
+    skippedTracked: string[];
+}
+
 /**
  * Expand gitignore-style patterns into concrete relative paths.
  *
  * Patterns without a directory separator are treated as recursive (prepended with **&#47;)
  * following gitignore convention. Patterns with a / are matched relative to the workspace root.
  * Matched directories are not recursed into (e.g. node_modules matches once, not its children).
+ *
+ * Paths that git tracks (or whose descendants git tracks) are dropped from the result and
+ * reported in skippedTracked. Shadowing tracked content is a no-op (agents can `git show` it)
+ * and breaks `git stash`/`pop` workflows.
  */
-export function expandShadowPatterns(patterns: string[], workspaceRoot: string): string[] {
-    if (patterns.length === 0) return [];
+export function expandShadowPatterns(patterns: string[], workspaceRoot: string): ExpandShadowsResult {
+    if (patterns.length === 0) return { paths: [], skippedTracked: [] };
 
     // Convert gitignore-style patterns to fast-glob patterns
     const globPatterns = patterns.map((p) => (p.includes("/") ? p : `**/${p}`));
@@ -34,14 +46,53 @@ export function expandShadowPatterns(patterns: string[], workspaceRoot: string):
         ignore: ignorePatterns,
     });
 
-    return removeNestedPaths(results.sort());
+    const expanded = removeNestedPaths(results.sort());
+    const { kept, dropped } = filterGitTrackedPaths(expanded, workspaceRoot);
+    return { paths: kept, skippedTracked: dropped };
 }
 
 // --- Hit counting (for menu UX) ----------------------------------------------------------------------------------------------------------
 
-/** Count how many paths a pattern would match in the workspace. */
+/** Count how many paths a pattern would match in the workspace (post git-tracked filter). */
 export function countPatternHits(pattern: string, workspaceRoot: string): number {
-    return expandShadowPatterns([pattern], workspaceRoot).length;
+    return expandShadowPatterns([pattern], workspaceRoot).paths.length;
+}
+
+// --- Git-tracked filtering ---------------------------------------------------------------------------------------------------------------
+
+/**
+ * Partition expanded shadow paths into those safe to shadow and those tracked by git.
+ * A path is dropped if it equals a tracked file, or (for directories) any tracked file
+ * lives anywhere beneath it. Returns the input unchanged when no .git is present.
+ */
+function filterGitTrackedPaths(paths: string[], workspaceRoot: string): { kept: string[]; dropped: string[] } {
+    if (paths.length === 0) return { kept: [], dropped: [] };
+    // .git may be a file (worktrees) or a directory; existsSync handles both
+    if (!existsSync(join(workspaceRoot, ".git"))) return { kept: paths, dropped: [] };
+
+    // Pass shadow paths as pathspecs so git enumerates only tracked files within them.
+    // Output then scales with shadow scope (typically tiny), not the size of the repo index.
+    const result = spawnSync("git", ["-C", workspaceRoot, "ls-files", "-z", "--", ...paths], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "pipe"],
+    });
+    if (result.status !== 0) return { kept: paths, dropped: [] };
+
+    const matched = result.stdout.split("\0").filter((s) => s.length > 0);
+    if (matched.length === 0) return { kept: paths, dropped: [] };
+
+    const matchedSet = new Set(matched);
+    const kept: string[] = [];
+    const dropped: string[] = [];
+    for (const p of paths) {
+        const prefix = `${p}/`;
+        if (matchedSet.has(p) || matched.some((f) => f.startsWith(prefix))) {
+            dropped.push(p);
+        } else {
+            kept.push(p);
+        }
+    }
+    return { kept, dropped };
 }
 
 // --- Shadow sync -------------------------------------------------------------------------------------------------------------------------

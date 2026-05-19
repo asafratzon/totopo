@@ -1,6 +1,14 @@
 in_progress:
-  base_version: 3.6.2
-  entries: []
+  base_version: 3.7.0
+  entries:
+    - rc_version: 3.7.0-rc-1
+      date: "2026-05-19"
+      changed:
+        - >-
+          Shadow paths now skip git-tracked files and directories to avoid worktree diversions. Shadowing tracked
+          content offered no real privacy anyway since agents can read it from git metadata. Session start logs how
+          many shadow paths were skipped.
+        - Session-start AI CLI update can now be skipped by pressing SPACE during a 5-second countdown.
 releases:
   - version: 3.6.1
     date: "2026-05-09"

@@ -337,10 +337,13 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
 
     // --- Shadow path expansion -----------------------------------------------------------------------------------------------------------
     const shadowPatterns = yaml.shadow_paths ?? [];
-    const expandedShadows = expandShadowPatterns(shadowPatterns, workspaceDir);
+    const { paths: expandedShadows, skippedTracked } = expandShadowPatterns(shadowPatterns, workspaceDir);
 
     if (expandedShadows.length > 0) {
         log.warn(`Shadow paths active: ${expandedShadows.join(", ")}  (Settings > Shadow paths)`);
+    }
+    if (skippedTracked.length > 0) {
+        log.warn(`Skipped ${skippedTracked.length} shadow path(s) tracked by git`);
     }
 
     // --- Env file ------------------------------------------------------------------------------------------------------------------------

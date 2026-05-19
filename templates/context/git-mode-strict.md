@@ -1,8 +1,6 @@
 ## Git availability
 
-The user set git mode to **strict** in totopo.
-
-Please respect this choice — do not attempt git operations that modify state or interact with remotes.
+The user set git mode to **strict** in totopo — do not attempt git operations that modify state or interact with remotes.
 
 totopo enforces this by:
 - Blocking git commands that would modify the repository (attempts return a clear error).
