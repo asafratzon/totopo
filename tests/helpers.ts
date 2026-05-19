@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -29,6 +30,19 @@ export async function cleanTempDir(dir: string): Promise<void> {
             if (attempt === delays.length - 1) throw err;
         }
     }
+}
+
+/**
+ * Initialize a fresh git repo in the given directory with a local-only identity.
+ * Callers stage and commit themselves so each test controls what is tracked.
+ */
+export function initGitRepo(dir: string): void {
+    const opts = { cwd: dir, stdio: "pipe" as const };
+    const init = spawnSync("git", ["init", "-q", "-b", "main"], opts);
+    if (init.status !== 0) throw new Error(`git init failed in ${dir}`);
+    spawnSync("git", ["config", "user.email", "test@example.com"], opts);
+    spawnSync("git", ["config", "user.name", "test"], opts);
+    spawnSync("git", ["config", "commit.gpgsign", "false"], opts);
 }
 
 /**

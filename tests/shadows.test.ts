@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, test } from "node:test";
 import { buildShadowMountArgs, countPatternHits, ensureShadowsInSync, expandShadowPatterns } from "../src/lib/shadows.js";
-import { cleanTempDir, createTempDir } from "./helpers.js";
+import { cleanTempDir, createTempDir, initGitRepo } from "./helpers.js";
 
 // Invariant: no path in the list equals or is nested under another.
 function assertNoNesting(paths: string[]): void {
@@ -18,9 +19,9 @@ function assertNoNesting(paths: string[]): void {
 // ---- expandShadowPatterns ---------------------------------------------------------------------------------------------------------------
 
 describe("expandShadowPatterns", () => {
-    test("empty patterns returns empty array", async () => {
+    test("empty patterns returns empty result", async () => {
         const tmp = createTempDir();
-        assert.deepEqual(expandShadowPatterns([], tmp), []);
+        assert.deepEqual(expandShadowPatterns([], tmp), { paths: [], skippedTracked: [] });
         await cleanTempDir(tmp);
     });
 
@@ -28,9 +29,9 @@ describe("expandShadowPatterns", () => {
         const tmp = createTempDir();
         mkdirSync(join(tmp, "node_modules"), { recursive: true });
         mkdirSync(join(tmp, "packages", "a", "node_modules"), { recursive: true });
-        const result = expandShadowPatterns(["node_modules"], tmp);
-        assert.ok(result.includes("node_modules"));
-        assert.ok(result.includes("packages/a/node_modules"));
+        const { paths } = expandShadowPatterns(["node_modules"], tmp);
+        assert.ok(paths.includes("node_modules"));
+        assert.ok(paths.includes("packages/a/node_modules"));
         await cleanTempDir(tmp);
     });
 
@@ -40,11 +41,11 @@ describe("expandShadowPatterns", () => {
         writeFileSync(join(tmp, ".env.local"), "");
         writeFileSync(join(tmp, ".env.production"), "");
         writeFileSync(join(tmp, "unrelated.txt"), "");
-        const result = expandShadowPatterns([".env*"], tmp);
-        assert.equal(result.length, 3);
-        assert.ok(result.includes(".env"));
-        assert.ok(result.includes(".env.local"));
-        assert.ok(result.includes(".env.production"));
+        const { paths } = expandShadowPatterns([".env*"], tmp);
+        assert.equal(paths.length, 3);
+        assert.ok(paths.includes(".env"));
+        assert.ok(paths.includes(".env.local"));
+        assert.ok(paths.includes(".env.production"));
         await cleanTempDir(tmp);
     });
 
@@ -53,16 +54,17 @@ describe("expandShadowPatterns", () => {
         writeFileSync(join(tmp, ".env.z"), "");
         writeFileSync(join(tmp, ".env.a"), "");
         writeFileSync(join(tmp, ".env.m"), "");
-        const result = expandShadowPatterns([".env*"], tmp);
-        const sorted = [...result].sort();
-        assert.deepEqual(result, sorted);
+        const { paths } = expandShadowPatterns([".env*"], tmp);
+        const sorted = [...paths].sort();
+        assert.deepEqual(paths, sorted);
         await cleanTempDir(tmp);
     });
 
-    test("no matches returns empty array", async () => {
+    test("no matches returns empty paths", async () => {
         const tmp = createTempDir();
         const result = expandShadowPatterns(["nonexistent*"], tmp);
-        assert.deepEqual(result, []);
+        assert.deepEqual(result.paths, []);
+        assert.deepEqual(result.skippedTracked, []);
         await cleanTempDir(tmp);
     });
 
@@ -88,12 +90,12 @@ describe("expandShadowPatterns", () => {
         writeFileSync(join(tmp, ".env.production"), "");
         writeFileSync(join(tmp, "apps", "orot-core", ".env.production.local"), "");
 
-        const result = expandShadowPatterns(
+        const { paths } = expandShadowPatterns(
             ["node_modules", ".next", "dist", "build", "out", ".env.production*", "foo", "foobar", "distribution"],
             tmp,
         );
 
-        assertNoNesting(result);
+        assertNoNesting(paths);
 
         // Every outermost shadow must survive (guards against over-filtering)
         for (const p of [
@@ -111,8 +113,92 @@ describe("expandShadowPatterns", () => {
             "packages/ui/build",
             "packages/ui/dist",
         ]) {
-            assert.ok(result.includes(p), `missing ${p} in ${JSON.stringify(result)}`);
+            assert.ok(paths.includes(p), `missing ${p} in ${JSON.stringify(paths)}`);
         }
+        await cleanTempDir(tmp);
+    });
+});
+
+// ---- expandShadowPatterns - git tracked filtering ---------------------------------------------------------------------------------------
+
+describe("expandShadowPatterns - git tracked filtering", () => {
+    test("tracked file is dropped and reported in skippedTracked", async () => {
+        const tmp = createTempDir();
+        writeFileSync(join(tmp, "secret.env"), "TRACKED=1");
+        initGitRepo(tmp);
+        spawnSync("git", ["add", "secret.env"], { cwd: tmp, stdio: "pipe" });
+        spawnSync("git", ["commit", "-q", "-m", "init"], { cwd: tmp, stdio: "pipe" });
+
+        const result = expandShadowPatterns(["secret.env"], tmp);
+        assert.deepEqual(result.paths, []);
+        assert.deepEqual(result.skippedTracked, ["secret.env"]);
+        await cleanTempDir(tmp);
+    });
+
+    test("directory containing any tracked file is dropped", async () => {
+        const tmp = createTempDir();
+        mkdirSync(join(tmp, "vendored"), { recursive: true });
+        writeFileSync(join(tmp, "vendored", "lib.js"), "// vendored");
+        initGitRepo(tmp);
+        spawnSync("git", ["add", "vendored/lib.js"], { cwd: tmp, stdio: "pipe" });
+        spawnSync("git", ["commit", "-q", "-m", "init"], { cwd: tmp, stdio: "pipe" });
+
+        const result = expandShadowPatterns(["vendored"], tmp);
+        assert.deepEqual(result.paths, []);
+        assert.deepEqual(result.skippedTracked, ["vendored"]);
+        await cleanTempDir(tmp);
+    });
+
+    test("gitignored path is kept", async () => {
+        const tmp = createTempDir();
+        writeFileSync(join(tmp, ".gitignore"), ".env\n");
+        writeFileSync(join(tmp, ".env"), "SECRET=1");
+        initGitRepo(tmp);
+        spawnSync("git", ["add", ".gitignore"], { cwd: tmp, stdio: "pipe" });
+        spawnSync("git", ["commit", "-q", "-m", "init"], { cwd: tmp, stdio: "pipe" });
+
+        const result = expandShadowPatterns([".env"], tmp);
+        assert.deepEqual(result.paths, [".env"]);
+        assert.deepEqual(result.skippedTracked, []);
+        await cleanTempDir(tmp);
+    });
+
+    test("untracked new file is kept", async () => {
+        const tmp = createTempDir();
+        writeFileSync(join(tmp, "README.md"), "");
+        initGitRepo(tmp);
+        spawnSync("git", ["add", "README.md"], { cwd: tmp, stdio: "pipe" });
+        spawnSync("git", ["commit", "-q", "-m", "init"], { cwd: tmp, stdio: "pipe" });
+        // Add a new untracked file after the commit
+        writeFileSync(join(tmp, ".env"), "SECRET=1");
+
+        const result = expandShadowPatterns([".env"], tmp);
+        assert.deepEqual(result.paths, [".env"]);
+        assert.deepEqual(result.skippedTracked, []);
+        await cleanTempDir(tmp);
+    });
+
+    test("git add -f on a gitignored file makes it tracked and dropped", async () => {
+        const tmp = createTempDir();
+        writeFileSync(join(tmp, ".gitignore"), ".env\n");
+        writeFileSync(join(tmp, ".env"), "FORCED=1");
+        initGitRepo(tmp);
+        spawnSync("git", ["add", ".gitignore"], { cwd: tmp, stdio: "pipe" });
+        spawnSync("git", ["add", "-f", ".env"], { cwd: tmp, stdio: "pipe" });
+        spawnSync("git", ["commit", "-q", "-m", "init"], { cwd: tmp, stdio: "pipe" });
+
+        const result = expandShadowPatterns([".env"], tmp);
+        assert.deepEqual(result.paths, []);
+        assert.deepEqual(result.skippedTracked, [".env"]);
+        await cleanTempDir(tmp);
+    });
+
+    test("no .git present means no filter runs", async () => {
+        const tmp = createTempDir();
+        writeFileSync(join(tmp, ".env"), "");
+        const result = expandShadowPatterns([".env"], tmp);
+        assert.deepEqual(result.paths, [".env"]);
+        assert.deepEqual(result.skippedTracked, []);
         await cleanTempDir(tmp);
     });
 });

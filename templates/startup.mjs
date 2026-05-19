@@ -51,19 +51,17 @@ const TIMESTAMP_FILE = "/home/devuser/.ai-cli-updated";
 const THROTTLE_MS = 24 * 60 * 60 * 1000;
 
 let lastUpdate = 0;
+let timestampFileExists = false;
 try {
     const raw = readFileSync(TIMESTAMP_FILE, "utf8").trim();
     lastUpdate = new Date(raw).getTime();
+    timestampFileExists = true;
 } catch {
     // File missing or unreadable -- treat as never updated
 }
 
-if (Number.isFinite(lastUpdate) && Date.now() - lastUpdate < THROTTLE_MS) {
-    ok("AI CLIs", "up to date");
-} else if (!isRoot) {
-    skip("AI CLIs", "update skipped (requires root)");
-} else {
-    console.log(`${blue("●")} ${dim("Updating AI CLIs to latest...")}`);
+const doUpdate = (label) => {
+    console.log(`${blue("●")} ${dim(label)}`);
     try {
         execSync("npm install -g opencode-ai@latest @anthropic-ai/claude-code@latest @openai/codex@latest", {
             stdio: "inherit",
@@ -73,6 +71,64 @@ if (Number.isFinite(lastUpdate) && Date.now() - lastUpdate < THROTTLE_MS) {
     } catch {
         fail("AI CLIs", "update failed -- continuing with existing versions");
     }
+};
+
+// SPACE within `seconds` -> skip. Any other input is ignored. Ctrl+C exits 130. Non-TTY -> no skip.
+const promptSkipUpdate = (seconds) =>
+    new Promise((resolve) => {
+        if (!process.stdin.isTTY) {
+            resolve(false);
+            return;
+        }
+        let remaining = seconds;
+        let tick;
+        let timer;
+        const line = (s) => `\r\x1b[K${blue("●")} ${dim(`Updating AI CLIs in ${s}s... press SPACE to skip`)}`;
+        const cleanup = () => {
+            clearInterval(tick);
+            clearTimeout(timer);
+            process.stdin.removeListener("data", onData);
+            process.stdin.setRawMode(false);
+            process.stdin.pause();
+            process.stdout.write("\r\x1b[K");
+        };
+        const onData = (chunk) => {
+            for (const byte of chunk) {
+                if (byte === 0x03) {
+                    cleanup();
+                    process.exit(130);
+                }
+                if (byte === 0x20) {
+                    cleanup();
+                    resolve(true);
+                    return;
+                }
+            }
+        };
+        process.stdin.setRawMode(true);
+        process.stdin.resume();
+        process.stdin.on("data", onData);
+        process.stdout.write(line(remaining));
+        tick = setInterval(() => {
+            remaining -= 1;
+            if (remaining > 0) process.stdout.write(line(remaining));
+        }, 1000);
+        timer = setTimeout(() => {
+            cleanup();
+            resolve(false);
+        }, seconds * 1000);
+    });
+
+if (Number.isFinite(lastUpdate) && Date.now() - lastUpdate < THROTTLE_MS) {
+    ok("AI CLIs", "up to date");
+} else if (!isRoot) {
+    skip("AI CLIs", "update skipped (requires root)");
+} else if (!timestampFileExists) {
+    doUpdate("Installing AI CLIs...");
+} else if (await promptSkipUpdate(5)) {
+    skip("AI CLIs", "update skipped by user");
+} else {
+    doUpdate("Updating AI CLIs to latest...");
 }
 
 // -- Security -----------------------------------------------------------------
