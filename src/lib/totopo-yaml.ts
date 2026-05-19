@@ -124,8 +124,18 @@ const YAML_COMMENTS: Partial<Record<keyof TotopoYamlConfig, string>> = {
         "# When multiple profiles exist, totopo prompts you to pick one on session start.",
 };
 
+export interface WriteTotopoYamlOptions {
+    /**
+     * When true, append a commented-out `extended` profile block under `profiles:` so users can
+     * uncomment to enable Go/Java/Rust/Bun. Intended for factory-default writers (onboarding,
+     * reset, migration, profiles-repair). Routine saves should leave this off so a deliberately
+     * removed `extended` does not keep reappearing.
+     */
+    includeExtendedTemplate?: boolean;
+}
+
 /** Write totopo.yaml to a directory with schema header and inline comments. */
-export function writeTotopoYaml(dir: string, config: TotopoYamlConfig): void {
+export function writeTotopoYaml(dir: string, config: TotopoYamlConfig, opts: WriteTotopoYamlOptions = {}): void {
     const filePath = join(dir, TOTOPO_YAML);
     const yamlContent = dumpYaml(config, {
         lineWidth: -1,
@@ -147,14 +157,17 @@ export function writeTotopoYaml(dir: string, config: TotopoYamlConfig): void {
     }
 
     const body = output.join("\n").trimEnd();
-    writeFileSync(filePath, `${body}\n${PROFILES_FOOTER_COMMENT}\n`);
+    const extendedBlock = opts.includeExtendedTemplate ? `\n\n${EXTENDED_PROFILE_TEMPLATE_PROMPT}\n${renderExtendedAsCommented()}` : "";
+    writeFileSync(filePath, `${body}${extendedBlock}\n${PROFILES_FOOTER_COMMENT}\n`);
 }
 
 // --- Defaults ----------------------------------------------------------------------------------------------------------------------------
 
+const DEFAULT_PROFILE_DESCRIPTION = "Base image: Node.js, git, and AI CLIs";
 const DEFAULT_PROFILE_HOOK = `# No extras — uses the totopo base image as-is (Node.js + git + AI CLIs).
 `;
 
+const EXTENDED_PROFILE_DESCRIPTION = "Base image + Go, Java, Rust, and Bun";
 const EXTENDED_PROFILE_HOOK = `# Go
 RUN apt-get update && apt-get install -y --no-install-recommends golang-go && rm -rf /var/lib/apt/lists/*
 
@@ -176,6 +189,25 @@ RUN curl -fsSL https://bun.sh/install | bash
 // Appended after the last profile to hint at adding more
 const PROFILES_FOOTER_COMMENT = "  # Add more profiles here — or ask the agent inside the container to set one up for you.";
 
+const EXTENDED_PROFILE_TEMPLATE_PROMPT = "  # Uncomment to enable additional runtimes (Go, Java, Rust, Bun):";
+
+/**
+ * Render the `extended` profile as commented-out YAML, indented to live under `profiles:`.
+ * Generated via the same dumpYaml call as the live config so uncommenting (strip leading `# `
+ * from each line) yields YAML the parser/schema accepts without drift.
+ */
+function renderExtendedAsCommented(): string {
+    const dumped = dumpYaml(
+        { extended: { description: EXTENDED_PROFILE_DESCRIPTION, dockerfile_hook: EXTENDED_PROFILE_HOOK } },
+        { lineWidth: -1, quotingType: '"', forceQuotes: false },
+    );
+    return dumped
+        .split("\n")
+        .map((line) => (line.length === 0 ? "" : `  # ${line}`))
+        .join("\n")
+        .trimEnd();
+}
+
 /** Create a default TotopoYamlConfig with sane defaults. */
 export function buildDefaultTotopoYaml(workspaceId: string): TotopoYamlConfig {
     return {
@@ -184,12 +216,8 @@ export function buildDefaultTotopoYaml(workspaceId: string): TotopoYamlConfig {
         shadow_paths: [...DEFAULT_SHADOW_PATHS],
         profiles: {
             default: {
-                description: "Base image: Node.js, git, and AI CLIs",
+                description: DEFAULT_PROFILE_DESCRIPTION,
                 dockerfile_hook: DEFAULT_PROFILE_HOOK,
-            },
-            extended: {
-                description: "Base image + Go, Java, Rust, and Bun",
-                dockerfile_hook: EXTENDED_PROFILE_HOOK,
             },
         },
     };
@@ -259,7 +287,7 @@ export function repairTotopoYaml(dir: string): RepairResult {
         }
 
         const yaml = obj as unknown as TotopoYamlConfig;
-        writeTotopoYaml(dir, yaml);
+        writeTotopoYaml(dir, yaml, { includeExtendedTemplate: fixes.includes("added default profiles") });
         return { repairedYaml: yaml, message: `Repaired ${TOTOPO_YAML}: ${fixes.join(", ")}` };
     } catch (err) {
         return { repairedYaml: null, error: `${TOTOPO_YAML} repair failed: ${err instanceof Error ? err.message : err}` };
