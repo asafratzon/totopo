@@ -45,8 +45,10 @@ function removeWrapperIfPresent() {
 }
 
 function applyAsRoot(gitMode, protocolValue, fail) {
+    // Use absolute path to bypass /usr/local/bin/git (which may already be the read-only
+    // wrapper from a prior strict-mode session and would block this legitimate setup write).
     try {
-        execSync(`git config --system protocol.allow ${protocolValue}`, { stdio: "pipe" });
+        execSync(`/usr/bin/git config --system protocol.allow ${protocolValue}`, { stdio: "pipe" });
     } catch {
         fail("git mode", `failed to set protocol.allow=${protocolValue}`);
     }

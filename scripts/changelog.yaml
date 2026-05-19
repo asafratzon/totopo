@@ -9,6 +9,10 @@ in_progress:
           content offered no real privacy anyway since agents can read it from git metadata. Session start logs how
           many shadow paths were skipped.
         - Session-start AI CLI update can now be skipped by pressing SPACE during a 5-second countdown.
+      fixed:
+        - >-
+          Strict git mode no longer reports a spurious "failed to set protocol.allow=never" error on resumed containers.
+          The setup write now bypasses the read-only git wrapper.
 releases:
   - version: 3.6.1
     date: "2026-05-09"
