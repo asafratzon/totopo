@@ -127,27 +127,26 @@ profiles:
     description: "Base image: Node.js, git, and AI CLIs"
     dockerfile_hook: |
       # No extras — uses the totopo base image as-is (Node.js + git + AI CLIs).
-  extended:
-    description: Base image + Go, Java, Rust, and Bun
-    dockerfile_hook: |
-      # Go
-      RUN apt-get update && apt-get install -y --no-install-recommends golang-go && rm -rf /var/lib/apt/lists/*
-      # Java (headless JDK — includes javac; needed for Kotlin, Scala, Android tooling)
-      RUN apt-get update && apt-get install -y --no-install-recommends default-jdk-headless && rm -rf /var/lib/apt/lists/*
-      # Rust (system-wide install — devuser can use cargo and rustc)
-      ENV RUSTUP_HOME=/usr/local/rustup
-      ENV CARGO_HOME=/usr/local/cargo
-      ENV PATH=/usr/local/cargo/bin:$PATH
-      RUN curl -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path && chmod -R a+rx /usr/local/cargo /usr/local/rustup
-      # Bun (fast JS runtime, bundler, and package manager)
-      ENV BUN_INSTALL=/usr/local/bun
-      ENV PATH=/usr/local/bun/bin:$PATH
-      RUN curl -fsSL https://bun.sh/install | bash
+
+  # Uncomment to enable additional runtimes (Go, Java, Rust, Bun):
+  # extended:
+  #   description: Base image + Go, Java, Rust, and Bun
+  #   dockerfile_hook: |
+  #     # Go
+  #     RUN apt-get update && apt-get install -y --no-install-recommends golang-go && rm -rf /var/lib/apt/lists/*
+  #     # Java (headless JDK)
+  #     RUN apt-get update && apt-get install -y --no-install-recommends default-jdk-headless && rm -rf /var/lib/apt/lists/*
+  #     # Rust (system-wide)
+  #     ENV RUSTUP_HOME=/usr/local/rustup CARGO_HOME=/usr/local/cargo PATH=/usr/local/cargo/bin:$PATH
+  #     RUN curl -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path && chmod -R a+rx /usr/local/cargo /usr/local/rustup
+  #     # Bun
+  #     ENV BUN_INSTALL=/usr/local/bun PATH=/usr/local/bun/bin:$PATH
+  #     RUN curl -fsSL https://bun.sh/install | bash
   # Add more profiles here — or ask the agent inside the container to set one up for you.
 
 ```
 
-Two profiles are set by default. When multiple profiles are defined, totopo prompts you to pick one at session start (the choice is remembered). A profile change triggers a container rebuild on the next session.
+New workspaces ship with the `default` profile active and an `extended` profile (Go, Java, Rust, Bun) included as a commented-out template — uncomment to enable. When multiple profiles are defined, totopo prompts you to pick one at session start (the choice is remembered). A profile change triggers a container rebuild on the next session.
 
 The base image is defined in [`templates/Dockerfile`](templates/Dockerfile) — inspect it to see what's already included before adding your own layers. To force a fully fresh build (no Docker layer cache), use **Manage Workspace > Clean rebuild**.
 
