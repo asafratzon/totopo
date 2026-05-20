@@ -1,35 +1,23 @@
 in_progress:
-  base_version: 3.7.0
-  entries:
-    - rc_version: 3.7.0-rc-1
-      date: "2026-05-19"
-      changed:
-        - >-
-          Shadow paths now skip git-tracked files and directories to avoid worktree diversions. Shadowing tracked
-          content offered no real privacy anyway since agents can read it from git metadata. Session start logs how
-          many shadow paths were skipped.
-        - Session-start AI CLI update can now be skipped by pressing SPACE during a 5-second countdown.
-      fixed:
-        - >-
-          Strict git mode no longer reports a spurious "failed to set protocol.allow=never" error on resumed containers.
-          The setup write now bypasses the read-only git wrapper.
-    - rc_version: 3.7.0-rc-2
-      date: "2026-05-19"
-      changed:
-        - >-
-          Shadow paths now skip git-tracked files and directories to avoid worktree diversions. Shadowing tracked
-          content offered no real privacy anyway since agents can read it from git metadata. Session start logs how
-          many shadow paths were skipped.
-        - Session-start AI CLI update can now be skipped by pressing SPACE during a 5-second countdown.
-        - >-
-          Default `totopo.yaml` no longer ships the `extended` profile as an active second profile. It now appears as
-          a commented-out template beneath `default`, ready to uncomment for Go, Java, Rust, and Bun. Removing it
-          stays removed across routine saves; onboarding, reset, and config repair re-emit the template.
-      fixed:
-        - >-
-          Strict git mode no longer reports a spurious "failed to set protocol.allow=never" error on resumed containers.
-          The setup write now bypasses the read-only git wrapper.
+  base_version: 3.7.1
+  entries: []
 releases:
+  - version: 3.7.0
+    date: "2026-05-20"
+    changed:
+      - >-
+        Shadow paths now skip git-tracked files and directories to avoid worktree diversions. Shadowing tracked content
+        offered no real privacy anyway since agents can read it from git metadata. Session start logs how many shadow
+        paths were skipped.
+      - Session-start AI CLI update can now be skipped by pressing SPACE during a 5-second countdown.
+      - >-
+        Default `totopo.yaml` no longer ships the `extended` profile as an active second profile. It now appears as a
+        commented-out template beneath `default`, ready to uncomment for Go, Java, Rust, and Bun. Removing it stays
+        removed across routine saves; onboarding, reset, and config repair re-emit the template.
+    fixed:
+      - >-
+        Strict git mode no longer reports a spurious "failed to set protocol.allow=never" error on resumed containers.
+        The setup write now bypasses the read-only git wrapper.
   - version: 3.6.1
     date: "2026-05-09"
     changed:

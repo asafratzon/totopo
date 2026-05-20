@@ -7,6 +7,20 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [3.7.0] — 2026-05-20
+
+### Changed
+
+- Shadow paths now skip git-tracked files and directories to avoid worktree diversions. Shadowing tracked content offered no real privacy anyway since agents can read it from git metadata. Session start logs how many shadow paths were skipped.
+- Session-start AI CLI update can now be skipped by pressing SPACE during a 5-second countdown.
+- Default `totopo.yaml` no longer ships the `extended` profile as an active second profile. It now appears as a commented-out template beneath `default`, ready to uncomment for Go, Java, Rust, and Bun. Removing it stays removed across routine saves; onboarding, reset, and config repair re-emit the template.
+
+### Fixed
+
+- Strict git mode no longer reports a spurious "failed to set protocol.allow=never" error on resumed containers. The setup write now bypasses the read-only git wrapper.
+
+---
+
 ## [3.6.1] — 2026-05-09
 
 ### Changed
