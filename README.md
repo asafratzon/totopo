@@ -14,7 +14,7 @@ Local sandbox for AI agents.
 
 Developers who use `claude`, `codex`, or `opencode` **interactively** — one human pair-programming with one agent.
 
-totopo is not an orchestration tool — no SDK, no parallel agents, no per-run worktrees. If you need those, look at dedicated agent-orchestration tools instead.
+totopo isn't an orchestration tool (no SDK, no parallel agents, no per-run worktrees), and its security is basic — just the minimum precautions I think anyone running AI agents should take. If you need more on either front, look elsewhere.
 
 ## Motivation
 
@@ -26,8 +26,6 @@ Two fundamental risks when running AI agents locally:
 Totopo mitigates both risks by letting you run agents in a dev container — when you run totopo in a given directory, that directory is mounted as a workspace where agents can work freely, without access to the rest of your filesystem or your git remote.
 
 In practice, this means any mistake can be reverted from your git remote, and even a compromised agent can't access sensitive files on your machine — SSH keys, credentials, browser data — things a locally-running agent could otherwise do without you ever noticing.
-
-> totopo's security approach is basic — it is about the minimal precautions I believe anyone running AI agents should have. If you need more robust protections, look somewhere else.
 
 ## Requirements
 
@@ -129,27 +127,26 @@ profiles:
     description: "Base image: Node.js, git, and AI CLIs"
     dockerfile_hook: |
       # No extras — uses the totopo base image as-is (Node.js + git + AI CLIs).
-  extended:
-    description: Base image + Go, Java, Rust, and Bun
-    dockerfile_hook: |
-      # Go
-      RUN apt-get update && apt-get install -y --no-install-recommends golang-go && rm -rf /var/lib/apt/lists/*
-      # Java (headless JDK — includes javac; needed for Kotlin, Scala, Android tooling)
-      RUN apt-get update && apt-get install -y --no-install-recommends default-jdk-headless && rm -rf /var/lib/apt/lists/*
-      # Rust (system-wide install — devuser can use cargo and rustc)
-      ENV RUSTUP_HOME=/usr/local/rustup
-      ENV CARGO_HOME=/usr/local/cargo
-      ENV PATH=/usr/local/cargo/bin:$PATH
-      RUN curl -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path && chmod -R a+rx /usr/local/cargo /usr/local/rustup
-      # Bun (fast JS runtime, bundler, and package manager)
-      ENV BUN_INSTALL=/usr/local/bun
-      ENV PATH=/usr/local/bun/bin:$PATH
-      RUN curl -fsSL https://bun.sh/install | bash
+
+  # Uncomment to enable additional runtimes (Go, Java, Rust, Bun):
+  # extended:
+  #   description: Base image + Go, Java, Rust, and Bun
+  #   dockerfile_hook: |
+  #     # Go
+  #     RUN apt-get update && apt-get install -y --no-install-recommends golang-go && rm -rf /var/lib/apt/lists/*
+  #     # Java (headless JDK)
+  #     RUN apt-get update && apt-get install -y --no-install-recommends default-jdk-headless && rm -rf /var/lib/apt/lists/*
+  #     # Rust (system-wide)
+  #     ENV RUSTUP_HOME=/usr/local/rustup CARGO_HOME=/usr/local/cargo PATH=/usr/local/cargo/bin:$PATH
+  #     RUN curl -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path && chmod -R a+rx /usr/local/cargo /usr/local/rustup
+  #     # Bun
+  #     ENV BUN_INSTALL=/usr/local/bun PATH=/usr/local/bun/bin:$PATH
+  #     RUN curl -fsSL https://bun.sh/install | bash
   # Add more profiles here — or ask the agent inside the container to set one up for you.
 
 ```
 
-Two profiles are set by default. When multiple profiles are defined, totopo prompts you to pick one at session start (the choice is remembered). A profile change triggers a container rebuild on the next session.
+New workspaces ship with the `default` profile active and an `extended` profile (Go, Java, Rust, Bun) included as a commented-out template — uncomment to enable. When multiple profiles are defined, totopo prompts you to pick one at session start (the choice is remembered). A profile change triggers a container rebuild on the next session.
 
 The base image is defined in [`templates/Dockerfile`](templates/Dockerfile) — inspect it to see what's already included before adding your own layers. To force a fully fresh build (no Docker layer cache), use **Manage Workspace > Clean rebuild**.
 
@@ -165,6 +162,8 @@ shadow_paths:
 ```
 
 Patterns follow gitignore syntax — patterns without a `/` match at any depth. Manage via **Manage Workspace > Shadow paths** or edit `totopo.yaml` directly. Changes take effect on the next session.
+
+Git-tracked paths are skipped to avoid worktree diversions. Shadowing them has no privacy benefit anyway since agents can `git show` tracked content. To hide a file, untrack it and add it to `.gitignore` first.
 
 Common use cases:
 - **Separate `node_modules`** — the container installs its own dependencies, avoiding platform conflicts between host and container.

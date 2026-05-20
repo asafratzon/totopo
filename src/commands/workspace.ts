@@ -34,7 +34,8 @@ async function shadowPathsMenu(ctx: WorkspaceContext): Promise<void> {
     log.message(
         "Shadow patterns block the agent from seeing matching host paths —\n" +
             "the container gets an empty, isolated copy instead.\n" +
-            "Supports gitignore-style patterns (e.g. node_modules, .env*).",
+            "Supports gitignore-style patterns (e.g. node_modules, .env*).\n" +
+            "Git-tracked paths are skipped to avoid worktree diversions.",
     );
 
     const options: { value: string; label: string }[] = [{ value: "add", label: "Add pattern or path" }];
@@ -228,7 +229,7 @@ async function resetTotopoYaml(ctx: WorkspaceContext): Promise<void> {
     if (isCancel(confirmed) || !confirmed) return;
 
     const freshYaml = buildDefaultTotopoYaml(yaml.workspace_id);
-    writeTotopoYaml(ctx.workspaceRoot, freshYaml);
+    writeTotopoYaml(ctx.workspaceRoot, freshYaml, { includeExtendedTemplate: true });
     log.success("totopo.yaml reset to defaults.");
 
     await promptStopContainer(ctx);
