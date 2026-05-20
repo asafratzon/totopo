@@ -229,7 +229,7 @@ describe("session lifecycle", () => {
         // Simulate a shadow being added
         const shadowDir = join(workspaceRoot, "node_modules");
         mkdirSync(shadowDir, { recursive: true });
-        const expanded = expandShadowPatterns(["node_modules"], workspaceRoot);
+        const { paths: expanded } = expandShadowPatterns(["node_modules"], workspaceRoot);
 
         const result = startContainer(
             makeOpts(containerName, workspaceRoot, cacheDir, { expandedShadows: expanded, shadowPatterns: ["node_modules"] }),
@@ -300,7 +300,7 @@ describe("shadow path mounts", () => {
         mkdirSync(hostNodeModules, { recursive: true });
         writeFileSync(join(hostNodeModules, "secret.txt"), "should-not-be-visible");
 
-        const expanded = expandShadowPatterns(["node_modules"], workspaceRoot);
+        const { paths: expanded } = expandShadowPatterns(["node_modules"], workspaceRoot);
 
         startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { expandedShadows: expanded, shadowPatterns: ["node_modules"] }));
 
@@ -312,7 +312,7 @@ describe("shadow path mounts", () => {
     test("shadow mount for glob pattern hides matching files", () => {
         writeFileSync(join(workspaceRoot, ".env"), "SECRET=supersecret\n");
 
-        const expanded = expandShadowPatterns([".env*"], workspaceRoot);
+        const { paths: expanded } = expandShadowPatterns([".env*"], workspaceRoot);
 
         startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { expandedShadows: expanded, shadowPatterns: [".env*"] }));
 
@@ -325,7 +325,7 @@ describe("shadow path mounts", () => {
         mkdirSync(hostNodeModules, { recursive: true });
         writeFileSync(join(workspaceRoot, "README.md"), "visible-file");
 
-        const expanded = expandShadowPatterns(["node_modules"], workspaceRoot);
+        const { paths: expanded } = expandShadowPatterns(["node_modules"], workspaceRoot);
 
         startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { expandedShadows: expanded, shadowPatterns: ["node_modules"] }));
 
@@ -338,7 +338,7 @@ describe("shadow path mounts", () => {
         writeFileSync(join(workspaceRoot, ".env"), "SECRET=1\n");
         writeFileSync(join(workspaceRoot, "keep.txt"), "keep");
 
-        const expanded = expandShadowPatterns(["node_modules", ".env*"], workspaceRoot);
+        const { paths: expanded } = expandShadowPatterns(["node_modules", ".env*"], workspaceRoot);
 
         startContainer(
             makeOpts(containerName, workspaceRoot, cacheDir, { expandedShadows: expanded, shadowPatterns: ["node_modules", ".env*"] }),

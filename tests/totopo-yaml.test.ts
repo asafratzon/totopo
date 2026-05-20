@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, test } from "node:test";
+import { load as loadYaml } from "js-yaml";
 import { PROFILE } from "../src/lib/constants.js";
 import {
     buildDefaultTotopoYaml,
@@ -130,7 +131,44 @@ describe("writeTotopoYaml", () => {
         assert.equal(read?.workspace_id, "roundtrip-test");
         assert.deepEqual(read?.shadow_paths, ["node_modules", ".env*"]);
         assert.ok(read?.profiles?.default);
-        assert.ok(read?.profiles?.extended);
+        assert.equal(read?.profiles?.extended, undefined);
+        await cleanTempDir(tmp);
+    });
+
+    test("includeExtendedTemplate emits a commented extended block that can be uncommented to a valid profile", async () => {
+        const tmp = createTempDir();
+        const config = buildDefaultTotopoYaml("template-test");
+        writeTotopoYaml(tmp, config, { includeExtendedTemplate: true });
+
+        const raw = readFileSync(join(tmp, "totopo.yaml"), "utf8");
+        assert.ok(raw.includes("# Uncomment to enable additional runtimes"), "prompt line should be present");
+        assert.ok(raw.includes("# extended:"), "commented extended profile should be present");
+
+        // Uncomment only the lines between the `# extended:` marker and the trailing footer comment,
+        // then verify the full file parses with both profiles. This proves the commented block is
+        // structurally valid YAML once a user strips the leading "# ".
+        const lines = raw.split("\n");
+        const extStart = lines.findIndex((l) => l.includes("# extended:"));
+        const footIdx = lines.findIndex((l) => l.includes("# Add more profiles here"));
+        assert.ok(extStart >= 0 && footIdx > extStart, "expected commented extended block before footer");
+
+        const uncommented = lines.map((l, i) => (i >= extStart && i < footIdx ? l.replace(/^ {2}# ?/, "  ") : l)).join("\n");
+        const parsed = loadYaml(uncommented) as { profiles?: Record<string, { description?: string; dockerfile_hook?: string }> };
+        assert.ok(parsed.profiles?.default, "default profile should still be present");
+        assert.ok(parsed.profiles?.extended, "uncommenting should yield an extended profile entry");
+        assert.equal(parsed.profiles?.extended?.description, "Base image + Go, Java, Rust, and Bun");
+        assert.ok(parsed.profiles?.extended?.dockerfile_hook?.includes("golang-go"), "extended hook should include the Go install line");
+
+        await cleanTempDir(tmp);
+    });
+
+    test("does not emit a commented extended block without the option (no clippy behavior)", async () => {
+        const tmp = createTempDir();
+        const config = buildDefaultTotopoYaml("no-clippy-test");
+        writeTotopoYaml(tmp, config);
+        const raw = readFileSync(join(tmp, "totopo.yaml"), "utf8");
+        assert.ok(!raw.includes("# extended:"), "commented extended block must not appear when option is omitted");
+        assert.ok(!raw.includes("Uncomment to enable additional runtimes"), "prompt line must not appear when option is omitted");
         await cleanTempDir(tmp);
     });
 });
@@ -148,12 +186,11 @@ describe("buildDefaultTotopoYaml", () => {
         assert.deepEqual(config.shadow_paths, ["node_modules", ".env*"]);
     });
 
-    test("includes two default profiles", () => {
+    test("includes only the default profile (extended is shipped as a commented template, not a live entry)", () => {
         const config = buildDefaultTotopoYaml("test-ws");
         const profileNames = Object.keys(config.profiles ?? {});
-        assert.deepEqual(profileNames, [PROFILE.default, PROFILE.extended]);
+        assert.deepEqual(profileNames, [PROFILE.default]);
         assert.ok(config.profiles?.default?.description, "default profile should have a description");
-        assert.ok(config.profiles?.extended?.description, "extended profile should have a description");
     });
 });
 

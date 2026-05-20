@@ -133,7 +133,10 @@ function stopAndRemoveContainer(containerName: string): void {
 
 // --- Run startup checks (AI CLI update + readiness validation) ---------------------------------------------------------------------------
 function runStartup(containerName: string, quiet?: boolean): boolean {
-    const result = spawnSync("docker", ["exec", "-u", "root", containerName, "node", CONTAINER_STARTUP], {
+    // The SPACE-to-skip prompt in startup.mjs needs raw-mode stdin (-i) and a PTY (-t).
+    // Omitted when quiet so test output stays pipe-capturable.
+    const ttyFlags = quiet ? [] : ["-i", "-t"];
+    const result = spawnSync("docker", ["exec", "-u", "root", ...ttyFlags, containerName, "node", CONTAINER_STARTUP], {
         stdio: quiet ? "pipe" : "inherit",
     });
     return result.status === 0;
@@ -337,10 +340,13 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
 
     // --- Shadow path expansion -----------------------------------------------------------------------------------------------------------
     const shadowPatterns = yaml.shadow_paths ?? [];
-    const expandedShadows = expandShadowPatterns(shadowPatterns, workspaceDir);
+    const { paths: expandedShadows, skippedTracked } = expandShadowPatterns(shadowPatterns, workspaceDir);
 
     if (expandedShadows.length > 0) {
         log.warn(`Shadow paths active: ${expandedShadows.join(", ")}  (Settings > Shadow paths)`);
+    }
+    if (skippedTracked.length > 0) {
+        log.warn(`Skipped ${skippedTracked.length} shadow path(s) tracked by git`);
     }
 
     // --- Env file ------------------------------------------------------------------------------------------------------------------------

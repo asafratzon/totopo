@@ -153,7 +153,7 @@ function migrateSingleV2Workspace(v2: V2Project, existingIds: Set<string>): stri
             yaml.shadow_paths = [...new Set([...(yaml.shadow_paths ?? []), ...v2.shadowPaths])];
         }
 
-        writeTotopoYaml(v2.projectRoot, yaml);
+        writeTotopoYaml(v2.projectRoot, yaml, { includeExtendedTemplate: true });
         log.info(`Created totopo.yaml for "${v2.displayName}" (workspace_id: ${workspaceId})`);
     }
 
