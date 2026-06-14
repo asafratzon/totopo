@@ -1,14 +1,14 @@
 in_progress:
-  base_version: 3.8.0
-  entries:
-    - version: "3.8.0"
-      date: "2026-06-14"
-      changed:
-        - >-
-          Base container image upgraded from Debian 12 (bookworm) to Debian 13 (trixie), bringing glibc 2.41 and
-          Node.js 24 LTS. This fixes npm-installed prebuilt binaries that require GLIBC_2.39 or newer, which failed to
-          load on the old image. Existing containers are offered a rebuild on next session start.
+  base_version: 3.8.1
+  entries: []
 releases:
+  - version: 3.8.0
+    date: "2026-06-14"
+    changed:
+      - >-
+        Base container image upgraded from Debian 12 (bookworm) to Debian 13 (trixie), bringing glibc 2.41 and Node.js
+        24 LTS. This fixes npm-installed prebuilt binaries that require GLIBC_2.39 or newer, which failed to load on the
+        old image. Existing containers are offered a rebuild on next session start.
   - version: 3.7.0
     date: "2026-05-20"
     changed:

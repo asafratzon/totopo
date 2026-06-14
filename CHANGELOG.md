@@ -7,6 +7,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [3.8.0] — 2026-06-14
+
+### Changed
+
+- Base container image upgraded from Debian 12 (bookworm) to Debian 13 (trixie), bringing glibc 2.41 and Node.js 24 LTS. This fixes npm-installed prebuilt binaries that require GLIBC_2.39 or newer, which failed to load on the old image. Existing containers are offered a rebuild on next session start.
+
+---
+
 ## [3.7.0] — 2026-05-20
 
 ### Changed
