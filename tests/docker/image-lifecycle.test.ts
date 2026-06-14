@@ -80,7 +80,7 @@ describe("image lifecycle", () => {
     });
 
     test("invalid Dockerfile returns non-zero status", async () => {
-        const broken = "FROM debian:bookworm-slim\nRUN this_command_does_not_exist_at_all_xyz_abc\n";
+        const broken = "FROM debian:trixie-slim\nRUN this_command_does_not_exist_at_all_xyz_abc\n";
         const contextDir = createTempDir();
         try {
             const result = buildImageWithTempfile(broken, contextDir, imageName, false, true);

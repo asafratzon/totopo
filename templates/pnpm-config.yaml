@@ -1,0 +1,9 @@
+# pnpm global config. pnpm 11+ reads its settings from here (~/.config/pnpm/config.yaml),
+# no longer from ~/.npmrc. Keys are camelCase, unlike the kebab-case equivalents in .npmrc.
+#
+# storeDir pins the global store onto a bind-mounted, same-device cache so pnpm never falls back
+# to creating a .pnpm-store inside the mounted /workspace. packageImportMethod=copy avoids
+# cross-filesystem hardlink failures. The matching ~/.npmrc keeps this working for anyone who
+# pins an older pnpm via packageManager (pnpm <= 10 still reads .npmrc).
+storeDir: /home/devuser/.local/share/pnpm/store
+packageImportMethod: copy

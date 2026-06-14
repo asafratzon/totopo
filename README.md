@@ -70,11 +70,11 @@ A few key concepts:
 
 ### `totopo.yaml`
 
-The config is minimal — four fields:
+The config is minimal — only `workspace_id` is required; the rest are optional:
 
-- **`workspace_id`** — unique slug for container naming and cache directory
-- **`profiles`** — Dockerfile image variants (see [Profiles](#profiles))
-- **`shadow_paths`** — gitignore-style patterns hidden from agents (see [Shadow Paths](#shadow-paths))
+- **`workspace_id`** *(required)* — unique slug for container naming and cache directory
+- **`profiles`** *(optional)* — Dockerfile image variants (see [Profiles](#profiles))
+- **`shadow_paths`** *(optional)* — gitignore-style patterns hidden from agents (see [Shadow Paths](#shadow-paths))
 - **`env_file`** *(optional)* — path to env file injected at runtime (see [Environment Variables](#environment-variables))
 
 On every run, totopo shows the workspace menu:

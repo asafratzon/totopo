@@ -8,7 +8,7 @@
 # dockerfile_hook in totopo.yaml profiles.
 # =============================================================================
 
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 LABEL totopo.managed=true
 
 # Enable 24-bit color support for AI CLIs (suppresses color upgrade prompts)
@@ -24,8 +24,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential pkg-config libssl-dev \
     # Utilities
     jq unzip zip tree htop procps lsb-release gnupg ca-certificates sox file bubblewrap \
-    # Modern search/navigation tools
-    ripgrep fzf \
+    # Modern search/navigation tools (fd-find installs the binary as 'fdfind'; symlinked to 'fd' below)
+    ripgrep fzf fd-find \
     # Database clients
     sqlite3 postgresql-client default-mysql-client redis-tools \
     # Python (needed for build scripts and as a light default)
@@ -33,13 +33,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------
-# Layer 2 — fd (GitHub release)
+# Layer 2 — fd (from apt fd-find; Debian names the binary 'fdfind')
+# Symlink to 'fd' so the tool is callable by its upstream name.
 # ---------------------------------------------------------------------------
-RUN ARCH=$(dpkg --print-architecture) && \
-    FD_VERSION=$(curl -fsSL https://api.github.com/repos/sharkdp/fd/releases/latest \
-        | python3 -c "import sys,json; print(json.load(sys.stdin)['tag_name'][1:])") && \
-    curl -fsSL "https://github.com/sharkdp/fd/releases/download/v${FD_VERSION}/fd_${FD_VERSION}_${ARCH}.deb" \
-        -o /tmp/fd.deb && dpkg -i /tmp/fd.deb && rm /tmp/fd.deb
+RUN ln -sf "$(command -v fdfind)" /usr/local/bin/fd
 
 # ---------------------------------------------------------------------------
 # Layer 3 — yq (GitHub release)
@@ -59,9 +56,10 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     apt-get update && apt-get install -y gh && rm -rf /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------
-# Layer 5 — Node.js LTS (via NodeSource)
+# Layer 5 — Node.js 24 LTS (via NodeSource)
+# Trixie's apt nodejs is 20.x; NodeSource is pinned to the current Active LTS (24.x).
 # ---------------------------------------------------------------------------
-RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - && \
+RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
     apt-get install -y nodejs && rm -rf /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------
@@ -85,18 +83,20 @@ RUN npm install -g \
 # ---------------------------------------------------------------------------
 RUN groupadd --gid 1001 devuser && \
     useradd --uid 1001 --gid devuser --shell /bin/bash --create-home devuser && \
-    mkdir -p /home/devuser/.local/state /home/devuser/.local/share /home/devuser/.local/share/pnpm /home/devuser/.local/bin && \
+    mkdir -p /home/devuser/.local/state /home/devuser/.local/share /home/devuser/.local/share/pnpm /home/devuser/.local/bin /home/devuser/.config/pnpm && \
     date -u +"%Y-%m-%dT%H:%M:%S.000Z" > /home/devuser/.ai-cli-updated && \
     chown -R devuser:devuser /home/devuser
 
 # ---------------------------------------------------------------------------
-# Layer 9 — Bake startup script + git mode helper + shared constants into image
+# Layer 9 — Bake startup script + git mode helper + shared constants + pnpm config into image
+# pnpm 11+ reads settings from ~/.config/pnpm/config.yaml; ~/.npmrc covers anyone pinning pnpm <= 10.
 # ---------------------------------------------------------------------------
 COPY npmrc /home/devuser/.npmrc
+COPY pnpm-config.yaml /home/devuser/.config/pnpm/config.yaml
 COPY startup.mjs /home/devuser/startup.mjs
 COPY startup-git-mode.mjs /home/devuser/startup-git-mode.mjs
 COPY runtime-constants.mjs /home/devuser/runtime-constants.mjs
-RUN chown devuser:devuser /home/devuser/.npmrc /home/devuser/startup.mjs /home/devuser/startup-git-mode.mjs /home/devuser/runtime-constants.mjs
+RUN chown devuser:devuser /home/devuser/.npmrc /home/devuser/.config/pnpm/config.yaml /home/devuser/startup.mjs /home/devuser/startup-git-mode.mjs /home/devuser/runtime-constants.mjs
 
 # ---------------------------------------------------------------------------
 # Layer 10 — Bake git read-only wrapper into image
