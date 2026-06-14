@@ -1,6 +1,12 @@
 in_progress:
   base_version: 3.8.1
-  entries: []
+  entries:
+    - version: "3.8.1"
+      date: "2026-06-14"
+      changed:
+        - >-
+          Pinned the container's pnpm and yq to specific versions so image builds are reproducible and won't silently break
+          when those tools ship a new major. Existing containers are offered a rebuild on next session start.
 releases:
   - version: 3.8.0
     date: "2026-06-14"
