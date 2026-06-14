@@ -104,7 +104,7 @@ export function cleanupAllTestArtifacts(): void {
 // Does not include the AI CLIs or heavy dependencies - only used for image/container lifecycle tests.
 
 // Complete standalone Dockerfile - used when building an image directly (not via buildDockerfile()).
-export const MINIMAL_DOCKERFILE = `FROM debian:bookworm-slim
+export const MINIMAL_DOCKERFILE = `FROM debian:trixie-slim
 LABEL ${LABEL_MANAGED}=true
 RUN groupadd --gid 1001 devuser && useradd --uid 1001 --gid devuser --shell /bin/bash --create-home devuser
 WORKDIR /workspace
@@ -114,7 +114,7 @@ CMD ["sleep", "infinity"]
 
 // Base template for use with buildDockerfile() - no USER or CMD, matching the real templates/Dockerfile
 // convention. buildDockerfile() appends the profile hook (runs as root), then adds USER devuser.
-export const MINIMAL_DOCKERFILE_TEMPLATE = `FROM debian:bookworm-slim
+export const MINIMAL_DOCKERFILE_TEMPLATE = `FROM debian:trixie-slim
 LABEL ${LABEL_MANAGED}=true
 RUN groupadd --gid 1001 devuser && useradd --uid 1001 --gid devuser --shell /bin/bash --create-home devuser
 WORKDIR /workspace

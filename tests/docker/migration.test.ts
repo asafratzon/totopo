@@ -32,7 +32,7 @@ describe("migrateProjectsDir - does not stop unrelated containers", () => {
         bystander = uniqueName("bystander");
         restoreEnv = [overrideEnv("HOME", fakeHome)];
 
-        spawnSync("docker", ["run", "-d", "--name", bystander, "debian:bookworm-slim", "sleep", "infinity"], { stdio: "pipe" });
+        spawnSync("docker", ["run", "-d", "--name", bystander, "debian:trixie-slim", "sleep", "infinity"], { stdio: "pipe" });
     });
 
     afterEach(async () => {

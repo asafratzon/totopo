@@ -60,6 +60,7 @@ export const BAKED_TEMPLATE_FILES: ReadonlyArray<string> = [
     "claude-statusline.sh",
     "git-readonly-wrapper.mjs",
     "npmrc",
+    "pnpm-config.yaml",
     "runtime-constants.mjs",
     "startup-git-mode.mjs",
     "startup.mjs",

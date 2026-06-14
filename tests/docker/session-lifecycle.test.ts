@@ -159,8 +159,8 @@ describe("session lifecycle", () => {
         assert.equal(siblingProbe.stdout, "OK", "pnpm store mount's parent dir must be writable as devuser");
 
         // Source must be the per-workspace cache subdir so the store persists across rebuilds.
-        // The store's same-device guarantee is provided by the explicit store-dir npmrc setting,
-        // not by the bind mount alone (each Docker -v can register as its own device).
+        // The store's same-device guarantee is provided by the explicit store-dir setting in pnpm's
+        // baked config, not by the bind mount alone (each Docker -v can register as its own device).
         const inspect = spawnSync(
             "docker",
             [
