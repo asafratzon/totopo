@@ -8,6 +8,15 @@
 # dockerfile_hook in totopo.yaml profiles.
 # =============================================================================
 
+# ---------------------------------------------------------------------------
+# Version pinning policy
+# Infra tools whose major versions can change behavior are pinned exact so that
+# fresh and --no-cache builds stay reproducible; bumping a pin edits this file,
+# busts the build hash, and auto-prompts a rebuild. Deliberately left floating:
+# apt packages (pinned by the Debian trixie release), Node (major-pinned via
+# setup_24.x; minors carry security fixes), and the AI CLIs (always latest).
+# ---------------------------------------------------------------------------
+
 FROM debian:trixie-slim
 LABEL totopo.managed=true
 
@@ -39,10 +48,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN ln -sf "$(command -v fdfind)" /usr/local/bin/fd
 
 # ---------------------------------------------------------------------------
-# Layer 3 — yq (GitHub release)
+# Layer 3 — yq (GitHub release, pinned)
 # ---------------------------------------------------------------------------
 RUN ARCH=$(dpkg --print-architecture) && \
-    curl -fsSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${ARCH}" \
+    curl -fsSL "https://github.com/mikefarah/yq/releases/download/v4.53.3/yq_linux_${ARCH}" \
         -o /usr/local/bin/yq && chmod +x /usr/local/bin/yq
 
 # ---------------------------------------------------------------------------
@@ -69,10 +78,13 @@ RUN git config --system protocol.allow never && \
     git config --system protocol.file.allow always
 
 # ---------------------------------------------------------------------------
-# Layer 7 — Global npm tools (AI CLIs)
+# Layer 7 — Global npm tools (pnpm pinned; AI CLIs always latest)
+# pnpm is pinned exact: pnpm 11 changed where global settings are read from
+# (~/.config/pnpm/config.yaml, no longer ~/.npmrc), so an unpinned major bump
+# can silently break the baked store-dir config.
 # ---------------------------------------------------------------------------
 RUN npm install -g \
-    pnpm \
+    pnpm@11.6.0 \
     opencode-ai \
     @anthropic-ai/claude-code \
     @openai/codex \
