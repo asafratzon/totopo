@@ -7,6 +7,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [3.8.1] — 2026-06-14
+
+### Changed
+
+- Pinned the container's pnpm and yq to specific versions so image builds are reproducible and won't silently break when those tools ship a new major. Existing containers are offered a rebuild on next session start.
+
+---
+
 ## [3.8.0] — 2026-06-14
 
 ### Changed
