@@ -236,13 +236,23 @@ To clear memory: `npx totopo` → **Manage totopo > Clear agent memory**.
         └── shadows/    # container-local shadow path storage
 ```
 
+## Voice Mode (microphone)
+
+Claude Code's `/voice` records from a mic via SoX, but a container has none (on Docker Desktop the Linux VM has no device passthrough). totopo bridges your host mic in over a local PulseAudio server — **opt-in per workspace** from **Manage Workspace → Voice / audio**.
+
+**macOS (automated):** in that menu, **Enable wiring**, then **Install pulseaudio → Start host server → Test microphone** (approve the mic prompt for your terminal under **System Settings → Privacy & Security → Microphone**). Open a session and run `/voice`. The main menu reminds you while the server runs — stop it there when done.
+
+**Linux / Windows (manual):** automation is macOS-only. **Enable wiring**, then run your own PulseAudio server reachable at TCP `4713` (load `module-native-protocol-tcp`). It must accept totopo's cookie at `~/.totopo/pulse-cookie` (mounted read-only into the container), or load the module with `auth-anonymous=1`. On Windows the source is typically the WSLg PulseAudio server.
+
+> **Security:** while running, the server exposes your mic on a local TCP port, gated by an `auth-ip-acl` (private networks only) and — the real gate — a **dedicated, rotating cookie**: totopo-owned (not your general PulseAudio credential), mounted read-only, regenerated on every server start, so a leaked cookie dies on the next restart. Still, run the server only while you need voice and stop it after. A deliberate widening of totopo's boundary — see [Threat Model](#threat-model).
+
 ## Troubleshooting
 
 **Move or rename the workspace directory** — re-run `npx totopo` in the new location. totopo detects the path mismatch and guides you through realigning the workspace cache.
 
 **Single machine** — `~/.totopo/` is local. Switching machines requires re-running setup in each workspace.
 
-**Audio** — `sox` is included (required by Claude Code for voice mode), but audio passthrough depends on your OS. macOS, Linux, and Windows each require different device configuration.
+**Voice mode / audio** — `/voice` needs a microphone, which a container does not have by default. Enable it under **Manage Workspace → Voice / audio**; see [Voice Mode](#voice-mode-microphone).
 
 **Shift+Enter not working in VS Code terminal** — add this to your VS Code keybindings (`Cmd+Shift+P` → "Open Keyboard Shortcuts (JSON)"):
 
@@ -268,6 +278,8 @@ Totopo makes everyday agent mistakes safer. It is not built to stop a determined
 - Secrets you didn't shadow. A `.env` tracked in git is visible unless you list it in `shadow_paths`.
 - Container escapes. Totopo uses a non-root user and `no-new-privileges`, but no capability drops or seccomp profiles. For stronger isolation, use a microVM sandbox.
 - Edits to your working tree. The workspace is bind-mounted, so agent changes land on your real files. Commit often.
+
+**Voice mode widens this boundary** — enabling the mic bridge runs a host PulseAudio server that exposes your microphone over a local TCP port (cookie- and ACL-gated) and that totopo never stops for you. Opt in only while dictating; see [Voice Mode](#voice-mode-microphone).
 
 ## Disclaimer
 

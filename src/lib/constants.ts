@@ -50,6 +50,7 @@ export const LABEL_PROFILE = "totopo.profile";
 export const LABEL_RUNTIME_ENV = "totopo.runtime-env";
 export const LABEL_GIT_MODE = "totopo.git-mode";
 export const LABEL_BUILD_HASH = "totopo.build-hash";
+export const LABEL_AUDIO = "totopo.audio";
 
 // Built-in profile names (must match keys in buildDefaultTotopoYaml in totopo-yaml.ts)
 export const PROFILE = {
@@ -79,3 +80,14 @@ export const RUNTIME_ENV: Record<string, string> = {
     DISABLE_TELEMETRY: "1", // Container sessions should not phone home
     DISABLE_UPGRADE_COMMAND: "1", // /upgrade is wrong path inside container; totopo manages CLI version
 };
+
+// Audio bridge for Claude Code /voice (opt-in, per-workspace via the .lock audio flag).
+// When enabled, dev.ts injects PULSE_SERVER + AUDIODRIVER and an --add-host so SoX 'rec'
+// inside the container reaches a PulseAudio server running on the host.
+// The host must be host.docker.internal, never 127.0.0.1 (which is the container itself).
+export const AUDIO_TCP_PORT = 4713;
+export const AUDIO_PULSE_SERVER = `tcp:host.docker.internal:${AUDIO_TCP_PORT}`;
+export const AUDIODRIVER_VALUE = "pulseaudio";
+// Where the host PulseAudio cookie is bind-mounted inside the container. PULSE_COOKIE points here so
+// libpulse presents the shared secret; only containers totopo hands the cookie to can authenticate.
+export const AUDIO_COOKIE_CONTAINER_PATH = `${CONTAINER_HOME}/.config/pulse/cookie`;

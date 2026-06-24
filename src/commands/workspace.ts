@@ -5,11 +5,12 @@
 import { spawnSync } from "node:child_process";
 import { relative } from "node:path";
 import { cancel, confirm, isCancel, log, multiselect, note, outro, path, select, text } from "@clack/prompts";
-import { GIT_MODE, type GitMode } from "../lib/constants.js";
+import { getStatus, IS_MACOS, installPulse, startServer, stopServer, testMic } from "../lib/audio-host.js";
+import { AUDIO_TCP_PORT, GIT_MODE, type GitMode } from "../lib/constants.js";
 import { countPatternHits } from "../lib/shadows.js";
 import { buildDefaultTotopoYaml, readTotopoYaml, writeTotopoYaml } from "../lib/totopo-yaml.js";
 import type { WorkspaceContext } from "../lib/workspace-identity.js";
-import { readGitMode, writeGitMode } from "../lib/workspace-identity.js";
+import { readAudio, readGitMode, writeAudio, writeGitMode } from "../lib/workspace-identity.js";
 
 // --- Shadow paths menu -------------------------------------------------------------------------------------------------------------------
 async function shadowPathsMenu(ctx: WorkspaceContext): Promise<void> {
@@ -184,6 +185,78 @@ async function gitModeMenu(ctx: WorkspaceContext): Promise<void> {
     await promptStopContainer(ctx);
 }
 
+// --- Voice / audio menu ------------------------------------------------------------------------------------------------------------------
+async function audioMenu(ctx: WorkspaceContext): Promise<void> {
+    while (true) {
+        const wiring = readAudio(ctx.workspaceId);
+        const status = getStatus();
+
+        const serverLine = !status.installed ? "not installed" : status.running ? `running on TCP ${AUDIO_TCP_PORT}` : "installed, stopped";
+        note(
+            `wiring:       ${wiring ? "enabled" : "disabled"}  (this workspace)\n` +
+                `host server:  ${serverLine}` +
+                (status.version ? `\nversion:      ${status.version}` : ""),
+            "Voice / audio",
+        );
+
+        log.message(
+            "Claude Code /voice needs a microphone, which the container does not have.\n" +
+                "Enable wiring (per-workspace) and run a host PulseAudio server that streams your mic in.\n" +
+                "Access needs a dedicated, rotating cookie (and is limited to private networks), but the server\n" +
+                "still exposes your mic over a local TCP port — totopo never stops it for you, so stop it here when done.",
+        );
+
+        if (!IS_MACOS) {
+            log.info(
+                "Host server control is automated on macOS only. On Linux/Windows, start a PulseAudio server on the host manually — see the README.",
+            );
+        }
+
+        const options: { value: string; label: string; hint?: string }[] = [
+            { value: "toggle", label: wiring ? "Disable wiring" : "Enable wiring", hint: "PulseAudio env for this workspace's container" },
+        ];
+        if (IS_MACOS) {
+            if (!status.installed) options.push({ value: "install", label: "Install pulseaudio", hint: "via Homebrew" });
+            if (status.installed && !status.running)
+                options.push({ value: "start", label: "Start host server", hint: `TCP ${AUDIO_TCP_PORT}` });
+            if (status.running) {
+                options.push({ value: "test", label: "Test microphone", hint: "record 3s and check capture" });
+                options.push({ value: "stop", label: "Stop host server" });
+            }
+        }
+        options.push({ value: "back", label: "← Back" });
+
+        const action = await select({ message: "Voice / audio:", options });
+        if (isCancel(action) || action === "back") return;
+
+        if (action === "toggle") {
+            const next = !wiring;
+            writeAudio(ctx.workspaceId, next);
+            log.success(`Voice/audio wiring ${next ? "enabled" : "disabled"} for this workspace.`);
+            await promptStopContainer(ctx);
+            continue;
+        }
+
+        let result: { ok: boolean; message: string };
+        if (action === "install") {
+            result = installPulse();
+        } else if (action === "start") {
+            result = startServer();
+        } else if (action === "stop") {
+            result = stopServer();
+        } else {
+            log.step("Recording 3 seconds — speak now...");
+            result = testMic();
+        }
+
+        if (result.ok) {
+            log.success(result.message);
+        } else {
+            log.warn(result.message);
+        }
+    }
+}
+
 // --- Prompt to stop container ------------------------------------------------------------------------------------------------------------
 async function promptStopContainer(ctx: WorkspaceContext): Promise<void> {
     const containerName = ctx.containerName;
@@ -242,6 +315,7 @@ export async function run(ctx: WorkspaceContext): Promise<"back" | "rebuild" | "
         const options: { value: string; label: string; hint?: string }[] = [
             { value: "git-mode", label: "Git mode", hint: `current: ${currentGitMode}` },
             { value: "shadow-paths", label: "Shadow paths", hint: "manage shadow patterns" },
+            { value: "audio", label: "Voice / audio", hint: "Claude Code /voice mic setup" },
             { value: "rebuild", label: "Rebuild container", hint: "force a fresh image build" },
             { value: "clean-rebuild", label: "Clean rebuild", hint: "fresh build, no cache" },
             { value: "reset", label: "Reset config", hint: "restore totopo.yaml to defaults" },
@@ -260,6 +334,9 @@ export async function run(ctx: WorkspaceContext): Promise<"back" | "rebuild" | "
                 break;
             case "shadow-paths":
                 await shadowPathsMenu(ctx);
+                break;
+            case "audio":
+                await audioMenu(ctx);
                 break;
             case "rebuild":
                 return "rebuild";

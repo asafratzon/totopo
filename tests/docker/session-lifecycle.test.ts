@@ -13,8 +13,10 @@ import { after, afterEach, before, beforeEach, describe, test } from "node:test"
 import type { StartContainerOpts } from "../../src/commands/dev.js";
 import { startContainer } from "../../src/commands/dev.js";
 import {
+    AUDIO_COOKIE_CONTAINER_PATH,
     CONTAINER_STARTUP,
     GIT_MODE,
+    LABEL_AUDIO,
     LABEL_GIT_MODE,
     LABEL_MANAGED,
     LABEL_PROFILE,
@@ -31,6 +33,7 @@ import {
     dockerContainerLabel,
     dockerContainerStatus,
     dockerExec,
+    dockerExtraHosts,
     forceRemoveContainer,
     forceRemoveImage,
     MINIMAL_DOCKERFILE,
@@ -84,6 +87,7 @@ function makeOpts(
         envFilePath: undefined,
         hasGit: false,
         gitMode: GIT_MODE.local,
+        audio: false,
         shadowPatterns: [],
         workspaceName: "test-workspace",
         quiet: true,
@@ -269,6 +273,44 @@ describe("session lifecycle", () => {
         const result = startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { gitMode: GIT_MODE.strict }));
         assert.equal(result, "created", "container should be recreated when git mode changes");
         assert.equal(dockerContainerLabel(containerName, LABEL_GIT_MODE), GIT_MODE.strict);
+    });
+
+    test("audio off by default: no label flag, no PulseAudio env, no extra host", () => {
+        startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
+        assert.equal(dockerContainerLabel(containerName, LABEL_AUDIO), "false");
+        assert.equal(dockerExec(containerName, ["sh", "-c", "echo $PULSE_SERVER"]).stdout, "");
+        assert.ok(!dockerExtraHosts(containerName).includes("host.docker.internal"), "no --add-host when audio is off");
+    });
+
+    test("audio on: label, PulseAudio env, and host-gateway are wired", () => {
+        startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { audio: true }));
+        assert.equal(dockerContainerLabel(containerName, LABEL_AUDIO), "true");
+        assert.equal(dockerExec(containerName, ["printenv", "PULSE_SERVER"]).stdout, "tcp:host.docker.internal:4713");
+        assert.equal(dockerExec(containerName, ["printenv", "AUDIODRIVER"]).stdout, "pulseaudio");
+        assert.ok(
+            dockerExtraHosts(containerName).includes("host.docker.internal:host-gateway"),
+            "--add-host should map host.docker.internal",
+        );
+        // No cookie path provided -> no PULSE_COOKIE and no cookie mount.
+        assert.equal(dockerExec(containerName, ["sh", "-c", "echo $PULSE_COOKIE"]).stdout, "");
+    });
+
+    test("audio on with cookie: PULSE_COOKIE env and cookie mounted read-only", () => {
+        const cookieFile = join(cacheDir, "pulse-cookie");
+        const secret = "totopo-test-cookie-secret";
+        writeFileSync(cookieFile, secret);
+        startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { audio: true, audioCookiePath: cookieFile }));
+        assert.equal(dockerExec(containerName, ["printenv", "PULSE_COOKIE"]).stdout, AUDIO_COOKIE_CONTAINER_PATH);
+        assert.equal(dockerExec(containerName, ["cat", AUDIO_COOKIE_CONTAINER_PATH]).stdout, secret);
+    });
+
+    test("audio toggle triggers container recreation", () => {
+        startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { audio: false }));
+        assert.equal(dockerContainerLabel(containerName, LABEL_AUDIO), "false");
+
+        const result = startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { audio: true }));
+        assert.equal(result, "created", "container should be recreated when audio is toggled");
+        assert.equal(dockerContainerLabel(containerName, LABEL_AUDIO), "true");
     });
 });
 

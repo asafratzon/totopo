@@ -60,6 +60,15 @@ export function dockerContainerLabel(name: string, label: string): string {
     return val === "<no value>" ? "" : val;
 }
 
+export function dockerExtraHosts(name: string): string {
+    const result = spawnSync("docker", ["inspect", "--format", "{{json .HostConfig.ExtraHosts}}", name], {
+        encoding: "utf8",
+        stdio: "pipe",
+    });
+    if (result.status !== 0) return "";
+    return result.stdout.trim();
+}
+
 export function dockerExec(containerName: string, cmd: string[]): { stdout: string; status: number } {
     const result = spawnSync("docker", ["exec", containerName, ...cmd], { encoding: "utf8", stdio: "pipe" });
     return { stdout: result.stdout.trim(), status: result.status ?? 1 };
