@@ -15,11 +15,12 @@ interface MenuArgs {
     ctx: WorkspaceContext;
     activeCount: number;
     workspaceRunning: boolean;
+    audioServerRunning: boolean;
     version: string;
 }
 
 export async function run(args: MenuArgs): Promise<string> {
-    const { ctx, workspaceRunning, version } = args;
+    const { ctx, workspaceRunning, audioServerRunning, version } = args;
 
     // --- Read workspace config -----------------------------------------------------------------------------------------------------------
     const activeProfile = readActiveProfile(ctx.workspaceId) ?? PROFILE.default;
@@ -28,9 +29,13 @@ export async function run(args: MenuArgs): Promise<string> {
     // --- Status box ----------------------------------------------------------------------------------------------------------------------
     const containerStatus = workspaceRunning ? "running" : "stopped";
     const gitNotice = hasGit ? "" : `\n${styleText("yellow", "●")} no git — agent changes are not tracked`;
+    // totopo never stops the host audio server itself, so remind the user while it is up.
+    const audioNotice = audioServerRunning
+        ? `\n${styleText("yellow", "●")} audio mic server running (Manage Workspace › Voice / audio)`
+        : "";
 
     box(
-        `workspace:   ${ctx.workspaceId}\nprofile:     ${activeProfile}\ncontainer:   ${containerStatus}${gitNotice}`,
+        `workspace:   ${ctx.workspaceId}\nprofile:     ${activeProfile}\ncontainer:   ${containerStatus}${gitNotice}${audioNotice}`,
         ` totopo v${version} `,
         {
             contentAlign: "left",

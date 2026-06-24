@@ -35,6 +35,7 @@ export const LOCK_KEYS = {
     workspaceRoot: "root",
     activeProfile: "profile",
     gitMode: "git_mode",
+    audio: "audio",
 } as const;
 
 /** Parsed representation of a workspace .lock file. All fields are strings. */
@@ -89,6 +90,7 @@ function parseLockFile(workspaceId: string): LockFile | null {
             workspaceRoot: partial.workspaceRoot,
             activeProfile: partial.activeProfile ?? PROFILE.default,
             gitMode: partial.gitMode ?? GIT_MODE.local,
+            audio: partial.audio ?? "false",
         };
     } catch {
         return null;
@@ -115,6 +117,7 @@ export function writeLockFile(workspaceId: string, workspaceRoot: string): void 
         workspaceRoot,
         activeProfile: existing?.activeProfile ?? PROFILE.default,
         gitMode: existing?.gitMode ?? GIT_MODE.local,
+        audio: existing?.audio ?? "false",
     });
 }
 
@@ -145,6 +148,18 @@ export function writeGitMode(workspaceId: string, gitMode: GitMode): void {
     writeLockFileInternal(workspaceId, { ...existing, gitMode });
 }
 
+/** Read the audio (Claude Code /voice) opt-in flag. Defaults to false when unset or lock file is missing. */
+export function readAudio(workspaceId: string): boolean {
+    return parseLockFile(workspaceId)?.audio === "true";
+}
+
+/** Write the audio opt-in flag. No-op if the lock file is missing. Preserves all other fields. */
+export function writeAudio(workspaceId: string, audio: boolean): void {
+    const existing = parseLockFile(workspaceId);
+    if (!existing) return;
+    writeLockFileInternal(workspaceId, { ...existing, audio: String(audio) });
+}
+
 // --- Workspace directory initialization --------------------------------------------------------------------------------------------------
 
 /** Initialize ~/.totopo/workspaces/<workspace_id>/ with lock file and subdirs. */
@@ -153,11 +168,12 @@ export function initWorkspaceDir(
     workspaceRoot: string,
     activeProfile: string = PROFILE.default,
     gitMode: GitMode = GIT_MODE.local,
+    audio = false,
 ): void {
     const dir = getWorkspaceDir(workspaceId);
     mkdirSync(join(dir, AGENTS_DIR), { recursive: true });
     mkdirSync(join(dir, SHADOWS_DIR), { recursive: true });
-    writeLockFileInternal(workspaceId, { workspaceRoot, activeProfile, gitMode });
+    writeLockFileInternal(workspaceId, { workspaceRoot, activeProfile, gitMode, audio: String(audio) });
 }
 
 // --- Listing -----------------------------------------------------------------------------------------------------------------------------
