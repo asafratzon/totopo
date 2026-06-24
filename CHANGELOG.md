@@ -7,6 +7,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [3.9.0] — 2026-06-24
+
+### Added
+
+- Opt-in microphone support for Claude Code's /voice. Enable it per workspace under Manage Workspace > Voice / audio; on macOS totopo can install and run a host audio server that bridges your mic into the container over a local connection secured by a dedicated, rotating cookie. Linux/Windows users can point it at their own PulseAudio server. Existing containers are offered a rebuild on next session start.
+
+---
+
 ## [3.8.1] — 2026-06-14
 
 ### Changed

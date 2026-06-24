@@ -1,15 +1,15 @@
 in_progress:
-  base_version: 3.9.0
-  entries:
-    - rc_version: "3.9.0-rc-1"
-      date: "2026-06-24"
-      added:
-        - >-
-          Opt-in microphone support for Claude Code's /voice. Enable it per workspace under Manage Workspace >
-          Voice / audio; on macOS totopo can install and run a host audio server that bridges your mic into the
-          container over a local connection secured by a dedicated, rotating cookie. Linux/Windows users can point
-          it at their own PulseAudio server. Existing containers are offered a rebuild on next session start.
+  base_version: 3.9.1
+  entries: []
 releases:
+  - version: 3.9.0
+    date: "2026-06-24"
+    added:
+      - >-
+        Opt-in microphone support for Claude Code's /voice. Enable it per workspace under Manage Workspace > Voice /
+        audio; on macOS totopo can install and run a host audio server that bridges your mic into the container over a
+        local connection secured by a dedicated, rotating cookie. Linux/Windows users can point it at their own
+        PulseAudio server. Existing containers are offered a rebuild on next session start.
   - version: 3.8.1
     date: "2026-06-14"
     changed:
