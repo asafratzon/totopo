@@ -492,6 +492,41 @@ export function migrateAddGitMode(): number {
 }
 
 /**
+ * Pre-v3.9.0: Add the audio=false field to .lock files. False is the default, so this is a
+ * cosmetic write that makes the field visible on disk; runtime behavior is unchanged for
+ * existing workspaces (microphone bridging stays off until explicitly enabled). Idempotent -
+ * skips files that already have the field. Prints a one-time clack note() when any workspace
+ * was newly migrated so users discover the new feature. Returns the count for testing purposes;
+ * the registered Migration entry ignores it.
+ */
+export function migrateAddAudio(): number {
+    const baseDir = getWorkspacesBaseDir();
+    if (!existsSync(baseDir)) return 0;
+
+    let migrated = 0;
+    for (const entry of readdirSync(baseDir)) {
+        const lockPath = join(baseDir, entry, LOCK_FILE);
+        try {
+            const content = readFileSync(lockPath, "utf8");
+            if (content.includes(`${LOCK_KEYS.audio}=`)) continue;
+            const trimmed = content.endsWith("\n") ? content : `${content}\n`;
+            writeFileSync(lockPath, `${trimmed}${LOCK_KEYS.audio}=false\n`);
+            migrated++;
+        } catch {
+            // unreadable -- skip, will surface as a broken workspace elsewhere
+        }
+    }
+
+    if (migrated > 0) {
+        note(
+            `totopo v3.9.0 adds opt-in microphone support for Claude Code's /voice.\nEnable it per workspace via the totopo menu > Manage Workspace > Voice / audio.\nOn macOS totopo can install and run the host audio bridge for you; on Linux/Windows you point it at your own PulseAudio server.`,
+            "Voice / audio",
+        );
+    }
+    return migrated;
+}
+
+/**
  * v3.2.1 and earlier: Remove deprecated fields from totopo.yaml.
  * - schema_version: redundant, totopo validates with the bundled JSON schema at runtime
  * - yaml-language-server header: created stale versioned URLs
@@ -562,6 +597,7 @@ function buildMigrations(cwd: string, skipAnyConfirmations: boolean): Migration[
             run: () => migrateRemoveDeprecatedYamlFields(cwd),
         },
         { from: "v3.4.0", description: "Add git_mode=local to .lock files (preserves pre-v3.4.0 behavior)", run: migrateAddGitMode },
+        { from: "v3.9.0", description: "Add audio=false to .lock files (preserves pre-v3.9.0 behavior)", run: migrateAddAudio },
     ];
 }
 

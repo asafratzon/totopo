@@ -9,11 +9,16 @@ import { existsSync } from "node:fs";
 import { join, relative } from "node:path";
 import { cancel, confirm, isCancel, log, outro, select } from "@clack/prompts";
 import { buildAgentContextDocs, buildAgentMountArgs, injectAgentContext } from "../lib/agent-context.js";
+import { ensureCookieFile } from "../lib/audio-host.js";
 import {
+    AUDIO_COOKIE_CONTAINER_PATH,
+    AUDIO_PULSE_SERVER,
+    AUDIODRIVER_VALUE,
     CONTAINER_STARTUP,
     CONTAINER_WORKSPACE,
     GIT_MODE,
     type GitMode,
+    LABEL_AUDIO,
     LABEL_GIT_MODE,
     LABEL_MANAGED,
     LABEL_PROFILE,
@@ -29,7 +34,7 @@ import { buildShadowMountArgs, ensureShadowsInSync, expandShadowPatterns } from 
 import type { ProfileConfig } from "../lib/totopo-yaml.js";
 import { readTotopoYaml } from "../lib/totopo-yaml.js";
 import type { WorkspaceContext } from "../lib/workspace-identity.js";
-import { readActiveProfile, readGitMode, writeActiveProfile } from "../lib/workspace-identity.js";
+import { readActiveProfile, readAudio, readGitMode, writeActiveProfile } from "../lib/workspace-identity.js";
 
 // --- Prompt: working directory selection -------------------------------------------------------------------------------------------------
 async function promptWorkdir(workspaceDir: string, cwd: string): Promise<string> {
@@ -90,21 +95,23 @@ interface ContainerInfo {
     profileLabel: string;
     runtimeEnvLabel: string;
     gitModeLabel: string;
+    audioLabel: string;
 }
 
 // Returns null when the container does not exist (docker inspect exits non-zero).
 function inspectContainer(containerName: string): ContainerInfo | null {
-    const fmt = `{{.State.Status}}|{{index .Config.Labels "${LABEL_SHADOWS}"}}|{{index .Config.Labels "${LABEL_PROFILE}"}}|{{index .Config.Labels "${LABEL_RUNTIME_ENV}"}}|{{index .Config.Labels "${LABEL_GIT_MODE}"}}`;
+    const fmt = `{{.State.Status}}|{{index .Config.Labels "${LABEL_SHADOWS}"}}|{{index .Config.Labels "${LABEL_PROFILE}"}}|{{index .Config.Labels "${LABEL_RUNTIME_ENV}"}}|{{index .Config.Labels "${LABEL_GIT_MODE}"}}|{{index .Config.Labels "${LABEL_AUDIO}"}}`;
     const result = spawnSync("docker", ["inspect", "--format", fmt, containerName], { encoding: "utf8", stdio: "pipe" });
     if (result.status !== 0) return null;
     const clean = (s: string) => (s === "<no value>" ? "" : s);
-    const [status = "", shadows = "", profile = "", runtimeEnv = "", gitMode = ""] = result.stdout.trim().split("|");
+    const [status = "", shadows = "", profile = "", runtimeEnv = "", gitMode = "", audio = ""] = result.stdout.trim().split("|");
     return {
         status,
         shadowLabel: clean(shadows),
         profileLabel: clean(profile),
         runtimeEnvLabel: clean(runtimeEnv),
         gitModeLabel: clean(gitMode),
+        audioLabel: clean(audio),
     };
 }
 
@@ -158,6 +165,8 @@ export interface StartContainerOpts {
     envFilePath: string | undefined; // Resolved absolute path, or undefined if not set/missing
     hasGit: boolean;
     gitMode: GitMode;
+    audio: boolean; // Claude Code /voice bridge: inject PulseAudio env + --add-host when true
+    audioCookiePath?: string; // Absolute host path to the PulseAudio cookie; mounted read-only for auth when set
     shadowPatterns: string[]; // Raw patterns from totopo.yaml, used for agent context docs
     workspaceName: string;
     noCache?: boolean;
@@ -178,6 +187,8 @@ export function startContainer(opts: StartContainerOpts): ContainerStartResult {
         envFilePath,
         hasGit,
         gitMode,
+        audio,
+        audioCookiePath,
         shadowPatterns,
         workspaceName,
         noCache,
@@ -216,6 +227,8 @@ export function startContainer(opts: StartContainerOpts): ContainerStartResult {
         `${LABEL_RUNTIME_ENV}=${runtimeEnvLabel()}`,
         "--label",
         `${LABEL_GIT_MODE}=${gitMode}`,
+        "--label",
+        `${LABEL_AUDIO}=${audio}`,
     ];
 
     // --- Runtime env vars -----------------------------------------------------------------------------------------------------------------
@@ -226,6 +239,27 @@ export function startContainer(opts: StartContainerOpts): ContainerStartResult {
         "-e",
         `TOTOPO_GIT_MODE=${gitMode}`,
     ];
+
+    // --- Audio bridge (Claude Code /voice) ------------------------------------------------------------------------------------------------
+    // When enabled, point SoX 'rec' at the host PulseAudio server. --add-host makes host.docker.internal
+    // resolve on native Linux (it is automatic on Docker Desktop, where the flag is harmless).
+    // When the host cookie exists, mount it read-only and set PULSE_COOKIE so the container can
+    // authenticate; the server requires this shared secret, so only wired containers can connect.
+    const audioCookieArgs =
+        audio && audioCookiePath
+            ? ["-e", `PULSE_COOKIE=${AUDIO_COOKIE_CONTAINER_PATH}`, "-v", `${audioCookiePath}:${AUDIO_COOKIE_CONTAINER_PATH}:ro`]
+            : [];
+    const audioRunArgs = audio
+        ? [
+              "-e",
+              `PULSE_SERVER=${AUDIO_PULSE_SERVER}`,
+              "-e",
+              `AUDIODRIVER=${AUDIODRIVER_VALUE}`,
+              "--add-host",
+              "host.docker.internal:host-gateway",
+              ...audioCookieArgs,
+          ]
+        : [];
 
     // --- Inspect container state ---------------------------------------------------------------------------------------------------------
     const info = inspectContainer(containerName);
@@ -238,8 +272,9 @@ export function startContainer(opts: StartContainerOpts): ContainerStartResult {
         const profileChanged = info.profileLabel !== activeProfile;
         const runtimeEnvChanged = info.runtimeEnvLabel !== runtimeEnvLabel();
         const gitModeChanged = info.gitModeLabel !== gitMode;
+        const audioChanged = info.audioLabel !== String(audio);
 
-        if (shadowChanged || profileChanged || runtimeEnvChanged || gitModeChanged) {
+        if (shadowChanged || profileChanged || runtimeEnvChanged || gitModeChanged || audioChanged) {
             stopAndRemoveContainer(containerName);
             containerStatus = null;
 
@@ -251,6 +286,8 @@ export function startContainer(opts: StartContainerOpts): ContainerStartResult {
                 if (!quiet) log.info("Shadow paths changed — recreating container...");
             } else if (gitModeChanged) {
                 if (!quiet) log.info(`Git mode changed (${info.gitModeLabel || "<unset>"} -> ${gitMode}) — recreating container...`);
+            } else if (audioChanged) {
+                if (!quiet) log.info(`Voice/audio ${audio ? "enabled" : "disabled"} — recreating container...`);
             } else {
                 if (!quiet) log.info("Runtime environment updated — recreating container...");
             }
@@ -281,6 +318,7 @@ export function startContainer(opts: StartContainerOpts): ContainerStartResult {
                 ...mountArgs,
                 ...envFileArgs,
                 ...runtimeEnvArgs,
+                ...audioRunArgs,
                 "--security-opt",
                 "no-new-privileges:true",
                 ...labelArgs,
@@ -365,6 +403,14 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
     // --- Git mode (per-workspace, host-side .lock) ---------------------------------------------------------------------------------------
     const gitMode = readGitMode(ctx.workspaceId) ?? GIT_MODE.local;
 
+    // --- Audio bridge opt-in (per-workspace, host-side .lock) ----------------------------------------------------------------------------
+    const audio = readAudio(ctx.workspaceId);
+
+    // Ensure totopo's dedicated host cookie exists so the read-only mount target is always valid; the
+    // host server rotates it on each cold start. Creating it here (when absent) avoids any need to
+    // recreate the container after the server first starts.
+    const audioCookiePath = audio ? ensureCookieFile() : undefined;
+
     // --- Start container -----------------------------------------------------------------------------------------------------------------
     const containerOpts: StartContainerOpts = {
         containerName,
@@ -377,6 +423,8 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
         envFilePath,
         hasGit,
         gitMode,
+        audio,
+        ...(audioCookiePath !== undefined && { audioCookiePath }),
         shadowPatterns,
         workspaceName: ctx.workspaceId,
         ...(options?.noCache !== undefined && { noCache: options.noCache }),
