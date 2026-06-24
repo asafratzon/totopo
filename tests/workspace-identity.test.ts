@@ -13,9 +13,11 @@ import {
     LOCK_KEYS,
     listWorkspaceIds,
     readActiveProfile,
+    readAudio,
     readGitMode,
     readLockFile,
     writeActiveProfile,
+    writeAudio,
     writeGitMode,
     writeLockFile,
 } from "../src/lib/workspace-identity.js";
@@ -151,6 +153,7 @@ describe("with isolated home", () => {
             assert.ok(raw.includes(`${LOCK_KEYS.workspaceRoot}=`), "should contain root= key");
             assert.ok(raw.includes(`${LOCK_KEYS.activeProfile}=`), "should contain profile= key");
             assert.ok(raw.includes(`${LOCK_KEYS.gitMode}=`), "should contain git_mode= key");
+            assert.ok(raw.includes(`${LOCK_KEYS.audio}=`), "should contain audio= key");
             assert.ok(!raw.includes("last-cli-update="), "should not contain last-cli-update= key");
             await cleanTempDir(tmp);
         });
@@ -190,6 +193,55 @@ describe("with isolated home", () => {
             const tmp = createTempDir();
             initWorkspaceDir("test-ws", tmp, PROFILE.default, GIT_MODE.local);
             assert.equal(readGitMode("test-ws"), GIT_MODE.local);
+            await cleanTempDir(tmp);
+        });
+
+        test("readAudio returns false by default on fresh init", async () => {
+            const tmp = createTempDir();
+            initWorkspaceDir("test-ws", tmp);
+            assert.equal(readAudio("test-ws"), false);
+            await cleanTempDir(tmp);
+        });
+
+        test("readAudio returns false for missing lock", () => {
+            assert.equal(readAudio("nonexistent-ws-id-xyz"), false);
+        });
+
+        test("writeAudio toggles the flag and round-trips", async () => {
+            const tmp = createTempDir();
+            initWorkspaceDir("test-ws", tmp);
+            writeAudio("test-ws", true);
+            assert.equal(readAudio("test-ws"), true);
+            writeAudio("test-ws", false);
+            assert.equal(readAudio("test-ws"), false);
+            await cleanTempDir(tmp);
+        });
+
+        test("writeAudio preserves path, profile, and git mode", async () => {
+            const tmp = createTempDir();
+            initWorkspaceDir("test-ws", tmp, PROFILE.extended, GIT_MODE.unrestricted);
+            writeAudio("test-ws", true);
+            assert.equal(readAudio("test-ws"), true);
+            assert.equal(readActiveProfile("test-ws"), PROFILE.extended);
+            assert.equal(readGitMode("test-ws"), GIT_MODE.unrestricted);
+            assert.equal(readLockFile("test-ws"), tmp);
+            await cleanTempDir(tmp);
+        });
+
+        test("writeGitMode and writeActiveProfile preserve audio flag", async () => {
+            const tmp = createTempDir();
+            initWorkspaceDir("test-ws", tmp);
+            writeAudio("test-ws", true);
+            writeGitMode("test-ws", GIT_MODE.strict);
+            writeActiveProfile("test-ws", PROFILE.extended);
+            assert.equal(readAudio("test-ws"), true);
+            await cleanTempDir(tmp);
+        });
+
+        test("initWorkspaceDir with custom audio flag", async () => {
+            const tmp = createTempDir();
+            initWorkspaceDir("test-ws", tmp, PROFILE.default, GIT_MODE.local, true);
+            assert.equal(readAudio("test-ws"), true);
             await cleanTempDir(tmp);
         });
     });

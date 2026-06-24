@@ -31,8 +31,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git curl wget bash zsh make \
     # Build essentials
     build-essential pkg-config libssl-dev \
-    # Utilities
-    jq unzip zip tree htop procps lsb-release gnupg ca-certificates sox file bubblewrap \
+    # Utilities (libsox-fmt-pulse + pulseaudio-utils let SoX 'rec' reach a host PulseAudio server for Claude Code /voice; dormant unless wired at runtime)
+    jq unzip zip tree htop procps lsb-release gnupg ca-certificates sox libsox-fmt-pulse pulseaudio-utils file bubblewrap \
     # Modern search/navigation tools (fd-find installs the binary as 'fdfind'; symlinked to 'fd' below)
     ripgrep fzf fd-find \
     # Database clients
