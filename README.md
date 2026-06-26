@@ -81,8 +81,8 @@ On every run, totopo shows the workspace menu:
 
 - **Open session** — start or resume the dev container and connect
 - **Stop container** — stop the running container
-- **Manage Workspace** — git mode, shadow paths, rebuild, reset config
-- **Manage totopo** — multi-workspace management (stop containers, clear memory, uninstall)
+- **Settings** — git mode, shadow paths, voice, rebuild, reset config
+- **Advanced** — multi-workspace management (stop containers, clear memory, uninstall)
 
 ### Working directory
 
@@ -106,7 +106,7 @@ Every session runs inside a Docker container. Your code is bind-mounted from the
 
 ### Git Modes
 
-Each workspace has a git mode (set via **Manage Workspace > Git mode**) that controls what git operations are permitted inside the container:
+Each workspace has a git mode (set via **Settings > Git mode**) that controls what git operations are permitted inside the container:
 
 | Mode | Local mutations | Remote (push/pull/fetch/clone) |
 |---|---|---|
@@ -148,7 +148,7 @@ profiles:
 
 New workspaces ship with the `default` profile active and an `extended` profile (Go, Java, Rust, Bun) included as a commented-out template — uncomment to enable. When multiple profiles are defined, totopo prompts you to pick one at session start (the choice is remembered). A profile change triggers a container rebuild on the next session.
 
-The base image is defined in [`templates/Dockerfile`](templates/Dockerfile) — inspect it to see what's already included before adding your own layers. To force a fully fresh build (no Docker layer cache), use **Manage Workspace > Clean rebuild**.
+The base image is defined in [`templates/Dockerfile`](templates/Dockerfile) — inspect it to see what's already included before adding your own layers. To force a fully fresh build (no Docker layer cache), use **Settings > Clean rebuild**.
 
 ### Shadow Paths
 
@@ -161,7 +161,7 @@ shadow_paths:
   - .env*           # hides .env, .env.local, etc. from agents
 ```
 
-Patterns follow gitignore syntax — patterns without a `/` match at any depth. Manage via **Manage Workspace > Shadow paths** or edit `totopo.yaml` directly. Changes take effect on the next session.
+Patterns follow gitignore syntax — patterns without a `/` match at any depth. Manage via **Settings > Shadow paths** or edit `totopo.yaml` directly. Changes take effect on the next session.
 
 Git-tracked paths are skipped to avoid worktree diversions. Shadowing them has no privacy benefit anyway since agents can `git show` tracked content. To hide a file, untrack it and add it to `.gitignore` first.
 
@@ -218,7 +218,7 @@ Agent session data (conversation history, settings) is stored per workspace and 
 └── codex/              # mounted as ~/.codex/ inside the container
 ```
 
-To clear memory: `npx totopo` → **Manage totopo > Clear agent memory**.
+To clear memory: `npx totopo` → **Advanced > Clear agent memory**.
 
 ## What Gets Installed
 
@@ -238,11 +238,11 @@ To clear memory: `npx totopo` → **Manage totopo > Clear agent memory**.
 
 ## Voice Mode (microphone)
 
-Claude Code's `/voice` records from a mic via SoX, but a container has none (on Docker Desktop the Linux VM has no device passthrough). totopo bridges your host mic in over a local PulseAudio server — **opt-in per workspace** from **Manage Workspace → Voice / audio**.
+Claude Code's `/voice` records from a mic via SoX, but a container has none (on Docker Desktop the Linux VM has no device passthrough). totopo bridges your host mic in over a local PulseAudio server — **opt-in per workspace** from **Settings → Voice / audio**.
 
-**macOS (automated):** in that menu, **Enable wiring**, then **Install pulseaudio → Start host server → Test microphone** (approve the mic prompt for your terminal under **System Settings → Privacy & Security → Microphone**). Open a session and run `/voice`. The main menu reminds you while the server runs — stop it there when done.
+**macOS (automated):** in that menu, **Enable wiring**, then **Install pulseaudio → Start host server → Test microphone** (approve the mic prompt for your terminal under **System Settings → Privacy & Security → Microphone**). Open a session and run `/voice`. The main menu reminds you while the server runs — stop it there when done. For hands-off control, turn **Auto start/stop** on in the same menu: totopo then starts the server when a voice-enabled session opens and stops it once your last session exits, so you never start or stop it by hand.
 
-**Linux / Windows (manual):** automation is macOS-only. **Enable wiring**, then run your own PulseAudio server reachable at TCP `4713` (load `module-native-protocol-tcp`). It must accept totopo's cookie at `~/.totopo/pulse-cookie` (mounted read-only into the container), or load the module with `auth-anonymous=1`. On Windows the source is typically the WSLg PulseAudio server.
+**Linux / Windows (manual):** automation is macOS-only. **Enable wiring**, then run your own PulseAudio server reachable at TCP `4713` (load `module-native-protocol-tcp`). It must accept totopo's cookie at `~/.totopo/global/pulse-cookie` (mounted read-only into the container), or load the module with `auth-anonymous=1`. On Windows the source is typically the WSLg PulseAudio server.
 
 > **Security:** while running, the server exposes your mic on a local TCP port, gated by an `auth-ip-acl` (private networks only) and — the real gate — a **dedicated, rotating cookie**: totopo-owned (not your general PulseAudio credential), mounted read-only, regenerated on every server start, so a leaked cookie dies on the next restart. Still, run the server only while you need voice and stop it after. A deliberate widening of totopo's boundary — see [Threat Model](#threat-model).
 
@@ -252,7 +252,7 @@ Claude Code's `/voice` records from a mic via SoX, but a container has none (on 
 
 **Single machine** — `~/.totopo/` is local. Switching machines requires re-running setup in each workspace.
 
-**Voice mode / audio** — `/voice` needs a microphone, which a container does not have by default. Enable it under **Manage Workspace → Voice / audio**; see [Voice Mode](#voice-mode-microphone).
+**Voice mode / audio** — `/voice` needs a microphone, which a container does not have by default. Enable it under **Settings → Voice / audio**; see [Voice Mode](#voice-mode-microphone).
 
 **Shift+Enter not working in VS Code terminal** — add this to your VS Code keybindings (`Cmd+Shift+P` → "Open Keyboard Shortcuts (JSON)"):
 

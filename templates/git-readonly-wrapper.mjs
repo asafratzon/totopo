@@ -281,7 +281,7 @@ function firstNonFlag(args) {
 function blocked(label) {
     return {
         allow: false,
-        reason: `git: '${label}' blocked in strict mode (read-only). Switch git mode via 'totopo' menu > Manage Workspace > Git mode.`,
+        reason: `git: '${label}' blocked in strict mode (read-only). Switch git mode via 'totopo' menu > Settings > Git mode.`,
     };
 }
 
