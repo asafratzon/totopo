@@ -1,5 +1,5 @@
 // =========================================================================================================================================
-// src/commands/global.ts - Manage totopo menu (global, all workspaces)
+// src/commands/advanced.ts - Advanced menu: less-common operations (stop containers, clear agent memory, remove images, uninstall)
 // =========================================================================================================================================
 
 import { spawnSync } from "node:child_process";
@@ -275,11 +275,11 @@ async function uninstallTotopo(): Promise<void> {
     outro("totopo uninstalled. Re-run npx totopo to set up again.");
 }
 
-// --- Manage totopo menu ------------------------------------------------------------------------------------------------------------------
+// --- Advanced menu -----------------------------------------------------------------------------------------------------------------------
 export async function run(currentWorkspaceId?: string): Promise<"back" | undefined> {
     while (true) {
         const action = await select({
-            message: "Manage totopo:",
+            message: "Advanced:",
             options: [
                 { value: "stop-containers", label: "Stop containers", hint: "pick running containers" },
                 { value: "clear-memory", label: "Clear agent memory", hint: "pick workspaces to clear" },

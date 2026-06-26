@@ -1,0 +1,18 @@
+# Carry optional native deps (esbuild/biome) for every install target in one lockfile:
+# linux = the totopo container, darwin arm64/x64 = dev Macs. Default fetches only the current host.
+supportedArchitectures:
+  cpu:
+    - arm64
+    - x64
+  os:
+    - linux
+    - darwin
+
+# Prevent hoisting packages to the root node_modules — enforces strict dependency isolation
+shamefullyHoist: false
+
+# Supply chain protection — only allow package versions published at least 30 days ago (value in minutes)
+minimumReleaseAge: 43200
+
+allowBuilds:
+  esbuild: false

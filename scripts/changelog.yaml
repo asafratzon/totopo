@@ -1,6 +1,20 @@
 in_progress:
-  base_version: 3.9.1
-  entries: []
+  base_version: 3.10.0
+  entries:
+    - rc_version: "3.10.0-rc-1"
+      date: "2026-06-26"
+      added:
+        - >-
+          Optional automatic control of the host audio server on macOS. Turn it on under Settings > Voice /
+          audio; totopo then starts the server when a voice-enabled session opens and stops it once your last
+          session exits, so the mic bridge runs only while you need it. Manual control stays the default.
+        - >-
+          totopo now offers to stop a workspace's container when you close its last shell, freeing memory
+          while keeping the next session a fast resume.
+      changed:
+        - >-
+          Workspace menu reorganized - "Manage Workspace" is now "Settings" (git mode, shadow paths, voice,
+          rebuild) and "Manage totopo" is now "Advanced" (stop, clear, remove, uninstall).
 releases:
   - version: 3.9.0
     date: "2026-06-24"

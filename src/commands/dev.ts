@@ -9,9 +9,18 @@ import { existsSync } from "node:fs";
 import { join, relative } from "node:path";
 import { cancel, confirm, isCancel, log, outro, select } from "@clack/prompts";
 import { buildAgentContextDocs, buildAgentMountArgs, injectAgentContext } from "../lib/agent-context.js";
-import { ensureCookieFile } from "../lib/audio-host.js";
+import {
+    connectedSessionCount,
+    containerSessionCount,
+    ensureCookieFile,
+    IS_MACOS,
+    isAudioServerRunning,
+    startServer,
+    stopServer,
+} from "../lib/audio-host.js";
 import {
     AUDIO_COOKIE_CONTAINER_PATH,
+    AUDIO_MODE,
     AUDIO_PULSE_SERVER,
     AUDIODRIVER_VALUE,
     CONTAINER_STARTUP,
@@ -28,6 +37,7 @@ import {
     RUNTIME_ENV,
 } from "../lib/constants.js";
 import { buildDockerfile, buildImageWithTempfile, computeBuildHash } from "../lib/dockerfile-builder.js";
+import { readAudioMode } from "../lib/global-config.js";
 import { isImageStale } from "../lib/migrate-to-latest.js";
 import { buildPnpmStoreMountArgs } from "../lib/pnpm-store.js";
 import { buildShadowMountArgs, ensureShadowsInSync, expandShadowPatterns } from "../lib/shadows.js";
@@ -52,6 +62,16 @@ async function promptWorkdir(workspaceDir: string, cwd: string): Promise<string>
         process.exit(0);
     }
     return choice === "here" ? `${CONTAINER_WORKSPACE}/${relPath}` : CONTAINER_WORKSPACE;
+}
+
+// --- Countdown helper --------------------------------------------------------------------------------------------------------------------
+// Print a message, then tick down one line per second. Used so a transient warning (e.g. the host audio
+// server failed to auto-start) stays on screen long enough to read before the session connects anyway.
+async function countdown(seconds: number, message: string): Promise<void> {
+    for (let remaining = seconds; remaining > 0; remaining--) {
+        log.info(`${message} in ${remaining}...`);
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
 }
 
 // --- Profile selection -------------------------------------------------------------------------------------------------------------------
@@ -406,6 +426,20 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
     // --- Audio bridge opt-in (per-workspace, host-side .lock) ----------------------------------------------------------------------------
     const audio = readAudio(ctx.workspaceId);
 
+    // --- Auto-start host audio server (automatic mode, macOS) ----------------------------------------------------------------------------
+    // When wiring is on and the workspace is in automatic mode, bring the host server up before the
+    // container starts so the cookie it rotates is already in place for the read-only mount below
+    // (ensureCookieFile then no-ops). A failure never blocks the session - warn and count down so the
+    // message is readable, then connect anyway.
+    if (IS_MACOS && audio && readAudioMode() === AUDIO_MODE.automatic && !isAudioServerRunning()) {
+        const res = startServer();
+        if (res.ok) log.info("Host audio server started (voice input ready).");
+        else {
+            log.warn(res.message);
+            await countdown(3, "Continuing without the audio server");
+        }
+    }
+
     // Ensure totopo's dedicated host cookie exists so the read-only mount target is always valid; the
     // host server rotates it on each cold start. Creating it here (when absent) avoids any need to
     // recreate the container after the server first starts.
@@ -477,5 +511,33 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
         stdio: "inherit",
     });
 
+    // --- Auto-stop host audio server (automatic mode, macOS) -----------------------------------------------------------------------------
+    // Control returns here synchronously when the user exits the shell. In automatic mode, stop the
+    // global host server only when no totopo session anywhere is still connected (the just-exited shell
+    // is already reaped, so 0 is the all-clear). Conservative by design: a lingering session keeps it up.
+    if (IS_MACOS && audio && readAudioMode() === AUDIO_MODE.automatic && isAudioServerRunning() && connectedSessionCount() === 0) {
+        const res = stopServer();
+        if (res.ok) log.info("Host audio server stopped (no active sessions).");
+        else log.warn(res.message);
+    }
+
+    // --- Offer to stop this workspace's container (last shell closed) --------------------------------------------------------------------
+    // The container itself keeps running (sleep infinity) after the shell exits. When this was the last
+    // shell to it, offer to stop it to free memory. Stop-only (no rm) so the next session resumes fast
+    // via the "exited" -> docker start path. Runs after the global audio auto-stop above; all platforms.
+    if (containerSessionCount(containerName) === 0) {
+        const stopNow = await confirm({
+            message: "Last session to this container closed. Stop it to free memory? (resumes fast next time)",
+            initialValue: true,
+        });
+        if (!isCancel(stopNow) && stopNow) {
+            log.step("Stopping container...");
+            spawnSync("docker", ["stop", containerName], { stdio: "pipe" });
+            log.info("Container stopped - memory freed; it resumes on your next session.");
+        }
+    }
+
+    // Trailing blank line so the last log does not sit flush against the next shell prompt.
+    process.stdout.write("\n");
     process.exit(exec.status ?? 0);
 }

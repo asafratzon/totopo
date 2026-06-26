@@ -1,12 +1,13 @@
 // =========================================================================================================================================
-// src/commands/workspace.ts - Manage Workspace submenu: shadow paths, rebuild, reset, stop, reset-image
+// src/commands/settings.ts - Settings submenu: git mode, shadow paths, voice, rebuild, reset config
 // =========================================================================================================================================
 
 import { spawnSync } from "node:child_process";
 import { relative } from "node:path";
 import { cancel, confirm, isCancel, log, multiselect, note, outro, path, select, text } from "@clack/prompts";
 import { getStatus, IS_MACOS, installPulse, startServer, stopServer, testMic } from "../lib/audio-host.js";
-import { AUDIO_TCP_PORT, GIT_MODE, type GitMode } from "../lib/constants.js";
+import { AUDIO_MODE, AUDIO_TCP_PORT, GIT_MODE, type GitMode } from "../lib/constants.js";
+import { readAudioMode, writeAudioMode } from "../lib/global-config.js";
 import { countPatternHits } from "../lib/shadows.js";
 import { buildDefaultTotopoYaml, readTotopoYaml, writeTotopoYaml } from "../lib/totopo-yaml.js";
 import type { WorkspaceContext } from "../lib/workspace-identity.js";
@@ -189,12 +190,16 @@ async function gitModeMenu(ctx: WorkspaceContext): Promise<void> {
 async function audioMenu(ctx: WorkspaceContext): Promise<void> {
     while (true) {
         const wiring = readAudio(ctx.workspaceId);
+        const mode = readAudioMode();
         const status = getStatus();
 
         const serverLine = !status.installed ? "not installed" : status.running ? `running on TCP ${AUDIO_TCP_PORT}` : "installed, stopped";
+        // The server-control mode only matters where totopo manages the server (macOS).
+        const modeLine = IS_MACOS ? `\nmode:         ${mode}` : "";
         note(
             `wiring:       ${wiring ? "enabled" : "disabled"}  (this workspace)\n` +
                 `host server:  ${serverLine}` +
+                modeLine +
                 (status.version ? `\nversion:      ${status.version}` : ""),
             "Voice / audio",
         );
@@ -216,6 +221,11 @@ async function audioMenu(ctx: WorkspaceContext): Promise<void> {
             { value: "toggle", label: wiring ? "Disable wiring" : "Enable wiring", hint: "PulseAudio env for this workspace's container" },
         ];
         if (IS_MACOS) {
+            options.push({
+                value: "mode",
+                label: `Auto start/stop: ${mode === AUDIO_MODE.automatic ? "on" : "off"}`,
+                hint: "auto-start on session, stop on last exit",
+            });
             if (!status.installed) options.push({ value: "install", label: "Install pulseaudio", hint: "via Homebrew" });
             if (status.installed && !status.running)
                 options.push({ value: "start", label: "Start host server", hint: `TCP ${AUDIO_TCP_PORT}` });
@@ -234,6 +244,19 @@ async function audioMenu(ctx: WorkspaceContext): Promise<void> {
             writeAudio(ctx.workspaceId, next);
             log.success(`Voice/audio wiring ${next ? "enabled" : "disabled"} for this workspace.`);
             await promptStopContainer(ctx);
+            continue;
+        }
+
+        if (action === "mode") {
+            // The host server is a single shared resource, so this mode is host-global. It only changes
+            // server lifecycle behavior, not container config, so no rebuild prompt.
+            const next = mode === AUDIO_MODE.automatic ? AUDIO_MODE.manual : AUDIO_MODE.automatic;
+            writeAudioMode(next);
+            log.success(
+                next === AUDIO_MODE.automatic
+                    ? "Automatic mode on - opening a session starts the host audio server; exiting stops it when no other session is connected."
+                    : "Automatic mode off - start and stop the host audio server yourself.",
+            );
             continue;
         }
 
@@ -308,7 +331,7 @@ async function resetTotopoYaml(ctx: WorkspaceContext): Promise<void> {
     await promptStopContainer(ctx);
 }
 
-// --- Manage Workspace submenu ------------------------------------------------------------------------------------------------------------
+// --- Settings submenu --------------------------------------------------------------------------------------------------------------------
 export async function run(ctx: WorkspaceContext): Promise<"back" | "rebuild" | "clean-rebuild" | undefined> {
     while (true) {
         const currentGitMode = readGitMode(ctx.workspaceId) ?? GIT_MODE.local;
@@ -322,7 +345,7 @@ export async function run(ctx: WorkspaceContext): Promise<"back" | "rebuild" | "
             { value: "back", label: "← Back" },
         ];
 
-        const action = await select({ message: "Manage Workspace:", options });
+        const action = await select({ message: "Settings:", options });
 
         if (isCancel(action) || action === "back") {
             return "back";
