@@ -279,7 +279,7 @@ Totopo makes everyday agent mistakes safer. It is not built to stop a determined
 - Container escapes. Totopo uses a non-root user and `no-new-privileges`, but no capability drops or seccomp profiles. For stronger isolation, use a microVM sandbox.
 - Edits to your working tree. The workspace is bind-mounted, so agent changes land on your real files. Commit often.
 
-**Voice mode widens this boundary** — enabling the mic bridge runs a host PulseAudio server that exposes your microphone over a local TCP port (cookie- and ACL-gated) and that totopo never stops for you. Opt in only while dictating; see [Voice Mode](#voice-mode-microphone).
+**Voice mode widens this boundary** — enabling the mic bridge runs a host PulseAudio server that exposes your microphone over a local TCP port (cookie- and ACL-gated) for as long as it runs. Opt in only while dictating, and stop the server when done (or let automatic mode handle it on macOS); see [Voice Mode](#voice-mode-microphone).
 
 ## Disclaimer
 

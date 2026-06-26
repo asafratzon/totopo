@@ -207,8 +207,7 @@ async function audioMenu(ctx: WorkspaceContext): Promise<void> {
         log.message(
             "Claude Code /voice needs a microphone, which the container does not have.\n" +
                 "Enable wiring (per-workspace) and run a host PulseAudio server that streams your mic in.\n" +
-                "Access needs a dedicated, rotating cookie (and is limited to private networks), but the server\n" +
-                "still exposes your mic over a local TCP port — totopo never stops it for you, so stop it here when done.",
+                "The server exposes your mic over a local TCP port while it runs, so keep it up only while you need voice.",
         );
 
         if (!IS_MACOS) {
