@@ -267,7 +267,7 @@ async function audioMenu(ctx: WorkspaceContext): Promise<void> {
         } else if (action === "stop") {
             result = stopServer();
         } else {
-            log.step("Recording 3 seconds — speak now...");
+            log.info("Recording 3 seconds — speak now...");
             result = testMic();
         }
 
@@ -299,7 +299,7 @@ async function promptStopContainer(ctx: WorkspaceContext): Promise<void> {
         return;
     }
 
-    log.step("Stopping container...");
+    log.info("Stopping container...");
     spawnSync("docker", ["stop", containerName], { stdio: "pipe" });
     spawnSync("docker", ["rm", containerName], { stdio: "pipe" });
     log.info("Container removed. Open a new session to apply changes.");
@@ -386,7 +386,7 @@ export async function stop(containerName: string): Promise<void> {
         return;
     }
 
-    log.step(`Stopping ${containerName}...`);
+    log.info(`Stopping ${containerName}...`);
     spawnSync("docker", ["stop", containerName], { stdio: "pipe" });
     spawnSync("docker", ["rm", containerName], { stdio: "pipe" });
 
@@ -400,14 +400,14 @@ export async function resetImage(containerName: string): Promise<void> {
         stdio: "pipe",
     });
     if (inspectResult.status === 0) {
-        log.step(`Stopping container ${containerName}...`);
+        log.info(`Stopping container ${containerName}...`);
         spawnSync("docker", ["stop", containerName], { stdio: "pipe" });
         spawnSync("docker", ["rm", containerName], { stdio: "pipe" });
     }
 
     const imageResult = spawnSync("docker", ["images", "-q", containerName], { encoding: "utf8", stdio: "pipe" });
     if ((imageResult.stdout ?? "").trim().length > 0) {
-        log.step(`Removing image ${containerName}...`);
+        log.info(`Removing image ${containerName}...`);
         spawnSync("docker", ["rmi", containerName], { stdio: "pipe" });
     }
 

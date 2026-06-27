@@ -10,6 +10,7 @@ import { box, cancel, isCancel, select } from "@clack/prompts";
 import { IS_MACOS } from "../lib/audio-host.js";
 import { AUDIO_MODE, PROFILE } from "../lib/constants.js";
 import { readAudioMode } from "../lib/global-config.js";
+import { readTotopoYaml } from "../lib/totopo-yaml.js";
 import type { WorkspaceContext } from "../lib/workspace-identity.js";
 import { readActiveProfile, readAudio } from "../lib/workspace-identity.js";
 
@@ -25,9 +26,24 @@ export async function run(args: MenuArgs): Promise<string> {
     const { ctx, workspaceRunning, audioServerRunning, version } = args;
 
     // --- Read workspace config -----------------------------------------------------------------------------------------------------------
-    const activeProfile = readActiveProfile(ctx.workspaceId) ?? PROFILE.default;
     const hasGit = existsSync(join(ctx.workspaceRoot, ".git"));
     const audioWiring = readAudio(ctx.workspaceId);
+
+    // Profiles come from totopo.yaml (the source of truth). The lock file's active profile can be stale (e.g. a
+    // profile since removed from totopo.yaml), so only trust it when it still exists. Mirror selectProfile() in
+    // dev.ts: a single profile is no real choice, so omit the line entirely rather than show noise.
+    let profileNames: string[] = [];
+    try {
+        profileNames = Object.keys(readTotopoYaml(ctx.workspaceRoot)?.profiles ?? {});
+    } catch {
+        // totopo.yaml is validated upstream; on any unexpected read error just omit the profile line.
+    }
+    const cachedProfile = readActiveProfile(ctx.workspaceId);
+    // Fall back to a profile that actually exists (default if present, else the first) so the box never
+    // shows a name absent from totopo.yaml. The line only renders when there are >1, so the list is non-empty there.
+    const fallbackProfile = profileNames.includes(PROFILE.default) ? PROFILE.default : (profileNames[0] ?? PROFILE.default);
+    const activeProfile = cachedProfile && profileNames.includes(cachedProfile) ? cachedProfile : fallbackProfile;
+    const profileLine = profileNames.length > 1 ? `\nprofile:     ${activeProfile}` : "";
 
     // --- Status box ----------------------------------------------------------------------------------------------------------------------
     const containerStatus = workspaceRunning ? "running" : "stopped";
@@ -49,7 +65,7 @@ export async function run(args: MenuArgs): Promise<string> {
     }
 
     box(
-        `workspace:   ${ctx.workspaceId}\nprofile:     ${activeProfile}\ncontainer:   ${containerStatus}${gitNotice}${audioNotice}`,
+        `workspace:   ${ctx.workspaceId}${profileLine}\ncontainer:   ${containerStatus}${gitNotice}${audioNotice}`,
         ` totopo v${version} `,
         {
             contentAlign: "left",

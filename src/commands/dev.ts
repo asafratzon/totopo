@@ -3,7 +3,7 @@
 // In-memory Dockerfile build, profile selection, pattern-based shadows, env_file handling, runtime env injection.
 // =========================================================================================================================================
 
-import { spawnSync } from "node:child_process";
+import { type StdioOptions, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { join, relative } from "node:path";
@@ -163,7 +163,7 @@ function runStartup(containerName: string, quiet?: boolean): boolean {
     // The SPACE-to-skip prompt in startup.mjs needs raw-mode stdin (-i) and a PTY (-t).
     // Omitted when quiet so test output stays pipe-capturable.
     const ttyFlags = quiet ? [] : ["-i", "-t"];
-    const result = spawnSync("docker", ["exec", "-u", "root", ...ttyFlags, containerName, "node", CONTAINER_STARTUP], {
+    const result = spawnSync("docker", ["exec", "-u", "root", ...ttyFlags, containerName, "node", CONTAINER_STARTUP, "--summary"], {
         stdio: quiet ? "pipe" : "inherit",
     });
     return result.status === 0;
@@ -195,7 +195,7 @@ export interface StartContainerOpts {
 
 export type ContainerStartResult = "created" | "resumed" | "connected";
 
-export function startContainer(opts: StartContainerOpts): ContainerStartResult {
+export async function startContainer(opts: StartContainerOpts): Promise<ContainerStartResult> {
     const {
         containerName,
         workspaceRoot,
@@ -214,7 +214,9 @@ export function startContainer(opts: StartContainerOpts): ContainerStartResult {
         noCache,
         quiet = false,
     } = opts;
-    const stdio = quiet ? ("pipe" as const) : ("inherit" as const);
+    // Used by `docker run -d` and `docker start`. Both echo the container id/name to stdout on success;
+    // drop stdout to keep that noise out of the session start, but keep stderr so real errors still show.
+    const stdio: StdioOptions = quiet ? "pipe" : ["ignore", "ignore", "inherit"];
 
     // --- Sync shadows and build mount args ------------------------------------------------------------------------------------------------
     ensureShadowsInSync(cacheDir, expandedShadows, workspaceRoot);
@@ -316,17 +318,16 @@ export function startContainer(opts: StartContainerOpts): ContainerStartResult {
 
     if (containerStatus === null) {
         // --- No container - build image and run ------------------------------------------------------------------------------------------
-        if (!quiet) log.step("Building container image...");
+        // The interactive build spinner owns the "rebuilding" message (see buildImageWithTempfile), so no log.step here.
         const dockerfileContent = buildDockerfile(join(templatesDir, "Dockerfile"), profileHook);
-        const buildResult = buildImageWithTempfile(dockerfileContent, templatesDir, containerName, noCache, quiet);
+        const buildResult = await buildImageWithTempfile(dockerfileContent, templatesDir, containerName, noCache, quiet);
         if (buildResult.status !== 0) {
             if (!quiet) outro("Failed to build container image.");
             process.exit(buildResult.status);
         }
 
-        if (!quiet) log.step("Preparing agent context...");
         injectAgentContext(cacheDir, agentDocs);
-        if (!quiet) log.step("Starting dev container...");
+        if (!quiet) log.info("Starting dev container...");
 
         const runResult = spawnSync(
             "docker",
@@ -355,9 +356,8 @@ export function startContainer(opts: StartContainerOpts): ContainerStartResult {
         return "created";
     } else if (containerStatus === "exited") {
         // --- Container stopped - resume --------------------------------------------------------------------------------------------------
-        if (!quiet) log.step("Preparing agent context...");
         injectAgentContext(cacheDir, agentDocs);
-        if (!quiet) log.step("Resuming dev container...");
+        if (!quiet) log.info("Resuming dev container...");
         const start = spawnSync("docker", ["start", containerName], { stdio });
         if (start.status !== 0) {
             if (!quiet) outro("Failed to start dev container.");
@@ -366,7 +366,6 @@ export function startContainer(opts: StartContainerOpts): ContainerStartResult {
         return "resumed";
     } else {
         // --- Container running - refresh agent context and connect ------------------------------------------------------------------------
-        if (!quiet) log.step("Refreshing agent context...");
         injectAgentContext(cacheDir, agentDocs);
         return "connected";
     }
@@ -401,7 +400,7 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
     const { paths: expandedShadows, skippedTracked } = expandShadowPatterns(shadowPatterns, workspaceDir);
 
     if (expandedShadows.length > 0) {
-        log.warn(`Shadow paths active: ${expandedShadows.join(", ")}  (Settings > Shadow paths)`);
+        log.info(`Shadow paths active: ${expandedShadows.join(", ")}  (Settings > Shadow paths)`);
     }
     if (skippedTracked.length > 0) {
         log.warn(`Skipped ${skippedTracked.length} shadow path(s) tracked by git`);
@@ -463,7 +462,7 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
         workspaceName: ctx.workspaceId,
         ...(options?.noCache !== undefined && { noCache: options.noCache }),
     };
-    startContainer(containerOpts);
+    await startContainer(containerOpts);
 
     // --- Stale image check - prompt user to rebuild if image is outdated ------------------------------------------------------------------
     const dockerfileContent = buildDockerfile(join(templatesDir, "Dockerfile"), profileHook);
@@ -484,7 +483,7 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
         if (rebuild) {
             stopAndRemoveContainer(containerName);
             spawnSync("docker", ["rmi", containerName], { stdio: "pipe" });
-            startContainer(containerOpts);
+            await startContainer(containerOpts);
             stale = false;
         }
     }
@@ -531,9 +530,9 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
             initialValue: true,
         });
         if (!isCancel(stopNow) && stopNow) {
-            log.step("Stopping container...");
+            log.info("Stopping container...");
             spawnSync("docker", ["stop", containerName], { stdio: "pipe" });
-            log.info("Container stopped - memory freed; it resumes on your next session.");
+            log.info("Container stopped.");
         }
     }
 

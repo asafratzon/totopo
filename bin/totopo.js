@@ -185,6 +185,12 @@ while (showMenu) {
         }
         case "help":
             log.info(`Check out the official docs at:\n  ${GITHUB_README_URL}`);
+            // Trailing blank line so the docs link does not sit flush against the next shell prompt.
+            process.stdout.write("\n");
+            break;
+        case "quit":
+            // Trailing blank line so the menu does not sit flush against the next shell prompt.
+            process.stdout.write("\n");
             break;
         default:
             break;
