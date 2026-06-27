@@ -18,10 +18,13 @@ const USER_SHELL_CONFIG = `
 # User shell config (PATH, prompt, welcome message, status alias)
 # ---------------------------------------------------------------------------
 ENV PATH="${CONTAINER_HOME}/.cargo/bin:${CONTAINER_HOME}/.bun/bin:${CONTAINER_HOME}/.local/bin:/usr/local/go/bin:\${PATH}"
-RUN echo 'export PS1="\\[\\033[01;32m\\][devcontainer]\\[\\033[00m\\] \\[\\033[01;34m\\]\\w\\[\\033[00m\\] \\$ "' \\
+# Prompt helper: print the working directory relative to the workspace root, so /workspace shows as
+# "/" and /workspace/src shows as "/src". Paths outside the workspace fall back to their full path.
+RUN echo '__totopo_pwd() { local p="\${PWD#/workspace}"; printf "/%s" "\${p#/}"; }' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo 'export PS1="\\[\\033[01;32m\\][totopo@\${TOTOPO_WORKSPACE}]\\[\\033[00m\\] \\[\\033[01;34m\\]\\$(__totopo_pwd)\\[\\033[00m\\] \\[\\033[01;32m\\]❯\\[\\033[00m\\] "' \\
         >> ${CONTAINER_HOME}/.bashrc && \\
     echo 'echo ""' >> ${CONTAINER_HOME}/.bashrc && \\
-    echo 'echo -e "\\033[32m●\\033[0m  \\033[1mtotopo\\033[0m \\033[90m·\\033[0m \\033[1m\${TOTOPO_WORKSPACE}\\033[0m"' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo 'echo -e "\\033[32m●\\033[0m  \\033[1mYou'"'"'re now in a totopo sandbox\\033[0m \\033[90m·\\033[0m \\033[1m\${TOTOPO_WORKSPACE}\\033[0m"' >> ${CONTAINER_HOME}/.bashrc && \\
     echo 'echo ""' >> ${CONTAINER_HOME}/.bashrc && \\
     echo 'echo -e "   \\033[90m▸ Run \\033[38;5;208mclaude\\033[90m, \\033[38;5;208mopencode\\033[90m, or \\033[38;5;208mcodex\\033[90m to start an agent.\\033[0m"' >> ${CONTAINER_HOME}/.bashrc && \\
     echo 'echo -e "   \\033[90m▸ Run \\033[97mstatus\\033[90m to see container details & installed versions.\\033[0m"' >> ${CONTAINER_HOME}/.bashrc && \\
