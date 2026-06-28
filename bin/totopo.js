@@ -9,12 +9,12 @@ import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { cancel, confirm, isCancel, log, select } from "@clack/prompts";
+import { run as advancedMenu } from "../dist/commands/advanced.js";
 import { run as dev } from "../dist/commands/dev.js";
 import { run as doctor } from "../dist/commands/doctor.js";
-import { run as globalMenu } from "../dist/commands/global.js";
 import { run as menu } from "../dist/commands/menu.js";
 import { run as onboard } from "../dist/commands/onboard.js";
-import { resetImage, stop, run as workspaceMenu } from "../dist/commands/workspace.js";
+import { resetImage, run as settingsMenu, stop } from "../dist/commands/settings.js";
 import { isAudioServerRunning } from "../dist/lib/audio-host.js";
 import { GITHUB_README_URL, repairTotopoYaml } from "../dist/lib/totopo-yaml.js";
 import { deriveContainerName, findTotopoYamlDir, listWorkspaceIds, resolveWorkspace } from "../dist/lib/workspace-identity.js";
@@ -113,15 +113,15 @@ if (!workspace) {
             message: "What would you like to do?",
             options: [
                 { value: "setup", label: "Set up totopo for this directory" },
-                { value: "manage", label: "Manage totopo →" },
+                { value: "advanced", label: "Advanced" },
             ],
         });
         if (isCancel(choice)) {
             cancel();
             process.exit(0);
         }
-        if (choice === "manage") {
-            await globalMenu();
+        if (choice === "advanced") {
+            await advancedMenu();
             process.exit(0);
         }
     }
@@ -132,7 +132,7 @@ if (!workspace) {
 }
 
 // --- Doctor (silent pre-check) -----------------------------------------------------------------------------------------------------------
-const doctorResult = await doctor(null, false);
+const doctorResult = await doctor(false);
 if (!doctorResult.ok) {
     console.error("  Fix the issues above and re-run totopo.");
     console.error("");
@@ -166,7 +166,7 @@ while (showMenu) {
             await stop(workspace.containerName);
             break;
         case "settings": {
-            const settingsResult = await workspaceMenu(workspace);
+            const settingsResult = await settingsMenu(workspace);
             if (settingsResult === "rebuild") {
                 await resetImage(workspace.containerName);
                 await dev(packageDir, workspace);
@@ -178,13 +178,19 @@ while (showMenu) {
             }
             break;
         }
-        case "manage-totopo": {
-            const result = await globalMenu(workspace.workspaceId);
+        case "advanced": {
+            const result = await advancedMenu(workspace.workspaceId);
             if (result === "back") showMenu = true;
             break;
         }
         case "help":
             log.info(`Check out the official docs at:\n  ${GITHUB_README_URL}`);
+            // Trailing blank line so the docs link does not sit flush against the next shell prompt.
+            process.stdout.write("\n");
+            break;
+        case "quit":
+            // Trailing blank line so the menu does not sit flush against the next shell prompt.
+            process.stdout.write("\n");
             break;
         default:
             break;

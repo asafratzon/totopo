@@ -1,6 +1,6 @@
 {
     "name": "totopo",
-    "version": "3.9.0",
+    "version": "3.10.0",
     "description": "Run AI coding agents safely in your local codebase",
     "type": "module",
     "bin": {
@@ -18,18 +18,6 @@
         "@types/node": "^25.4.0",
         "tsx": "^4.21.0",
         "typescript": "^5.9.3"
-    },
-    "pnpm": {
-        "supportedArchitectures": {
-            "cpu": [
-                "arm64",
-                "x64"
-            ],
-            "os": [
-                "linux",
-                "darwin"
-            ]
-        }
     },
     "scripts": {
         "start": "node bin/totopo.js",
@@ -53,7 +41,7 @@
     },
     "license": "MIT",
     "author": "Asaf Ratzon",
-    "packageManager": "pnpm@10.33.0",
+    "packageManager": "pnpm@11.9.0",
     "repository": {
         "type": "git",
         "url": "https://github.com/asafratzon/totopo"

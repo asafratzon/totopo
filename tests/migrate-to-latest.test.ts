@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, test } from "node:test";
-import { GIT_MODE, LOCK_FILE, TOTOPO_DIR, WORKSPACES_DIR } from "../src/lib/constants.js";
+import { GIT_MODE, GLOBAL_DIR, LOCK_FILE, PULSE_COOKIE_FILE, TOTOPO_DIR, WORKSPACES_DIR } from "../src/lib/constants.js";
 import { migrateAddAudio, migrateAddGitMode, runMigration } from "../src/lib/migrate-to-latest.js";
 import { LOCK_KEYS } from "../src/lib/workspace-identity.js";
 import { cleanTempDir, createTempDir, overrideEnv } from "./helpers.js";
@@ -443,6 +443,43 @@ describe("migrate-to-latest", () => {
 
         const content = readFileSync(join(wsDir, LOCK_FILE), "utf8");
         assert.ok(content.includes(`${LOCK_KEYS.audio}=false`));
+    });
+
+    // ---- migrateMoveAudioCookie -----------------------------------------------------------------------------------------------------------
+    // DOCKER_HOST points at a nonexistent socket (see beforeEach), so `docker ps` returns no containers
+    // and the cookie moves without the interactive stop-containers branch. That branch is host-verified.
+
+    test("migrateMoveAudioCookie is a no-op when no source cookie exists", async () => {
+        await runMigration(tmp);
+
+        const newCookie = join(fakeHome, TOTOPO_DIR, GLOBAL_DIR, PULSE_COOKIE_FILE);
+        assert.ok(!existsSync(newCookie), "no cookie should be created when there was none to move");
+    });
+
+    test("migrateMoveAudioCookie moves the cookie into ~/.totopo/global/", async () => {
+        const oldCookie = join(fakeHome, TOTOPO_DIR, "pulse-cookie");
+        mkdirSync(join(fakeHome, TOTOPO_DIR), { recursive: true });
+        writeFileSync(oldCookie, "secret-cookie-bytes");
+
+        await runMigration(tmp);
+
+        const newCookie = join(fakeHome, TOTOPO_DIR, GLOBAL_DIR, PULSE_COOKIE_FILE);
+        assert.ok(!existsSync(oldCookie), "old cookie should be gone");
+        assert.ok(existsSync(newCookie), "cookie should be moved into global/");
+        assert.equal(readFileSync(newCookie, "utf8"), "secret-cookie-bytes", "cookie contents should be preserved");
+    });
+
+    test("migrateMoveAudioCookie drops the stale source when the destination already exists", async () => {
+        const oldCookie = join(fakeHome, TOTOPO_DIR, "pulse-cookie");
+        const newCookie = join(fakeHome, TOTOPO_DIR, GLOBAL_DIR, PULSE_COOKIE_FILE);
+        mkdirSync(join(fakeHome, TOTOPO_DIR, GLOBAL_DIR), { recursive: true });
+        writeFileSync(oldCookie, "stale-source");
+        writeFileSync(newCookie, "authoritative-dest");
+
+        await runMigration(tmp);
+
+        assert.ok(!existsSync(oldCookie), "stale source cookie should be removed");
+        assert.equal(readFileSync(newCookie, "utf8"), "authoritative-dest", "destination cookie should be untouched");
     });
 
     // ---- migrateRemoveDeprecatedYamlFields ------------------------------------------------------------------------------------------------

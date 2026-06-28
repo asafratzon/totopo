@@ -1,12 +1,13 @@
 // =========================================================================================================================================
-// src/commands/workspace.ts - Manage Workspace submenu: shadow paths, rebuild, reset, stop, reset-image
+// src/commands/settings.ts - Settings submenu: git mode, shadow paths, voice, rebuild, reset config
 // =========================================================================================================================================
 
 import { spawnSync } from "node:child_process";
 import { relative } from "node:path";
 import { cancel, confirm, isCancel, log, multiselect, note, outro, path, select, text } from "@clack/prompts";
 import { getStatus, IS_MACOS, installPulse, startServer, stopServer, testMic } from "../lib/audio-host.js";
-import { AUDIO_TCP_PORT, GIT_MODE, type GitMode } from "../lib/constants.js";
+import { AUDIO_MODE, AUDIO_TCP_PORT, GIT_MODE, type GitMode } from "../lib/constants.js";
+import { readAudioMode, writeAudioMode } from "../lib/global-config.js";
 import { countPatternHits } from "../lib/shadows.js";
 import { buildDefaultTotopoYaml, readTotopoYaml, writeTotopoYaml } from "../lib/totopo-yaml.js";
 import type { WorkspaceContext } from "../lib/workspace-identity.js";
@@ -189,12 +190,16 @@ async function gitModeMenu(ctx: WorkspaceContext): Promise<void> {
 async function audioMenu(ctx: WorkspaceContext): Promise<void> {
     while (true) {
         const wiring = readAudio(ctx.workspaceId);
+        const mode = readAudioMode();
         const status = getStatus();
 
         const serverLine = !status.installed ? "not installed" : status.running ? `running on TCP ${AUDIO_TCP_PORT}` : "installed, stopped";
+        // The server-control mode only matters where totopo manages the server (macOS).
+        const modeLine = IS_MACOS ? `\nmode:         ${mode}` : "";
         note(
             `wiring:       ${wiring ? "enabled" : "disabled"}  (this workspace)\n` +
                 `host server:  ${serverLine}` +
+                modeLine +
                 (status.version ? `\nversion:      ${status.version}` : ""),
             "Voice / audio",
         );
@@ -202,8 +207,7 @@ async function audioMenu(ctx: WorkspaceContext): Promise<void> {
         log.message(
             "Claude Code /voice needs a microphone, which the container does not have.\n" +
                 "Enable wiring (per-workspace) and run a host PulseAudio server that streams your mic in.\n" +
-                "Access needs a dedicated, rotating cookie (and is limited to private networks), but the server\n" +
-                "still exposes your mic over a local TCP port — totopo never stops it for you, so stop it here when done.",
+                "The server exposes your mic over a local TCP port while it runs, so keep it up only while you need voice.",
         );
 
         if (!IS_MACOS) {
@@ -216,6 +220,11 @@ async function audioMenu(ctx: WorkspaceContext): Promise<void> {
             { value: "toggle", label: wiring ? "Disable wiring" : "Enable wiring", hint: "PulseAudio env for this workspace's container" },
         ];
         if (IS_MACOS) {
+            options.push({
+                value: "mode",
+                label: `Auto start/stop: ${mode === AUDIO_MODE.automatic ? "on" : "off"}`,
+                hint: "auto-start on session, stop on last exit",
+            });
             if (!status.installed) options.push({ value: "install", label: "Install pulseaudio", hint: "via Homebrew" });
             if (status.installed && !status.running)
                 options.push({ value: "start", label: "Start host server", hint: `TCP ${AUDIO_TCP_PORT}` });
@@ -237,6 +246,19 @@ async function audioMenu(ctx: WorkspaceContext): Promise<void> {
             continue;
         }
 
+        if (action === "mode") {
+            // The host server is a single shared resource, so this mode is host-global. It only changes
+            // server lifecycle behavior, not container config, so no rebuild prompt.
+            const next = mode === AUDIO_MODE.automatic ? AUDIO_MODE.manual : AUDIO_MODE.automatic;
+            writeAudioMode(next);
+            log.success(
+                next === AUDIO_MODE.automatic
+                    ? "Automatic mode on - opening a session starts the host audio server; exiting stops it when no other session is connected."
+                    : "Automatic mode off - start and stop the host audio server yourself.",
+            );
+            continue;
+        }
+
         let result: { ok: boolean; message: string };
         if (action === "install") {
             result = installPulse();
@@ -245,7 +267,7 @@ async function audioMenu(ctx: WorkspaceContext): Promise<void> {
         } else if (action === "stop") {
             result = stopServer();
         } else {
-            log.step("Recording 3 seconds — speak now...");
+            log.info("Recording 3 seconds — speak now...");
             result = testMic();
         }
 
@@ -277,7 +299,7 @@ async function promptStopContainer(ctx: WorkspaceContext): Promise<void> {
         return;
     }
 
-    log.step("Stopping container...");
+    log.info("Stopping container...");
     spawnSync("docker", ["stop", containerName], { stdio: "pipe" });
     spawnSync("docker", ["rm", containerName], { stdio: "pipe" });
     log.info("Container removed. Open a new session to apply changes.");
@@ -308,7 +330,7 @@ async function resetTotopoYaml(ctx: WorkspaceContext): Promise<void> {
     await promptStopContainer(ctx);
 }
 
-// --- Manage Workspace submenu ------------------------------------------------------------------------------------------------------------
+// --- Settings submenu --------------------------------------------------------------------------------------------------------------------
 export async function run(ctx: WorkspaceContext): Promise<"back" | "rebuild" | "clean-rebuild" | undefined> {
     while (true) {
         const currentGitMode = readGitMode(ctx.workspaceId) ?? GIT_MODE.local;
@@ -322,7 +344,7 @@ export async function run(ctx: WorkspaceContext): Promise<"back" | "rebuild" | "
             { value: "back", label: "← Back" },
         ];
 
-        const action = await select({ message: "Manage Workspace:", options });
+        const action = await select({ message: "Settings:", options });
 
         if (isCancel(action) || action === "back") {
             return "back";
@@ -364,7 +386,7 @@ export async function stop(containerName: string): Promise<void> {
         return;
     }
 
-    log.step(`Stopping ${containerName}...`);
+    log.info(`Stopping ${containerName}...`);
     spawnSync("docker", ["stop", containerName], { stdio: "pipe" });
     spawnSync("docker", ["rm", containerName], { stdio: "pipe" });
 
@@ -378,14 +400,14 @@ export async function resetImage(containerName: string): Promise<void> {
         stdio: "pipe",
     });
     if (inspectResult.status === 0) {
-        log.step(`Stopping container ${containerName}...`);
+        log.info(`Stopping container ${containerName}...`);
         spawnSync("docker", ["stop", containerName], { stdio: "pipe" });
         spawnSync("docker", ["rm", containerName], { stdio: "pipe" });
     }
 
     const imageResult = spawnSync("docker", ["images", "-q", containerName], { encoding: "utf8", stdio: "pipe" });
     if ((imageResult.stdout ?? "").trim().length > 0) {
-        log.step(`Removing image ${containerName}...`);
+        log.info(`Removing image ${containerName}...`);
         spawnSync("docker", ["rmi", containerName], { stdio: "pipe" });
     }
 

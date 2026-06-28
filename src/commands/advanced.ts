@@ -1,5 +1,5 @@
 // =========================================================================================================================================
-// src/commands/global.ts - Manage totopo menu (global, all workspaces)
+// src/commands/advanced.ts - Advanced menu: less-common operations (stop containers, clear agent memory, remove images, uninstall)
 // =========================================================================================================================================
 
 import { spawnSync } from "node:child_process";
@@ -58,7 +58,7 @@ async function stopContainers(): Promise<void> {
     }
 
     for (const name of toStop) {
-        log.step(`Stopping ${name}...`);
+        log.info(`Stopping ${name}...`);
         stopAndRemoveContainer(name);
     }
     log.success("Done.");
@@ -107,7 +107,7 @@ async function clearAgentMemory(): Promise<void> {
                 message: `Container for ${w.workspaceId} is running. Stop it to clear memory?`,
             });
             if (isCancel(confirmed) || !confirmed) continue;
-            log.step(`Stopping ${w.containerName}...`);
+            log.info(`Stopping ${w.containerName}...`);
             stopAndRemoveContainer(w.containerName);
         }
 
@@ -154,10 +154,10 @@ async function removeImages(): Promise<void> {
         });
         const containers = (psResult.stdout ?? "").trim().split("\n").filter(Boolean);
         for (const c of containers) {
-            log.step(`Stopping container ${c} before removing image...`);
+            log.info(`Stopping container ${c} before removing image...`);
             stopAndRemoveContainer(c);
         }
-        log.step(`Removing image ${repo}...`);
+        log.info(`Removing image ${repo}...`);
         spawnSync("docker", ["rmi", repo], { stdio: "pipe" });
     }
     log.success("Done.");
@@ -208,11 +208,11 @@ async function uninstallWorkspaces(currentWorkspaceId?: string): Promise<boolean
         });
         const containers = (psResult.stdout ?? "").trim().split("\n").filter(Boolean);
         for (const c of containers) {
-            log.step(`Stopping and removing container ${c}...`);
+            log.info(`Stopping and removing container ${c}...`);
             stopAndRemoveContainer(c);
         }
 
-        log.step(`Removing image ${w.containerName}...`);
+        log.info(`Removing image ${w.containerName}...`);
         spawnSync("docker", ["rmi", w.containerName], { stdio: "inherit" });
 
         // Ask whether to also remove totopo.yaml from the workspace root
@@ -251,7 +251,7 @@ async function uninstallTotopo(): Promise<void> {
     });
     const containers = (psResult.stdout ?? "").trim().split("\n").filter(Boolean);
     for (const c of containers) {
-        log.step(`Stopping and removing container ${c}...`);
+        log.info(`Stopping and removing container ${c}...`);
         stopAndRemoveContainer(c);
     }
 
@@ -261,25 +261,25 @@ async function uninstallTotopo(): Promise<void> {
     });
     const imgs = (imagesResult.stdout ?? "").trim().split("\n").filter(Boolean);
     for (const img of imgs) {
-        log.step(`Removing image ${img}...`);
+        log.info(`Removing image ${img}...`);
         spawnSync("docker", ["rmi", img], { stdio: "inherit" });
     }
 
     // Delete ~/.totopo/
     const globalTotopoDir = join(homedir(), TOTOPO_DIR);
     if (existsSync(globalTotopoDir)) {
-        log.step("Deleting ~/.totopo/...");
+        log.info("Deleting ~/.totopo/...");
         safeRmSync(globalTotopoDir, { recursive: true, force: true });
     }
 
     outro("totopo uninstalled. Re-run npx totopo to set up again.");
 }
 
-// --- Manage totopo menu ------------------------------------------------------------------------------------------------------------------
+// --- Advanced menu -----------------------------------------------------------------------------------------------------------------------
 export async function run(currentWorkspaceId?: string): Promise<"back" | undefined> {
     while (true) {
         const action = await select({
-            message: "Manage totopo:",
+            message: "Advanced:",
             options: [
                 { value: "stop-containers", label: "Stop containers", hint: "pick running containers" },
                 { value: "clear-memory", label: "Clear agent memory", hint: "pick workspaces to clear" },

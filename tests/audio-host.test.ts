@@ -3,7 +3,7 @@ import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, test } from "node:test";
 import { ensureCookieFile, hostCookiePath } from "../src/lib/audio-host.js";
-import { TOTOPO_DIR } from "../src/lib/constants.js";
+import { GLOBAL_DIR, PULSE_COOKIE_FILE, TOTOPO_DIR } from "../src/lib/constants.js";
 import { cleanTempDir, createTempDir, overrideEnv } from "./helpers.js";
 
 describe("audio-host dedicated cookie", () => {
@@ -21,7 +21,7 @@ describe("audio-host dedicated cookie", () => {
     });
 
     test("hostCookiePath points at the totopo-owned cookie under HOME", () => {
-        assert.equal(hostCookiePath(), join(home, TOTOPO_DIR, "pulse-cookie"));
+        assert.equal(hostCookiePath(), join(home, TOTOPO_DIR, GLOBAL_DIR, PULSE_COOKIE_FILE));
     });
 
     test("ensureCookieFile creates a 256-byte cookie not readable by group/other", () => {

@@ -9,14 +9,15 @@ import { log, outro } from "@clack/prompts";
 
 // Returns true if the given CLI tool is resolvable in the system PATH
 function commandExists(cmd: string): boolean {
-    const r = spawnSync("command", ["-v", cmd], {
+    // Single command string (not an args array) under shell: true sidesteps Node's DEP0190; cmd is a hardcoded internal name.
+    const r = spawnSync(`command -v ${cmd}`, {
         shell: true,
         encoding: "utf8",
     });
     return r.status === 0;
 }
 
-export async function run(_workspaceDir: string | null, verbose: boolean): Promise<{ ok: boolean }> {
+export async function run(verbose: boolean): Promise<{ ok: boolean }> {
     const errors: string[] = [];
 
     function check(label: string, ok: boolean, detail?: string): void {

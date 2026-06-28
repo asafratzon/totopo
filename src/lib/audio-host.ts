@@ -9,7 +9,7 @@ import { randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { AUDIO_TCP_PORT, TOTOPO_DIR } from "./constants.js";
+import { AUDIO_TCP_PORT, CONTAINER_NAME_PREFIX, GLOBAL_DIR, PULSE_COOKIE_FILE, TOTOPO_DIR } from "./constants.js";
 
 // Coarse network filter: loopback plus the private (RFC1918) ranges Docker may present container
 // traffic from. This keeps the server off the public internet without guessing the exact source IP
@@ -62,6 +62,35 @@ export function isAudioServerRunning(): boolean {
     return spawnSync("pulseaudio", ["--check"], { stdio: "pipe" }).status === 0;
 }
 
+// Count live interactive sessions in a single container. dev.ts connects each with
+// `docker exec -it ... bash --login`, so a `bash --login` process is the proxy for one live session.
+// At exit the just-left shell is already reaped before this runs, so the last exit reaches 0.
+// Over-counting (e.g. an agent that spawns its own `bash --login`) only keeps things alive, which is
+// safe; a non-zero/errored `docker exec` (container gone) returns 0.
+export function containerSessionCount(containerName: string): number {
+    const r = spawnSync("docker", ["exec", containerName, "pgrep", "-fc", "--", "bash --login"], { encoding: "utf8", stdio: "pipe" });
+    const n = Number.parseInt((r.stdout ?? "").trim(), 10);
+    return Number.isFinite(n) ? n : 0;
+}
+
+// Sum live interactive sessions across ALL totopo containers (delegates to containerSessionCount).
+// The host server is shared by every workspace, so automatic-mode auto-stop fires only at 0 - no
+// session anywhere. A hard-killed host process (SIGKILL / closed window) skips the exit check and
+// leaves the server running.
+export function connectedSessionCount(): number {
+    const ps = spawnSync("docker", ["ps", "--filter", `name=${CONTAINER_NAME_PREFIX}`, "--format", "{{.Names}}"], {
+        encoding: "utf8",
+        stdio: "pipe",
+    });
+    if (ps.status !== 0) return 0;
+    const names = (ps.stdout ?? "").trim().split("\n").filter(Boolean);
+    let total = 0;
+    for (const name of names) {
+        total += containerSessionCount(name);
+    }
+    return total;
+}
+
 // --- Status ------------------------------------------------------------------------------------------------------------------------------
 
 // Snapshot of the host audio server for the Voice menu.
@@ -89,10 +118,11 @@ export function installPulse(): ActionResult {
 const COOKIE_BYTES = 256;
 
 // totopo uses its OWN cookie for the container (TCP) path, kept separate from the user's general
-// PulseAudio cookie and never mounting that general credential into the container. It lives at a
+// PulseAudio cookie and never mounting that general credential into the container. It lives under the
+// host-global ~/.totopo/global/ dir (the server is a single shared resource, not per-workspace) at a
 // stable path that survives reboots, so a running container keeps working without a rebuild.
 export function hostCookiePath(): string {
-    return join(homedir(), TOTOPO_DIR, "pulse-cookie");
+    return join(homedir(), TOTOPO_DIR, GLOBAL_DIR, PULSE_COOKIE_FILE);
 }
 
 // Write a fresh random cookie to `path`, in place (truncating the same file) so a container's
