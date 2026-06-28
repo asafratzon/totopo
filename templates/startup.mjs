@@ -6,7 +6,7 @@
 // Must use only Node.js built-ins -- no external packages available in container.
 // =============================================================================
 
-import { execSync } from "node:child_process";
+import { execSync, spawn } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { checkGitMode } from "./startup-git-mode.mjs";
 
@@ -23,7 +23,7 @@ const run = (cmd) => {
 
 // -- ANSI helpers -------------------------------------------------------------
 const green = (s) => `\x1b[32m${s}\x1b[0m`;
-const _yellow = (s) => `\x1b[33m${s}\x1b[0m`;
+const yellow = (s) => `\x1b[33m${s}\x1b[0m`;
 const red = (s) => `\x1b[31m${s}\x1b[0m`;
 const blue = (s) => `\x1b[34m${s}\x1b[0m`;
 const dim = (s) => `\x1b[2m${s}\x1b[0m`;
@@ -32,16 +32,25 @@ const grey = (s) => `\x1b[90m${s}\x1b[0m`;
 
 let errors = 0;
 
-const ok = (label, detail) => console.log(`${green("✓")} ${label.padEnd(24)}${detail ? dim(detail) : ""}`);
-const skip = (label, detail) => console.log(`${grey("–")} ${grey(label.padEnd(24))}${detail ? grey(detail) : ""}`);
+// Summary mode (passed by the host at session start): still run every check and side-effect, but stay
+// quiet -- suppress the section dump and surface only failures. The 'status' alias runs without it,
+// so it keeps the full verbose output as the on-demand "details" view.
+const summary = process.argv.includes("--summary");
+
+const ok = summary ? () => {} : (label, detail) => console.log(`${green("✓")} ${label.padEnd(24)}${detail ? dim(detail) : ""}`);
+const skip = summary ? () => {} : (label, detail) => console.log(`${grey("–")} ${grey(label.padEnd(24))}${detail ? grey(detail) : ""}`);
 const fail = (label, detail) => {
     console.log(`${red("✗")} ${label.padEnd(24)}${detail || ""}`);
     errors++;
 };
-const section = (title) => console.log(`\n${bold(title)}`);
+// Non-fatal notice: always prints (even in summary), but does NOT increment errors, so it never aborts
+// the session. Used for things the user should know about but that must not block connecting (e.g. a
+// transient AI CLI update failure -- the existing versions still work).
+const warn = (label, detail) => console.log(`${yellow("!")} ${label.padEnd(24)}${detail ? yellow(detail) : ""}`);
+const section = summary ? () => {} : (title) => console.log(`\n${bold(title)}`);
 
 // -- Header -------------------------------------------------------------------
-console.log(`\n${bold("totopo - Sandbox for AI Agents")}\n`);
+if (!summary) console.log(`\n${bold("totopo - Sandbox for AI Agents")}\n`);
 
 // -- AI CLI update (requires root - skipped when run via 'status' alias as devuser) -
 section("AI CLI update");
@@ -60,18 +69,81 @@ try {
     // File missing or unreadable -- treat as never updated
 }
 
-const doUpdate = (label) => {
-    console.log(`${blue("●")} ${dim(label)}`);
-    try {
-        execSync("npm install -g opencode-ai@latest @anthropic-ai/claude-code@latest @openai/codex@latest", {
-            stdio: "inherit",
-        });
-        writeFileSync(TIMESTAMP_FILE, `${new Date().toISOString()}\n`);
-        ok("AI CLIs", "updated");
-    } catch {
-        fail("AI CLIs", "update failed -- continuing with existing versions");
+// Print npm's output indented under the bullet above, so its flush-left "changed N packages" summary
+// reads as part of totopo's output rather than looking like it leaked from unrelated logging.
+const printIndented = (text) => {
+    for (const line of text.split("\n")) {
+        if (line.trim()) console.log(grey(`   ${line}`));
     }
 };
+
+// Run the global npm install behind a one-line braille spinner so the user can see the (otherwise
+// silent, buffered) install is alive on a TTY. npm output is captured and printed indented only once it
+// finishes, keeping the live view to a single animated line. A failed update is NON-FATAL: it reports
+// via warn() (no errors++), so a transient registry/network hiccup never blocks the session -- the user
+// keeps the existing CLI versions. On a non-TTY (tests, piped) the spinner is skipped for clean output.
+const doUpdate = (label) =>
+    new Promise((resolve) => {
+        const animate = process.stdout.isTTY;
+        const frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+        let frame = 0;
+        let timer;
+        if (animate) {
+            const draw = () => {
+                process.stdout.write(`\r${blue(frames[frame])} ${dim(label)}`);
+                frame = (frame + 1) % frames.length;
+            };
+            draw();
+            timer = setInterval(draw, 80);
+        } else {
+            console.log(`${blue("●")} ${dim(label)}`);
+        }
+
+        const child = spawn("npm", ["install", "-g", "opencode-ai@latest", "@anthropic-ai/claude-code@latest", "@openai/codex@latest"], {
+            stdio: ["ignore", "pipe", "pipe"],
+        });
+        let out = "";
+        let errOut = "";
+        child.stdout.setEncoding("utf8");
+        child.stderr.setEncoding("utf8");
+        child.stdout.on("data", (d) => {
+            out += d;
+        });
+        child.stderr.on("data", (d) => {
+            errOut += d;
+        });
+
+        // Settle exactly once (spawn can emit both 'error' and 'close'). Clear the spinner line and leave
+        // a static bullet in its place so scrollback reads cleanly, then print the captured output.
+        let done = false;
+        const finish = (report) => {
+            if (done) return;
+            done = true;
+            if (timer) clearInterval(timer);
+            if (animate) process.stdout.write(`\r\x1b[K${blue("●")} ${dim(label)}\n`);
+            report();
+            resolve();
+        };
+
+        child.on("error", (err) => {
+            finish(() => {
+                printIndented(String(err?.message ?? err));
+                warn("AI CLIs", "update failed -- continuing with existing versions");
+            });
+        });
+        child.on("close", (code) => {
+            finish(() => {
+                if (code === 0) {
+                    printIndented(out);
+                    writeFileSync(TIMESTAMP_FILE, `${new Date().toISOString()}\n`);
+                    ok("AI CLIs", "updated");
+                } else {
+                    printIndented(`${out}${errOut}`);
+                    warn("AI CLIs", "update failed -- continuing with existing versions");
+                }
+            });
+        });
+    });
 
 // SPACE within `seconds` -> skip. Any other input is ignored. Ctrl+C exits 130. Non-TTY -> no skip.
 const promptSkipUpdate = (seconds) =>
@@ -123,12 +195,17 @@ if (Number.isFinite(lastUpdate) && Date.now() - lastUpdate < THROTTLE_MS) {
     ok("AI CLIs", "up to date");
 } else if (!isRoot) {
     skip("AI CLIs", "update skipped (requires root)");
-} else if (!timestampFileExists) {
-    doUpdate("Installing AI CLIs...");
-} else if (await promptSkipUpdate(5)) {
-    skip("AI CLIs", "update skipped by user");
 } else {
-    doUpdate("Updating AI CLIs to latest...");
+    // About to show update activity (the skip prompt and/or install/update output). In summary mode that is the
+    // first thing after the host's "Starting dev container...", so add a blank line to separate it.
+    if (summary) console.log("");
+    if (!timestampFileExists) {
+        await doUpdate("Installing AI CLIs...");
+    } else if (await promptSkipUpdate(5)) {
+        skip("AI CLIs", "update skipped by user");
+    } else {
+        await doUpdate("Updating AI CLIs to latest...");
+    }
 }
 
 // -- Security -----------------------------------------------------------------
@@ -210,18 +287,25 @@ ok("redis-cli", run("redis-cli --version") ?? "not found");
 // -- API keys -----------------------------------------------------------------
 section("API keys");
 
-console.log(`${blue("●")} ${dim("API keys are injected via env_file in totopo.yaml. Set env_file to point to your .env file.")}`);
+// Direct console.log, so it must be gated explicitly to stay quiet in summary mode (kept for 'status').
+if (!summary) {
+    console.log(`${blue("●")} ${dim("API keys are injected via env_file in totopo.yaml. Set env_file to point to your .env file.")}`);
+}
 
 // -- Summary ------------------------------------------------------------------
 if (errors === 0) {
-    const workspaceSuffix = process.env.TOTOPO_WORKSPACE ? ` - workspace: ${bold(process.env.TOTOPO_WORKSPACE)}` : "";
-    console.log(`\n${blue("●")}  ${bold("totopo dev container ready")}${workspaceSuffix}`);
-    console.log(
-        `${grey("   To adjust settings, ask any agent about")} ${bold("totopo.yaml")} ${grey("- it lives in the workspace root.")}\n`,
-    );
-    console.log(`${green("●")} ${bold("Ready.")}`);
-    console.log(`${grey("Type 'status' to re-run the readiness check.")}\n`);
+    // Summary mode stays silent on success -- the welcome block is printed by the shell on connect.
+    if (!summary) {
+        const workspaceSuffix = process.env.TOTOPO_WORKSPACE ? ` - workspace: ${bold(process.env.TOTOPO_WORKSPACE)}` : "";
+        console.log(`\n${blue("●")}  ${bold("totopo dev container ready")}${workspaceSuffix}`);
+        console.log(
+            `${grey("   To adjust settings, ask any agent about")} ${bold("totopo.yaml")} ${grey("- it lives in the workspace root.")}\n`,
+        );
+        console.log(`${green("●")} ${bold("Ready.")}`);
+        console.log(`${grey("Type 'status' to re-run the readiness check.")}\n`);
+    }
 } else {
     console.log(`\n${red("●")} ${bold(`${errors} error(s) - see above. Rebuild the container to fix.`)}\n`);
+    if (summary) console.log(`${grey("Run 'status' for full readiness details.")}\n`);
     process.exit(1);
 }

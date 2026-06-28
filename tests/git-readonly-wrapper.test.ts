@@ -337,7 +337,7 @@ describe("classify - error message format", () => {
         assert.equal(r.allow, false);
         if (!r.allow) {
             assert.match(r.reason, /Switch git mode/);
-            assert.match(r.reason, /Manage Workspace/);
+            assert.match(r.reason, /Settings/);
         }
     });
 });

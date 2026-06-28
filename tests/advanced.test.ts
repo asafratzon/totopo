@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { removeWorkspaceFiles } from "../src/commands/global.js";
+import { removeWorkspaceFiles } from "../src/commands/advanced.js";
 import { cleanTempDir, createTempDir } from "./helpers.js";
 
 describe("removeWorkspaceFiles", () => {

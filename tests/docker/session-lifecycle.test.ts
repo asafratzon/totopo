@@ -52,9 +52,9 @@ const TEMPLATES_DIR = join(import.meta.dirname, "../../templates");
 // builds the production image, so this is fast (all layers CACHED) on a warm daemon.
 let prodImageName!: string;
 
-before(() => {
+before(async () => {
     prodImageName = uniqueName("prod");
-    const result = buildImageWithTempfile(
+    const result = await buildImageWithTempfile(
         buildDockerfile(join(TEMPLATES_DIR, "Dockerfile")),
         TEMPLATES_DIR,
         prodImageName,
@@ -117,36 +117,36 @@ describe("session lifecycle", () => {
         await cleanTempDir(cacheDir);
     });
 
-    test("creates container and returns 'created'", () => {
-        const result = startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
+    test("creates container and returns 'created'", async () => {
+        const result = await startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
         assert.equal(result, "created");
         assert.equal(dockerContainerStatus(containerName), "running");
     });
 
-    test("container has totopo labels set", () => {
-        startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { activeProfile: PROFILE.extended }));
+    test("container has totopo labels set", async () => {
+        await startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { activeProfile: PROFILE.extended }));
         assert.equal(dockerContainerLabel(containerName, LABEL_MANAGED), "true");
         assert.equal(dockerContainerLabel(containerName, LABEL_PROFILE), PROFILE.extended);
         assert.equal(dockerContainerLabel(containerName, LABEL_SHADOWS), "");
     });
 
-    test("container runs as devuser and WORKDIR is /workspace", () => {
-        startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
+    test("container runs as devuser and WORKDIR is /workspace", async () => {
+        await startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
         const whoami = dockerExec(containerName, ["whoami"]);
         assert.equal(whoami.stdout, "devuser");
         const pwd = dockerExec(containerName, ["pwd"]);
         assert.equal(pwd.stdout, "/workspace");
     });
 
-    test("workspace bind mount is visible inside container", () => {
+    test("workspace bind mount is visible inside container", async () => {
         writeFileSync(join(workspaceRoot, "marker.txt"), "hello-from-host");
-        startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
+        await startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
         const cat = dockerExec(containerName, ["cat", "/workspace/marker.txt"]);
         assert.equal(cat.stdout, "hello-from-host");
     });
 
-    test("pnpm-store bind mount is present, writable, and sourced from cache dir", () => {
-        startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
+    test("pnpm-store bind mount is present, writable, and sourced from cache dir", async () => {
+        await startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
         // Mount target itself must be writable as devuser.
         const probe = dockerExec(containerName, ["sh", "-c", "touch /home/devuser/.local/share/pnpm/store/.totopo-mount-probe && echo OK"]);
         assert.equal(probe.stdout, "OK", "pnpm store mount must be writable as devuser");
@@ -178,9 +178,9 @@ describe("session lifecycle", () => {
         assert.equal(inspect.stdout.trim(), join(cacheDir, "pnpm-store"));
     });
 
-    test("pnpm install runs cleanly and does not create .pnpm-store in the workspace", () => {
+    test("pnpm install runs cleanly and does not create .pnpm-store in the workspace", async () => {
         writeFileSync(join(workspaceRoot, "package.json"), JSON.stringify({ name: "totopo-test", version: "0.0.0", private: true }));
-        startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
+        await startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
 
         // Confirm the image-baked config is actually visible to pnpm. Without this, a config that
         // never gets read produces the same symptom as a config that doesn't work, and we cannot
@@ -209,25 +209,25 @@ describe("session lifecycle", () => {
         }
     });
 
-    test("second call to running container returns 'connected'", () => {
-        startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
-        const result = startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
+    test("second call to running container returns 'connected'", async () => {
+        await startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
+        const result = await startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
         assert.equal(result, "connected");
         assert.equal(dockerContainerStatus(containerName), "running");
     });
 
-    test("stopped container resumes and returns 'resumed'", () => {
-        startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
+    test("stopped container resumes and returns 'resumed'", async () => {
+        await startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
         spawnSync("docker", ["stop", containerName], { stdio: "pipe" });
         assert.equal(dockerContainerStatus(containerName), "exited");
 
-        const result = startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
+        const result = await startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
         assert.equal(result, "resumed");
         assert.equal(dockerContainerStatus(containerName), "running");
     });
 
-    test("shadow change triggers container recreation", () => {
-        startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { expandedShadows: [] }));
+    test("shadow change triggers container recreation", async () => {
+        await startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { expandedShadows: [] }));
         assert.equal(dockerContainerLabel(containerName, LABEL_SHADOWS), "");
 
         // Simulate a shadow being added
@@ -235,55 +235,55 @@ describe("session lifecycle", () => {
         mkdirSync(shadowDir, { recursive: true });
         const { paths: expanded } = expandShadowPatterns(["node_modules"], workspaceRoot);
 
-        const result = startContainer(
+        const result = await startContainer(
             makeOpts(containerName, workspaceRoot, cacheDir, { expandedShadows: expanded, shadowPatterns: ["node_modules"] }),
         );
         assert.equal(result, "created", "container should be recreated after shadow change");
         assert.ok(dockerContainerLabel(containerName, LABEL_SHADOWS).includes("node_modules"), "shadow label should reflect new shadow");
     });
 
-    test("profile change triggers image rebuild and container recreation", () => {
-        startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { activeProfile: PROFILE.default }));
+    test("profile change triggers image rebuild and container recreation", async () => {
+        await startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { activeProfile: PROFILE.default }));
         assert.equal(dockerContainerLabel(containerName, LABEL_PROFILE), PROFILE.default);
 
-        const result = startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { activeProfile: PROFILE.extended }));
+        const result = await startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { activeProfile: PROFILE.extended }));
         assert.equal(result, "created", "container should be recreated after profile change");
         assert.equal(dockerContainerLabel(containerName, LABEL_PROFILE), PROFILE.extended);
     });
 
-    test("env_file is passed to container", () => {
+    test("env_file is passed to container", async () => {
         const envFile = join(workspaceRoot, ".env");
         writeFileSync(envFile, "TOTOPO_TEST_VAR=hello123\n");
-        startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { envFilePath: envFile }));
+        await startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { envFilePath: envFile }));
         const result = dockerExec(containerName, ["sh", "-c", "echo $TOTOPO_TEST_VAR"]);
         assert.equal(result.stdout, "hello123");
     });
 
-    test("git mode label and env var reflect the active mode", () => {
-        startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { gitMode: GIT_MODE.strict }));
+    test("git mode label and env var reflect the active mode", async () => {
+        await startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { gitMode: GIT_MODE.strict }));
         assert.equal(dockerContainerLabel(containerName, LABEL_GIT_MODE), GIT_MODE.strict);
         const env = dockerExec(containerName, ["printenv", "TOTOPO_GIT_MODE"]);
         assert.equal(env.stdout, GIT_MODE.strict);
     });
 
-    test("git mode change triggers container recreation", () => {
-        startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { gitMode: GIT_MODE.local }));
+    test("git mode change triggers container recreation", async () => {
+        await startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { gitMode: GIT_MODE.local }));
         assert.equal(dockerContainerLabel(containerName, LABEL_GIT_MODE), GIT_MODE.local);
 
-        const result = startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { gitMode: GIT_MODE.strict }));
+        const result = await startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { gitMode: GIT_MODE.strict }));
         assert.equal(result, "created", "container should be recreated when git mode changes");
         assert.equal(dockerContainerLabel(containerName, LABEL_GIT_MODE), GIT_MODE.strict);
     });
 
-    test("audio off by default: no label flag, no PulseAudio env, no extra host", () => {
-        startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
+    test("audio off by default: no label flag, no PulseAudio env, no extra host", async () => {
+        await startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
         assert.equal(dockerContainerLabel(containerName, LABEL_AUDIO), "false");
         assert.equal(dockerExec(containerName, ["sh", "-c", "echo $PULSE_SERVER"]).stdout, "");
         assert.ok(!dockerExtraHosts(containerName).includes("host.docker.internal"), "no --add-host when audio is off");
     });
 
-    test("audio on: label, PulseAudio env, and host-gateway are wired", () => {
-        startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { audio: true }));
+    test("audio on: label, PulseAudio env, and host-gateway are wired", async () => {
+        await startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { audio: true }));
         assert.equal(dockerContainerLabel(containerName, LABEL_AUDIO), "true");
         assert.equal(dockerExec(containerName, ["printenv", "PULSE_SERVER"]).stdout, "tcp:host.docker.internal:4713");
         assert.equal(dockerExec(containerName, ["printenv", "AUDIODRIVER"]).stdout, "pulseaudio");
@@ -295,20 +295,20 @@ describe("session lifecycle", () => {
         assert.equal(dockerExec(containerName, ["sh", "-c", "echo $PULSE_COOKIE"]).stdout, "");
     });
 
-    test("audio on with cookie: PULSE_COOKIE env and cookie mounted read-only", () => {
+    test("audio on with cookie: PULSE_COOKIE env and cookie mounted read-only", async () => {
         const cookieFile = join(cacheDir, "pulse-cookie");
         const secret = "totopo-test-cookie-secret";
         writeFileSync(cookieFile, secret);
-        startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { audio: true, audioCookiePath: cookieFile }));
+        await startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { audio: true, audioCookiePath: cookieFile }));
         assert.equal(dockerExec(containerName, ["printenv", "PULSE_COOKIE"]).stdout, AUDIO_COOKIE_CONTAINER_PATH);
         assert.equal(dockerExec(containerName, ["cat", AUDIO_COOKIE_CONTAINER_PATH]).stdout, secret);
     });
 
-    test("audio toggle triggers container recreation", () => {
-        startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { audio: false }));
+    test("audio toggle triggers container recreation", async () => {
+        await startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { audio: false }));
         assert.equal(dockerContainerLabel(containerName, LABEL_AUDIO), "false");
 
-        const result = startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { audio: true }));
+        const result = await startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { audio: true }));
         assert.equal(result, "created", "container should be recreated when audio is toggled");
         assert.equal(dockerContainerLabel(containerName, LABEL_AUDIO), "true");
     });
@@ -336,7 +336,7 @@ describe("shadow path mounts", () => {
         await cleanTempDir(cacheDir);
     });
 
-    test("shadow mount overlays workspace directory with empty container-local copy", () => {
+    test("shadow mount overlays workspace directory with empty container-local copy", async () => {
         // Host workspace has node_modules with a secret file
         const hostNodeModules = join(workspaceRoot, "node_modules");
         mkdirSync(hostNodeModules, { recursive: true });
@@ -344,45 +344,49 @@ describe("shadow path mounts", () => {
 
         const { paths: expanded } = expandShadowPatterns(["node_modules"], workspaceRoot);
 
-        startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { expandedShadows: expanded, shadowPatterns: ["node_modules"] }));
+        await startContainer(
+            makeOpts(containerName, workspaceRoot, cacheDir, { expandedShadows: expanded, shadowPatterns: ["node_modules"] }),
+        );
 
         // Container should see an empty node_modules (shadow overlay hides host content)
         const ls = dockerExec(containerName, ["sh", "-c", "ls /workspace/node_modules 2>/dev/null | wc -l"]);
         assert.equal(ls.stdout, "0", "shadow-overlaid node_modules should appear empty");
     });
 
-    test("shadow mount for glob pattern hides matching files", () => {
+    test("shadow mount for glob pattern hides matching files", async () => {
         writeFileSync(join(workspaceRoot, ".env"), "SECRET=supersecret\n");
 
         const { paths: expanded } = expandShadowPatterns([".env*"], workspaceRoot);
 
-        startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { expandedShadows: expanded, shadowPatterns: [".env*"] }));
+        await startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { expandedShadows: expanded, shadowPatterns: [".env*"] }));
 
         const cat = dockerExec(containerName, ["sh", "-c", "cat /workspace/.env 2>/dev/null || echo EMPTY"]);
         assert.ok(cat.stdout === "EMPTY" || cat.stdout === "", "shadowed .env should not expose host content");
     });
 
-    test("workspace files outside shadow paths remain visible", () => {
+    test("workspace files outside shadow paths remain visible", async () => {
         const hostNodeModules = join(workspaceRoot, "node_modules");
         mkdirSync(hostNodeModules, { recursive: true });
         writeFileSync(join(workspaceRoot, "README.md"), "visible-file");
 
         const { paths: expanded } = expandShadowPatterns(["node_modules"], workspaceRoot);
 
-        startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { expandedShadows: expanded, shadowPatterns: ["node_modules"] }));
+        await startContainer(
+            makeOpts(containerName, workspaceRoot, cacheDir, { expandedShadows: expanded, shadowPatterns: ["node_modules"] }),
+        );
 
         const cat = dockerExec(containerName, ["cat", "/workspace/README.md"]);
         assert.equal(cat.stdout, "visible-file", "files outside shadow paths must remain accessible");
     });
 
-    test("multiple shadow mounts coexist independently", () => {
+    test("multiple shadow mounts coexist independently", async () => {
         mkdirSync(join(workspaceRoot, "node_modules"), { recursive: true });
         writeFileSync(join(workspaceRoot, ".env"), "SECRET=1\n");
         writeFileSync(join(workspaceRoot, "keep.txt"), "keep");
 
         const { paths: expanded } = expandShadowPatterns(["node_modules", ".env*"], workspaceRoot);
 
-        startContainer(
+        await startContainer(
             makeOpts(containerName, workspaceRoot, cacheDir, { expandedShadows: expanded, shadowPatterns: ["node_modules", ".env*"] }),
         );
 
@@ -425,8 +429,8 @@ describe("profile hooks", () => {
         await cleanTempDir(profileTemplatesDir);
     });
 
-    test("profile hook creates a file visible inside the container", () => {
-        startContainer(
+    test("profile hook creates a file visible inside the container", async () => {
+        await startContainer(
             makeOpts(containerName, workspaceRoot, cacheDir, {
                 templatesDir: profileTemplatesDir,
                 profileHook: 'RUN echo "hook-test" > /etc/totopo-hook-marker',
@@ -437,8 +441,8 @@ describe("profile hooks", () => {
         assert.equal(cat.stdout, "hook-test");
     });
 
-    test("empty profile hook produces a working container", () => {
-        const result = startContainer(
+    test("empty profile hook produces a working container", async () => {
+        const result = await startContainer(
             makeOpts(containerName, workspaceRoot, cacheDir, {
                 templatesDir: profileTemplatesDir,
                 profileHook: "",
@@ -472,22 +476,22 @@ describe("startup script", () => {
         await cleanTempDir(cacheDir);
     });
 
-    test("build-time timestamp file exists in production image", () => {
-        startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
+    test("build-time timestamp file exists in production image", async () => {
+        await startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
         const cat = dockerExec(containerName, ["cat", "/home/devuser/.ai-cli-updated"]);
         assert.equal(cat.status, 0, ".ai-cli-updated should exist");
         const timestamp = new Date(cat.stdout);
         assert.ok(!Number.isNaN(timestamp.getTime()), "timestamp should be a valid date");
     });
 
-    test("startup.mjs script exists in production image", () => {
-        startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
+    test("startup.mjs script exists in production image", async () => {
+        await startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
         const stat = dockerExec(containerName, ["test", "-f", CONTAINER_STARTUP]);
         assert.equal(stat.status, 0, "startup.mjs should exist in the image");
     });
 
-    test("startup script reports CLIs up to date when timestamp is fresh", () => {
-        startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
+    test("startup script reports CLIs up to date when timestamp is fresh", async () => {
+        await startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
         // Write a fresh timestamp so the test is not affected by image age
         const freshDate = new Date().toISOString();
         spawnSync("docker", ["exec", "-u", "root", containerName, "sh", "-c", `echo '${freshDate}' > /home/devuser/.ai-cli-updated`], {
@@ -502,8 +506,8 @@ describe("startup script", () => {
         assert.ok(result.stdout.includes("up to date"), "should report CLIs are up to date");
     });
 
-    test("startup script skips update as non-root when timestamp is stale", () => {
-        startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
+    test("startup script skips update as non-root when timestamp is stale", async () => {
+        await startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
         // Write a stale timestamp (48h ago) as root
         const staleDate = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
         spawnSync("docker", ["exec", "-u", "root", containerName, "sh", "-c", `echo '${staleDate}' > /home/devuser/.ai-cli-updated`], {
@@ -544,16 +548,16 @@ describe("image staleness", () => {
         return computeBuildHash(buildDockerfile(join(TEMPLATES_DIR, "Dockerfile")), TEMPLATES_DIR);
     }
 
-    test("isImageStale returns false when the stamped hash matches the expected hash", () => {
-        startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
+    test("isImageStale returns false when the stamped hash matches the expected hash", async () => {
+        await startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
         assert.equal(isImageStale(containerName, productionHash()), false);
     });
 
-    test("isImageStale returns true when the expected hash differs from the stamped hash", () => {
+    test("isImageStale returns true when the expected hash differs from the stamped hash", async () => {
         // Simulates source-side drift: the package on disk has changed (Dockerfile or any baked
         // template file edited) so the hash recomputed at session start no longer matches the
         // label stamped on the running container at build time.
-        startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
+        await startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
         const wrong = "0".repeat(64);
         assert.equal(isImageStale(containerName, wrong), true);
     });
@@ -563,7 +567,7 @@ describe("image staleness", () => {
         // -> different stamped hash), then asks "is this stale relative to production?" -> yes.
         const contextDir = createTempDir();
         try {
-            const result = buildImageWithTempfile(MINIMAL_DOCKERFILE, contextDir, containerName, false, true);
+            const result = await buildImageWithTempfile(MINIMAL_DOCKERFILE, contextDir, containerName, false, true);
             assert.equal(result.status, 0);
             spawnSync("docker", ["run", "-d", "--name", containerName, containerName, "sleep", "infinity"], { stdio: "pipe" });
             assert.equal(isImageStale(containerName, productionHash()), true);
@@ -576,7 +580,7 @@ describe("image staleness", () => {
         // Minimal image has no startup.mjs -- docker exec should fail
         const contextDir = createTempDir();
         try {
-            const result = buildImageWithTempfile(MINIMAL_DOCKERFILE, contextDir, containerName, false, true);
+            const result = await buildImageWithTempfile(MINIMAL_DOCKERFILE, contextDir, containerName, false, true);
             assert.equal(result.status, 0);
             spawnSync("docker", ["run", "-d", "--name", containerName, containerName, "sleep", "infinity"], { stdio: "pipe" });
             const startup = spawnSync("docker", ["exec", "-u", "root", containerName, "node", CONTAINER_STARTUP], {

@@ -3,15 +3,24 @@
 // In-memory Dockerfile build, profile selection, pattern-based shadows, env_file handling, runtime env injection.
 // =========================================================================================================================================
 
-import { spawnSync } from "node:child_process";
+import { type StdioOptions, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { join, relative } from "node:path";
 import { cancel, confirm, isCancel, log, outro, select } from "@clack/prompts";
 import { buildAgentContextDocs, buildAgentMountArgs, injectAgentContext } from "../lib/agent-context.js";
-import { ensureCookieFile } from "../lib/audio-host.js";
+import {
+    connectedSessionCount,
+    containerSessionCount,
+    ensureCookieFile,
+    IS_MACOS,
+    isAudioServerRunning,
+    startServer,
+    stopServer,
+} from "../lib/audio-host.js";
 import {
     AUDIO_COOKIE_CONTAINER_PATH,
+    AUDIO_MODE,
     AUDIO_PULSE_SERVER,
     AUDIODRIVER_VALUE,
     CONTAINER_STARTUP,
@@ -28,6 +37,7 @@ import {
     RUNTIME_ENV,
 } from "../lib/constants.js";
 import { buildDockerfile, buildImageWithTempfile, computeBuildHash } from "../lib/dockerfile-builder.js";
+import { readAudioMode } from "../lib/global-config.js";
 import { isImageStale } from "../lib/migrate-to-latest.js";
 import { buildPnpmStoreMountArgs } from "../lib/pnpm-store.js";
 import { buildShadowMountArgs, ensureShadowsInSync, expandShadowPatterns } from "../lib/shadows.js";
@@ -52,6 +62,16 @@ async function promptWorkdir(workspaceDir: string, cwd: string): Promise<string>
         process.exit(0);
     }
     return choice === "here" ? `${CONTAINER_WORKSPACE}/${relPath}` : CONTAINER_WORKSPACE;
+}
+
+// --- Countdown helper --------------------------------------------------------------------------------------------------------------------
+// Print a message, then tick down one line per second. Used so a transient warning (e.g. the host audio
+// server failed to auto-start) stays on screen long enough to read before the session connects anyway.
+async function countdown(seconds: number, message: string): Promise<void> {
+    for (let remaining = seconds; remaining > 0; remaining--) {
+        log.info(`${message} in ${remaining}...`);
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
 }
 
 // --- Profile selection -------------------------------------------------------------------------------------------------------------------
@@ -143,7 +163,7 @@ function runStartup(containerName: string, quiet?: boolean): boolean {
     // The SPACE-to-skip prompt in startup.mjs needs raw-mode stdin (-i) and a PTY (-t).
     // Omitted when quiet so test output stays pipe-capturable.
     const ttyFlags = quiet ? [] : ["-i", "-t"];
-    const result = spawnSync("docker", ["exec", "-u", "root", ...ttyFlags, containerName, "node", CONTAINER_STARTUP], {
+    const result = spawnSync("docker", ["exec", "-u", "root", ...ttyFlags, containerName, "node", CONTAINER_STARTUP, "--summary"], {
         stdio: quiet ? "pipe" : "inherit",
     });
     return result.status === 0;
@@ -175,7 +195,7 @@ export interface StartContainerOpts {
 
 export type ContainerStartResult = "created" | "resumed" | "connected";
 
-export function startContainer(opts: StartContainerOpts): ContainerStartResult {
+export async function startContainer(opts: StartContainerOpts): Promise<ContainerStartResult> {
     const {
         containerName,
         workspaceRoot,
@@ -194,7 +214,9 @@ export function startContainer(opts: StartContainerOpts): ContainerStartResult {
         noCache,
         quiet = false,
     } = opts;
-    const stdio = quiet ? ("pipe" as const) : ("inherit" as const);
+    // Used by `docker run -d` and `docker start`. Both echo the container id/name to stdout on success;
+    // drop stdout to keep that noise out of the session start, but keep stderr so real errors still show.
+    const stdio: StdioOptions = quiet ? "pipe" : ["ignore", "ignore", "inherit"];
 
     // --- Sync shadows and build mount args ------------------------------------------------------------------------------------------------
     ensureShadowsInSync(cacheDir, expandedShadows, workspaceRoot);
@@ -296,17 +318,16 @@ export function startContainer(opts: StartContainerOpts): ContainerStartResult {
 
     if (containerStatus === null) {
         // --- No container - build image and run ------------------------------------------------------------------------------------------
-        if (!quiet) log.step("Building container image...");
+        // The interactive build spinner owns the "rebuilding" message (see buildImageWithTempfile), so no log.step here.
         const dockerfileContent = buildDockerfile(join(templatesDir, "Dockerfile"), profileHook);
-        const buildResult = buildImageWithTempfile(dockerfileContent, templatesDir, containerName, noCache, quiet);
+        const buildResult = await buildImageWithTempfile(dockerfileContent, templatesDir, containerName, noCache, quiet);
         if (buildResult.status !== 0) {
             if (!quiet) outro("Failed to build container image.");
             process.exit(buildResult.status);
         }
 
-        if (!quiet) log.step("Preparing agent context...");
         injectAgentContext(cacheDir, agentDocs);
-        if (!quiet) log.step("Starting dev container...");
+        if (!quiet) log.info("Starting dev container...");
 
         const runResult = spawnSync(
             "docker",
@@ -335,9 +356,8 @@ export function startContainer(opts: StartContainerOpts): ContainerStartResult {
         return "created";
     } else if (containerStatus === "exited") {
         // --- Container stopped - resume --------------------------------------------------------------------------------------------------
-        if (!quiet) log.step("Preparing agent context...");
         injectAgentContext(cacheDir, agentDocs);
-        if (!quiet) log.step("Resuming dev container...");
+        if (!quiet) log.info("Resuming dev container...");
         const start = spawnSync("docker", ["start", containerName], { stdio });
         if (start.status !== 0) {
             if (!quiet) outro("Failed to start dev container.");
@@ -346,7 +366,6 @@ export function startContainer(opts: StartContainerOpts): ContainerStartResult {
         return "resumed";
     } else {
         // --- Container running - refresh agent context and connect ------------------------------------------------------------------------
-        if (!quiet) log.step("Refreshing agent context...");
         injectAgentContext(cacheDir, agentDocs);
         return "connected";
     }
@@ -381,7 +400,7 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
     const { paths: expandedShadows, skippedTracked } = expandShadowPatterns(shadowPatterns, workspaceDir);
 
     if (expandedShadows.length > 0) {
-        log.warn(`Shadow paths active: ${expandedShadows.join(", ")}  (Settings > Shadow paths)`);
+        log.info(`Shadow paths active: ${expandedShadows.join(", ")}  (Settings > Shadow paths)`);
     }
     if (skippedTracked.length > 0) {
         log.warn(`Skipped ${skippedTracked.length} shadow path(s) tracked by git`);
@@ -406,6 +425,20 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
     // --- Audio bridge opt-in (per-workspace, host-side .lock) ----------------------------------------------------------------------------
     const audio = readAudio(ctx.workspaceId);
 
+    // --- Auto-start host audio server (automatic mode, macOS) ----------------------------------------------------------------------------
+    // When wiring is on and the workspace is in automatic mode, bring the host server up before the
+    // container starts so the cookie it rotates is already in place for the read-only mount below
+    // (ensureCookieFile then no-ops). A failure never blocks the session - warn and count down so the
+    // message is readable, then connect anyway.
+    if (IS_MACOS && audio && readAudioMode() === AUDIO_MODE.automatic && !isAudioServerRunning()) {
+        const res = startServer();
+        if (res.ok) log.info("Host audio server started (voice input ready).");
+        else {
+            log.warn(res.message);
+            await countdown(3, "Continuing without the audio server");
+        }
+    }
+
     // Ensure totopo's dedicated host cookie exists so the read-only mount target is always valid; the
     // host server rotates it on each cold start. Creating it here (when absent) avoids any need to
     // recreate the container after the server first starts.
@@ -429,7 +462,7 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
         workspaceName: ctx.workspaceId,
         ...(options?.noCache !== undefined && { noCache: options.noCache }),
     };
-    startContainer(containerOpts);
+    await startContainer(containerOpts);
 
     // --- Stale image check - prompt user to rebuild if image is outdated ------------------------------------------------------------------
     const dockerfileContent = buildDockerfile(join(templatesDir, "Dockerfile"), profileHook);
@@ -450,7 +483,7 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
         if (rebuild) {
             stopAndRemoveContainer(containerName);
             spawnSync("docker", ["rmi", containerName], { stdio: "pipe" });
-            startContainer(containerOpts);
+            await startContainer(containerOpts);
             stale = false;
         }
     }
@@ -477,5 +510,33 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
         stdio: "inherit",
     });
 
+    // --- Auto-stop host audio server (automatic mode, macOS) -----------------------------------------------------------------------------
+    // Control returns here synchronously when the user exits the shell. In automatic mode, stop the
+    // global host server only when no totopo session anywhere is still connected (the just-exited shell
+    // is already reaped, so 0 is the all-clear). Conservative by design: a lingering session keeps it up.
+    if (IS_MACOS && audio && readAudioMode() === AUDIO_MODE.automatic && isAudioServerRunning() && connectedSessionCount() === 0) {
+        const res = stopServer();
+        if (res.ok) log.info("Host audio server stopped (no active sessions).");
+        else log.warn(res.message);
+    }
+
+    // --- Offer to stop this workspace's container (last shell closed) --------------------------------------------------------------------
+    // The container itself keeps running (sleep infinity) after the shell exits. When this was the last
+    // shell to it, offer to stop it to free memory. Stop-only (no rm) so the next session resumes fast
+    // via the "exited" -> docker start path. Runs after the global audio auto-stop above; all platforms.
+    if (containerSessionCount(containerName) === 0) {
+        const stopNow = await confirm({
+            message: "Last session to this container closed. Stop it to free memory? (resumes fast next time)",
+            initialValue: true,
+        });
+        if (!isCancel(stopNow) && stopNow) {
+            log.info("Stopping container...");
+            spawnSync("docker", ["stop", containerName], { stdio: "pipe" });
+            log.info("Container stopped.");
+        }
+    }
+
+    // Trailing blank line so the last log does not sit flush against the next shell prompt.
+    process.stdout.write("\n");
     process.exit(exec.status ?? 0);
 }

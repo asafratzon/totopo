@@ -7,6 +7,20 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [3.10.0] — 2026-06-28
+
+### Added
+
+- Optional automatic control of the host audio server on macOS. Turn it on under Settings > Voice / audio; totopo then starts the server when a voice-enabled session opens and stops it once your last session exits, so the mic bridge runs only while you need it. Manual control stays the default.
+- totopo now offers to stop a workspace's container when you close its last shell, freeing memory while keeping the next session a fast resume.
+
+### Changed
+
+- Workspace menu reorganized - "Manage Workspace" is now "Settings" (git mode, shadow paths, voice, rebuild) and "Manage totopo" is now "Advanced" (stop, clear, remove, uninstall).
+- Quieter, cleaner session start - the image build runs behind a single progress spinner instead of raw build logs, the readiness check stays silent and surfaces only problems (run `status` anytime for the full report), the shell opens with a refreshed prompt and greets you with the commands to start an agent / check status / exit, and a failed AI CLI update now warns and continues instead of blocking the session. Existing containers are offered a rebuild on next session start.
+
+---
+
 ## [3.9.0] — 2026-06-24
 
 ### Added

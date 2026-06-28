@@ -13,6 +13,7 @@ export const PACKAGE_ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.ur
 export const TOTOPO_DIR = ".totopo";
 export const WORKSPACES_DIR = "workspaces";
 export const PROJECTS_DIR = "projects"; // legacy v3-rc-1/rc-2; only referenced in migration
+export const GLOBAL_DIR = "global"; // host-global state not tied to a workspace (config + pulse cookie)
 
 // Workspace cache subdirectories (under ~/.totopo/workspaces/<id>/)
 export const AGENTS_DIR = "agents";
@@ -23,6 +24,8 @@ export const PNPM_STORE_DIR = "pnpm-store";
 export const TOTOPO_YAML = "totopo.yaml";
 export const LOCK_FILE = ".lock";
 export const GLOBAL_ENV_FILE = ".env"; // legacy global key file; only referenced in migration
+export const GLOBAL_CONFIG_FILE = "config"; // ~/.totopo/global/config - key=value host-global settings
+export const PULSE_COOKIE_FILE = "pulse-cookie"; // ~/.totopo/global/pulse-cookie - dedicated PulseAudio TCP cookie
 
 // Workspace ID constraints (must match schema/totopo.schema.json)
 export const WORKSPACE_ID_MIN = 2;
@@ -91,3 +94,12 @@ export const AUDIODRIVER_VALUE = "pulseaudio";
 // Where the host PulseAudio cookie is bind-mounted inside the container. PULSE_COOKIE points here so
 // libpulse presents the shared secret; only containers totopo hands the cookie to can authenticate.
 export const AUDIO_COOKIE_CONTAINER_PATH = `${CONTAINER_HOME}/.config/pulse/cookie`;
+
+// Host audio server control mode (host-global, stored in ~/.totopo/global/config). manual: the user starts and stops
+// the host server from the Voice/audio menu. automatic: totopo starts it when a session opens and stops
+// it when the last connected session exits. Automation is macOS-only (the platform where totopo manages
+// PulseAudio), so automatic mode is offered only there. Defaults to manual. Defined directly here (unlike
+// GIT_MODE) because there is no container-side consumer that would need runtime-constants.mjs.
+export const AUDIO_MODE = { manual: "manual", automatic: "automatic" } as const;
+export type AudioMode = (typeof AUDIO_MODE)[keyof typeof AUDIO_MODE];
+export const AUDIO_MODES: readonly AudioMode[] = Object.values(AUDIO_MODE);
