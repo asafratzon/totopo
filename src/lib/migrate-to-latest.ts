@@ -30,7 +30,6 @@ import { confirm, isCancel, log, note } from "@clack/prompts";
 import { load as loadYaml } from "js-yaml";
 import {
     AGENTS_DIR,
-    CONTAINER_NAME_PREFIX,
     GIT_MODE,
     GLOBAL_DIR,
     LABEL_BUILD_HASH,
@@ -530,48 +529,31 @@ export function migrateAddAudio(): number {
 }
 
 /**
- * Pre-v3.10.0 -> latest: Move the dedicated PulseAudio cookie from ~/.totopo/pulse-cookie into the new
- * host-global ~/.totopo/global/ dir. The cookie is live bind-mounted into running containers, so it is
- * never moved while a container could hold it open: if any totopo container is running we ask to stop
- * them first (interactive) or defer to the next run (non-interactive). Most users never enabled audio
- * and so have no cookie - for them this is a no-op. Idempotent: once moved, the source is gone.
+ * Pre-v3.10.0 -> latest: Clean up the legacy ~/.totopo/pulse-cookie path after the dedicated PulseAudio
+ * cookie moved into the host-global ~/.totopo/global/ dir. This step touches only that one path - it never
+ * stops or inspects containers. A container created against the old cookie path is recreated by the
+ * staleness check in `dev` (the cookie path is part of the audio identity label), which rebinds the mount
+ * cleanly. Most users never enabled audio and have no cookie, so this is a no-op for them. Idempotent:
+ * once the source is gone (file moved, or leftover directory removed) later runs return early.
  */
-async function migrateMoveAudioCookie(interactive: boolean): Promise<void> {
+function migrateMoveAudioCookie(): void {
     // A path (source): hardcode the literal so the migration still finds the old location later.
     const oldPath = join(homedir(), ".totopo", "pulse-cookie");
     if (!existsSync(oldPath)) return;
 
-    const globalDir = join(homedir(), TOTOPO_DIR, GLOBAL_DIR);
-    const newPath = join(globalDir, PULSE_COOKIE_FILE);
-
-    // The cookie is live-mounted into running containers; never move it out from under one. A failed or
-    // absent docker means nothing can be running, so treat that as zero containers.
-    const ps = spawnSync("docker", ["ps", "--filter", `name=${CONTAINER_NAME_PREFIX}`, "--format", "{{.Names}}"], {
-        encoding: "utf8",
-        stdio: "pipe",
-    });
-    const running = ps.status === 0 ? (ps.stdout ?? "").trim().split("\n").filter(Boolean) : [];
-
-    if (running.length > 0) {
-        if (!interactive) return; // Defer - re-runs next startup when confirmations are allowed.
-        log.warn(
-            `The audio cookie is moving to ~/.totopo/global/, but ${running.length} totopo container(s) are using it.\n` +
-                "  They must be stopped so the cookie can move cleanly (they are recreated on next session).",
-        );
-        const shouldStop = await confirm({ message: "Stop running totopo containers to migrate the audio cookie?", initialValue: true });
-        if (isCancel(shouldStop) || !shouldStop) {
-            log.info("Kept containers running - the audio cookie will migrate on next run.");
-            return;
-        }
-        for (const name of running) {
-            spawnSync("docker", ["stop", name], { stdio: "pipe" });
-            spawnSync("docker", ["rm", name], { stdio: "pipe" });
-        }
-        log.info("Containers stopped - they will be recreated on next session.");
+    // Docker Desktop auto-creates a directory at a missing bind-mount source, so a container that tried to
+    // resume against the moved cookie can leave a directory here. There is no cookie to migrate in that
+    // case - remove it so this step stops re-firing. A non-recursive rm would throw on a directory and the
+    // failure would be swallowed (bin/totopo.js runs migrations non-fatally), looping forever.
+    if (statSync(oldPath).isDirectory()) {
+        safeRmSync(oldPath, { recursive: true });
+        return;
     }
 
-    // Nothing is mounting the cookie now, so move it once. If a cookie already exists at the destination
-    // (e.g. the server cold-started since), the destination is authoritative - drop the stale source.
+    // A real legacy cookie file: move it once. If a cookie already exists at the destination (e.g. the
+    // server cold-started since), the destination is authoritative - drop the stale source instead.
+    const globalDir = join(homedir(), TOTOPO_DIR, GLOBAL_DIR);
+    const newPath = join(globalDir, PULSE_COOKIE_FILE);
     mkdirSync(globalDir, { recursive: true });
     if (existsSync(newPath)) {
         safeRmSync(oldPath);
@@ -657,11 +639,7 @@ function buildMigrations(cwd: string, skipAnyConfirmations: boolean): Migration[
         },
         { from: "v3.4.0", description: "Add git_mode=local to .lock files (preserves pre-v3.4.0 behavior)", run: migrateAddGitMode },
         { from: "v3.9.0", description: "Add audio=false to .lock files (preserves pre-v3.9.0 behavior)", run: migrateAddAudio },
-        {
-            from: "v3.10.0",
-            description: "Move pulse cookie to ~/.totopo/global/",
-            run: () => migrateMoveAudioCookie(!skipAnyConfirmations),
-        },
+        { from: "v3.10.0", description: "Move pulse cookie to ~/.totopo/global/", run: migrateMoveAudioCookie },
     ];
 }
 
