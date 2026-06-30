@@ -180,6 +180,8 @@ env_file: .env
 
 The file is loaded into the container's environment at session start. If the file is not found, totopo skips it with a warning.
 
+totopo also injects privacy and sandbox environment variables into every container — a universal `DO_NOT_TRACK` opt-out plus switches that disable Claude Code telemetry, error reporting, and other non-essential traffic.
+
 ### AI CLIs
 
 The container comes with the major AI coding CLIs pre-installed and ready to use:

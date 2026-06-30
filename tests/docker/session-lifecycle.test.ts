@@ -11,7 +11,7 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, afterEach, before, beforeEach, describe, test } from "node:test";
 import type { StartContainerOpts } from "../../src/commands/dev.js";
-import { startContainer } from "../../src/commands/dev.js";
+import { audioStateLabel, startContainer } from "../../src/commands/dev.js";
 import {
     AUDIO_COOKIE_CONTAINER_PATH,
     CONTAINER_STARTUP,
@@ -285,7 +285,7 @@ describe("session lifecycle", () => {
 
     test("audio on: label, PulseAudio env, and host-gateway are wired", async () => {
         await startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { audio: true }));
-        assert.equal(dockerContainerLabel(containerName, LABEL_AUDIO), "true");
+        assert.equal(dockerContainerLabel(containerName, LABEL_AUDIO), audioStateLabel(true, undefined));
         assert.equal(dockerExec(containerName, ["printenv", "PULSE_SERVER"]).stdout, "tcp:host.docker.internal:4713");
         assert.equal(dockerExec(containerName, ["printenv", "AUDIODRIVER"]).stdout, "pulseaudio");
         assert.ok(
@@ -311,7 +311,26 @@ describe("session lifecycle", () => {
 
         const result = await startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { audio: true }));
         assert.equal(result, "created", "container should be recreated when audio is toggled");
-        assert.equal(dockerContainerLabel(containerName, LABEL_AUDIO), "true");
+        assert.equal(dockerContainerLabel(containerName, LABEL_AUDIO), audioStateLabel(true, undefined));
+    });
+
+    test("audio cookie path change triggers container recreation", async () => {
+        // Reproduces the v3.10.0 cookie relocation: same audio bool, different host cookie path. The path
+        // is part of the audio identity label, so the container must be recreated (rebinding the mount)
+        // rather than resumed against the now-dangling old mount.
+        const cookieA = join(cacheDir, "cookie-a");
+        const cookieB = join(cacheDir, "cookie-b");
+        writeFileSync(cookieA, "cookie-a-bytes");
+        writeFileSync(cookieB, "cookie-b-bytes");
+
+        await startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { audio: true, audioCookiePath: cookieA }));
+        const labelA = dockerContainerLabel(containerName, LABEL_AUDIO);
+        assert.equal(labelA, audioStateLabel(true, cookieA));
+
+        const result = await startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { audio: true, audioCookiePath: cookieB }));
+        assert.equal(result, "created", "container should be recreated when the cookie path changes");
+        assert.equal(dockerContainerLabel(containerName, LABEL_AUDIO), audioStateLabel(true, cookieB));
+        assert.notEqual(dockerContainerLabel(containerName, LABEL_AUDIO), labelA, "audio label must reflect the new cookie path");
     });
 });
 

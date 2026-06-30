@@ -145,6 +145,19 @@ function runtimeEnvLabel(): string {
     return createHash("sha256").update(sorted).digest("hex").slice(0, 12);
 }
 
+// --- Audio state label -------------------------------------------------------------------------------------------------------------------
+// Captures whether the bridge is on AND the host cookie path that gets bind-mounted, so relocating the
+// cookie recreates the container instead of leaving it with a dangling mount. Off keeps the old
+// String(audio) value ("false") so audio-off containers are not needlessly recreated on upgrade.
+export function audioStateLabel(audio: boolean, audioCookiePath: string | undefined): string {
+    if (!audio) return "false";
+    const fingerprint = createHash("sha256")
+        .update(audioCookiePath ?? "")
+        .digest("hex")
+        .slice(0, 12);
+    return `true:${fingerprint}`;
+}
+
 // --- Stop and remove container -----------------------------------------------------------------------------------------------------------
 function stopAndRemoveContainer(containerName: string): void {
     spawnSync("docker", ["stop", containerName], { stdio: "pipe" });
@@ -243,7 +256,7 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
         "--label",
         `${LABEL_GIT_MODE}=${gitMode}`,
         "--label",
-        `${LABEL_AUDIO}=${audio}`,
+        `${LABEL_AUDIO}=${audioStateLabel(audio, audioCookiePath)}`,
     ];
 
     // --- Runtime env vars -----------------------------------------------------------------------------------------------------------------
@@ -287,7 +300,7 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
         const profileChanged = info.profileLabel !== activeProfile;
         const runtimeEnvChanged = info.runtimeEnvLabel !== runtimeEnvLabel();
         const gitModeChanged = info.gitModeLabel !== gitMode;
-        const audioChanged = info.audioLabel !== String(audio);
+        const audioChanged = info.audioLabel !== audioStateLabel(audio, audioCookiePath);
 
         if (shadowChanged || profileChanged || runtimeEnvChanged || gitModeChanged || audioChanged) {
             stopAndRemoveContainer(containerName);
@@ -309,8 +322,13 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
         }
     }
 
-    if (containerStatus === null) {
-        // --- No container - build image and run ------------------------------------------------------------------------------------------
+    // Refresh the agent context docs in the cache dir (bind-mounted into the container) once, before any
+    // create / resume / connect path below. Idempotent file writes with no dependency on the image build.
+    injectAgentContext(cacheDir, agentDocs);
+
+    // Build the image (if needed) and run a fresh container. Shared by the no-container path and the
+    // resume-recovery path below. Build/run failures are terminal, so they outro and exit here.
+    const createAndRun = async (): Promise<void> => {
         // The interactive build spinner owns the "rebuilding" message (see buildImageWithTempfile), so no log.step here.
         const dockerfileContent = buildDockerfile(join(templatesDir, "Dockerfile"), profileHook);
         const buildResult = await buildImageWithTempfile(dockerfileContent, templatesDir, containerName, noCache, quiet);
@@ -319,7 +337,6 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
             process.exit(buildResult.status);
         }
 
-        injectAgentContext(cacheDir, agentDocs);
         if (!quiet) log.info("Starting dev container...");
 
         const runResult = spawnSync(
@@ -346,20 +363,43 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
             if (!quiet) outro("Failed to start dev container.");
             process.exit(runResult.status ?? 1);
         }
+    };
+
+    if (containerStatus === null) {
+        // --- No container - build image and run --------------------------------------------------------------------------------------------
+        await createAndRun();
         return "created";
     } else if (containerStatus === "exited") {
-        // --- Container stopped - resume --------------------------------------------------------------------------------------------------
-        injectAgentContext(cacheDir, agentDocs);
+        // --- Container stopped - resume (recreate on a dangling-mount failure) -------------------------------------------------------------
         if (!quiet) log.info("Resuming dev container...");
         const start = spawnSync("docker", ["start", containerName], { stdio });
         if (start.status !== 0) {
-            if (!quiet) outro("Failed to start dev container.");
-            process.exit(start.status ?? 1);
+            // A resume reuses the bind mounts frozen at create time. When one no longer resolves on the host
+            // - most often the pre-v3.10.0 audio cookie that has since moved (the container still references
+            // the old path) - docker start fails. stderr is inherited, not captured, so do not parse the
+            // daemon error; treat any resume failure as recreate-worthy. Recreating rebinds every mount
+            // against current paths; agent memory, settings, and workspace data live in host bind mounts and
+            // cache dirs outside the container fs, so they survive. Non-interactive callers keep the hard fail.
+            if (quiet) process.exit(start.status ?? 1); // Non-interactive: preserve the original silent hard fail.
+            log.warn(
+                "This container could not start - a host path it was created against has likely moved or been removed\n" +
+                    "  (for example the audio cookie relocated in v3.10.0).",
+            );
+            const recreate = await confirm({
+                message: "Recreate it now? Your agent memory, settings, and workspace data are preserved.",
+                initialValue: true,
+            });
+            if (isCancel(recreate) || !recreate) {
+                outro("Failed to start dev container.");
+                process.exit(start.status ?? 1);
+            }
+            stopAndRemoveContainer(containerName);
+            await createAndRun();
+            return "created";
         }
         return "resumed";
     } else {
-        // --- Container running - refresh agent context and connect ------------------------------------------------------------------------
-        injectAgentContext(cacheDir, agentDocs);
+        // --- Container running - connect ---------------------------------------------------------------------------------------------------
         return "connected";
     }
 }

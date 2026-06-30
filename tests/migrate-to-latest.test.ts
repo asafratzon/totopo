@@ -446,8 +446,8 @@ describe("migrate-to-latest", () => {
     });
 
     // ---- migrateMoveAudioCookie -----------------------------------------------------------------------------------------------------------
-    // DOCKER_HOST points at a nonexistent socket (see beforeEach), so `docker ps` returns no containers
-    // and the cookie moves without the interactive stop-containers branch. That branch is host-verified.
+    // Pure path cleanup: moves a legacy cookie file, or removes the leftover directory Docker fabricates at
+    // the old source when a container tried to resume against the moved cookie. It never touches containers.
 
     test("migrateMoveAudioCookie is a no-op when no source cookie exists", async () => {
         await runMigration(tmp);
@@ -480,6 +480,33 @@ describe("migrate-to-latest", () => {
 
         assert.ok(!existsSync(oldCookie), "stale source cookie should be removed");
         assert.equal(readFileSync(newCookie, "utf8"), "authoritative-dest", "destination cookie should be untouched");
+    });
+
+    test("migrateMoveAudioCookie removes a leftover directory at the old path without creating a cookie", async () => {
+        // Docker Desktop auto-creates a directory at a missing bind-mount source. The migration must remove
+        // it (a non-recursive rm would throw and the loop would never clear) and must not fabricate a cookie.
+        const oldPath = join(fakeHome, TOTOPO_DIR, "pulse-cookie");
+        mkdirSync(oldPath, { recursive: true });
+
+        await runMigration(tmp);
+
+        assert.ok(!existsSync(oldPath), "leftover directory at the old cookie path should be removed");
+        const newCookie = join(fakeHome, TOTOPO_DIR, GLOBAL_DIR, PULSE_COOKIE_FILE);
+        assert.ok(!existsSync(newCookie), "no cookie should be created from a leftover directory");
+    });
+
+    test("migrateMoveAudioCookie is idempotent - a second run is a no-op", async () => {
+        const oldCookie = join(fakeHome, TOTOPO_DIR, "pulse-cookie");
+        mkdirSync(join(fakeHome, TOTOPO_DIR), { recursive: true });
+        writeFileSync(oldCookie, "secret-cookie-bytes");
+
+        await runMigration(tmp);
+        const newCookie = join(fakeHome, TOTOPO_DIR, GLOBAL_DIR, PULSE_COOKIE_FILE);
+        assert.equal(readFileSync(newCookie, "utf8"), "secret-cookie-bytes");
+
+        await runMigration(tmp);
+        assert.ok(!existsSync(oldCookie), "old cookie stays gone on the second run");
+        assert.equal(readFileSync(newCookie, "utf8"), "secret-cookie-bytes", "destination cookie is untouched on re-run");
     });
 
     // ---- migrateRemoveDeprecatedYamlFields ------------------------------------------------------------------------------------------------
