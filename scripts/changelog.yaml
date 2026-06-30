@@ -8,6 +8,22 @@ in_progress:
           The offer to stop a workspace's container after you close its last shell now appears reliably. A shell
           left open across a laptop sleep or an abruptly closed terminal previously left a phantom session behind
           that suppressed the prompt.
+    - rc_version: "3.10.1-rc-2"
+      date: "2026-06-30"
+      changed:
+        - >-
+          More Claude Code background traffic is now disabled inside the container - nonessential network
+          requests, usage telemetry, and automatic plugin-marketplace installs are all turned off. Existing
+          containers are recreated automatically on next session start to pick up the change.
+      fixed:
+        - >-
+          The offer to stop a workspace's container after you close its last shell now appears reliably. A shell
+          left open across a laptop sleep or an abruptly closed terminal previously left a phantom session behind
+          that suppressed the prompt.
+        - >-
+          Audio-enabled containers created before v3.10.0 now start reliably instead of failing with a mount
+          error after the host audio cookie moved - totopo recreates such a container automatically rather than
+          erroring out.
 releases:
   - version: 3.10.0
     date: "2026-06-28"
