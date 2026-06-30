@@ -7,6 +7,19 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [3.10.1] — 2026-06-30
+
+### Changed
+
+- More Claude Code background traffic is now disabled inside the container - nonessential network requests, usage telemetry, and automatic plugin-marketplace installs are all turned off. Existing containers are recreated automatically on next session start to pick up the change.
+
+### Fixed
+
+- The offer to stop a workspace's container after you close its last shell now appears reliably. A shell left open across a laptop sleep or an abruptly closed terminal previously left a phantom session behind that suppressed the prompt.
+- Audio-enabled containers created before v3.10.0 now start reliably instead of failing with a mount error after the host audio cookie moved - totopo recreates such a container automatically rather than erroring out.
+
+---
+
 ## [3.10.0] — 2026-06-28
 
 ### Added

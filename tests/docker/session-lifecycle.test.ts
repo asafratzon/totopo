@@ -6,12 +6,12 @@
 // =========================================================================================================================================
 
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, afterEach, before, beforeEach, describe, test } from "node:test";
 import type { StartContainerOpts } from "../../src/commands/dev.js";
-import { startContainer } from "../../src/commands/dev.js";
+import { audioStateLabel, startContainer } from "../../src/commands/dev.js";
 import {
     AUDIO_COOKIE_CONTAINER_PATH,
     CONTAINER_STARTUP,
@@ -25,6 +25,7 @@ import {
 } from "../../src/lib/constants.js";
 import { buildDockerfile, buildImageWithTempfile, computeBuildHash } from "../../src/lib/dockerfile-builder.js";
 import { isImageStale } from "../../src/lib/migrate-to-latest.js";
+import { connectedSessionCount, containerSessionCount, loginShellExecArgs } from "../../src/lib/sessions.js";
 import { expandShadowPatterns } from "../../src/lib/shadows.js";
 import {
     cleanTempDir,
@@ -284,7 +285,7 @@ describe("session lifecycle", () => {
 
     test("audio on: label, PulseAudio env, and host-gateway are wired", async () => {
         await startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { audio: true }));
-        assert.equal(dockerContainerLabel(containerName, LABEL_AUDIO), "true");
+        assert.equal(dockerContainerLabel(containerName, LABEL_AUDIO), audioStateLabel(true, undefined));
         assert.equal(dockerExec(containerName, ["printenv", "PULSE_SERVER"]).stdout, "tcp:host.docker.internal:4713");
         assert.equal(dockerExec(containerName, ["printenv", "AUDIODRIVER"]).stdout, "pulseaudio");
         assert.ok(
@@ -310,7 +311,26 @@ describe("session lifecycle", () => {
 
         const result = await startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { audio: true }));
         assert.equal(result, "created", "container should be recreated when audio is toggled");
-        assert.equal(dockerContainerLabel(containerName, LABEL_AUDIO), "true");
+        assert.equal(dockerContainerLabel(containerName, LABEL_AUDIO), audioStateLabel(true, undefined));
+    });
+
+    test("audio cookie path change triggers container recreation", async () => {
+        // Reproduces the v3.10.0 cookie relocation: same audio bool, different host cookie path. The path
+        // is part of the audio identity label, so the container must be recreated (rebinding the mount)
+        // rather than resumed against the now-dangling old mount.
+        const cookieA = join(cacheDir, "cookie-a");
+        const cookieB = join(cacheDir, "cookie-b");
+        writeFileSync(cookieA, "cookie-a-bytes");
+        writeFileSync(cookieB, "cookie-b-bytes");
+
+        await startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { audio: true, audioCookiePath: cookieA }));
+        const labelA = dockerContainerLabel(containerName, LABEL_AUDIO);
+        assert.equal(labelA, audioStateLabel(true, cookieA));
+
+        const result = await startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { audio: true, audioCookiePath: cookieB }));
+        assert.equal(result, "created", "container should be recreated when the cookie path changes");
+        assert.equal(dockerContainerLabel(containerName, LABEL_AUDIO), audioStateLabel(true, cookieB));
+        assert.notEqual(dockerContainerLabel(containerName, LABEL_AUDIO), labelA, "audio label must reflect the new cookie path");
     });
 });
 
@@ -591,5 +611,109 @@ describe("image staleness", () => {
         } finally {
             await cleanTempDir(contextDir);
         }
+    });
+});
+
+// =========================================================================================================================================
+// Host-side session detection
+// =========================================================================================================================================
+
+// Detection counts the live `docker exec ... <container> bash --login` CLIENT processes on the host (see
+// src/lib/sessions.ts), not processes inside the container. Only the host client's command line carries the
+// container name next to "bash --login"; the in-container shell's own command line does not. That is why an
+// orphaned in-container shell (host client gone) is correctly invisible to the count - the bug where
+// in-container counting kept the ghost and suppressed the "stop the container?" prompt forever.
+describe("host-side session detection", () => {
+    let containerName: string;
+    let workspaceRoot: string;
+    let cacheDir: string;
+    const clients: ReturnType<typeof spawn>[] = [];
+
+    beforeEach(() => {
+        containerName = uniqueName("detect");
+        workspaceRoot = createTempDir();
+        cacheDir = createTempDir();
+    });
+
+    afterEach(async () => {
+        for (const c of clients) c.kill("SIGKILL");
+        clients.length = 0;
+        forceRemoveContainer(containerName);
+        forceRemoveImage(containerName);
+        await cleanTempDir(workspaceRoot);
+        await cleanTempDir(cacheDir);
+    });
+
+    // Open a long-lived host-side exec client. Uses the real connect argv from loginShellExecArgs, with
+    // `-it` swapped to `-i`: the test process has no controlling TTY, so `-t` would make docker exit at once.
+    // The argv still contains "<container> bash --login" - exactly what detection matches. bash reads from the
+    // open stdin pipe and blocks, so the client stays alive until we kill it.
+    function openClient(): void {
+        const args = loginShellExecArgs("/workspace", containerName).map((a) => (a === "-it" ? "-i" : a));
+        clients.push(spawn("docker", args, { stdio: ["pipe", "ignore", "ignore"] }));
+    }
+
+    // Poll until predicate holds or timeout. A host exec client takes a moment to appear in / leave the host
+    // process table after spawn / kill, so reading the count immediately after is racy.
+    async function waitUntil(predicate: () => boolean, timeoutMs = 5000): Promise<boolean> {
+        const start = Date.now();
+        while (Date.now() - start < timeoutMs) {
+            if (predicate()) return true;
+            await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+        return predicate();
+    }
+
+    test("counts a live session and drops to zero after it exits", async () => {
+        await startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
+        assert.equal(containerSessionCount(containerName), 0, "no sessions before any client connects");
+
+        openClient();
+        assert.ok(await waitUntil(() => containerSessionCount(containerName) === 1), "a live session must be counted");
+        // connectedSessionCount sums every totopo container, so it is at least our one open session.
+        assert.ok(connectedSessionCount() >= 1, "connectedSessionCount must see the open session");
+
+        const client = clients[0];
+        assert.ok(client);
+        client.kill("SIGKILL");
+        assert.ok(await waitUntil(() => containerSessionCount(containerName) === 0), "count must drop to zero after the session exits");
+    });
+
+    test("two sessions: count drops to zero only after the last exits", async () => {
+        await startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
+        openClient();
+        openClient();
+        assert.ok(await waitUntil(() => containerSessionCount(containerName) === 2), "both sessions must be counted");
+
+        clients[0]?.kill("SIGKILL");
+        assert.ok(await waitUntil(() => containerSessionCount(containerName) === 1), "one session remains after the first exits");
+
+        clients[1]?.kill("SIGKILL");
+        assert.ok(await waitUntil(() => containerSessionCount(containerName) === 0), "count reaches zero after the last exits");
+    });
+
+    test("orphaned in-container shell is not counted", async () => {
+        await startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
+
+        // Create an orphaned `bash --login` INSIDE the container with no lingering host client: `-d`
+        // (detached) returns immediately, so the host exec process exits while the in-container shell lives
+        // on. This is exactly the ghost a laptop sleep / closed terminal leaves behind. The unique sleep
+        // duration is a sentinel we can find via `docker top` (host-side, needs no in-container tooling).
+        const sentinel = "987654";
+        const ghost = spawnSync("docker", ["exec", "-d", containerName, "bash", "--login", "-c", `sleep ${sentinel}`], { stdio: "pipe" });
+        assert.equal(ghost.status, 0, "ghost shell must start");
+
+        // Confirm the ghost really is alive inside the container (host-side view via docker top).
+        assert.ok(
+            await waitUntil(() => {
+                const top = spawnSync("docker", ["top", containerName], { encoding: "utf8", stdio: "pipe" });
+                return (top.stdout ?? "").includes(sentinel);
+            }),
+            "orphaned in-container bash --login must be present",
+        );
+
+        // The old in-container detection would have counted this ghost and suppressed the stop prompt.
+        // Host-side detection has no client process for it, so it correctly reports zero.
+        assert.equal(containerSessionCount(containerName), 0, "an orphaned in-container shell must not be counted");
     });
 });
