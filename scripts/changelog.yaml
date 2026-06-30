@@ -1,6 +1,13 @@
 in_progress:
   base_version: 3.10.1
-  entries: []
+  entries:
+    - rc_version: "3.10.1-rc-1"
+      date: "2026-06-30"
+      fixed:
+        - >-
+          The offer to stop a workspace's container after you close its last shell now appears reliably. A shell
+          left open across a laptop sleep or an abruptly closed terminal previously left a phantom session behind
+          that suppressed the prompt.
 releases:
   - version: 3.10.0
     date: "2026-06-28"

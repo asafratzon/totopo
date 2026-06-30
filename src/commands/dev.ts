@@ -9,15 +9,7 @@ import { existsSync } from "node:fs";
 import { join, relative } from "node:path";
 import { cancel, confirm, isCancel, log, outro, select } from "@clack/prompts";
 import { buildAgentContextDocs, buildAgentMountArgs, injectAgentContext } from "../lib/agent-context.js";
-import {
-    connectedSessionCount,
-    containerSessionCount,
-    ensureCookieFile,
-    IS_MACOS,
-    isAudioServerRunning,
-    startServer,
-    stopServer,
-} from "../lib/audio-host.js";
+import { ensureCookieFile, IS_MACOS, isAudioServerRunning, startServer, stopServer } from "../lib/audio-host.js";
 import {
     AUDIO_COOKIE_CONTAINER_PATH,
     AUDIO_MODE,
@@ -40,6 +32,7 @@ import { buildDockerfile, buildImageWithTempfile, computeBuildHash } from "../li
 import { readAudioMode } from "../lib/global-config.js";
 import { isImageStale } from "../lib/migrate-to-latest.js";
 import { buildPnpmStoreMountArgs } from "../lib/pnpm-store.js";
+import { connectedSessionCount, containerSessionCount, loginShellExecArgs } from "../lib/sessions.js";
 import { buildShadowMountArgs, ensureShadowsInSync, expandShadowPatterns } from "../lib/shadows.js";
 import type { ProfileConfig } from "../lib/totopo-yaml.js";
 import { readTotopoYaml } from "../lib/totopo-yaml.js";
@@ -506,7 +499,7 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
     }
 
     // --- Connect -------------------------------------------------------------------------------------------------------------------------
-    const exec = spawnSync("docker", ["exec", "-it", "-w", workdir, containerName, "bash", "--login"], {
+    const exec = spawnSync("docker", loginShellExecArgs(workdir, containerName), {
         stdio: "inherit",
     });
 
