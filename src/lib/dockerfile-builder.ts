@@ -30,7 +30,16 @@ RUN echo '__totopo_pwd() { local p="\${PWD#/workspace}"; printf "/%s" "\${p#/}";
     echo 'echo -e "   \\033[90m▸ Run \\033[97mstatus\\033[90m to see container details & installed versions.\\033[0m"' >> ${CONTAINER_HOME}/.bashrc && \\
     echo 'echo -e "   \\033[90m▸ Run \\033[97mexit\\033[90m to end the session and return to the host.\\033[0m"' >> ${CONTAINER_HOME}/.bashrc && \\
     echo 'echo ""' >> ${CONTAINER_HOME}/.bashrc && \\
-    echo 'alias status="node ${CONTAINER_STARTUP}"' >> ${CONTAINER_HOME}/.bashrc
+    echo 'alias status="node ${CONTAINER_STARTUP}"' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo '' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo '# Auto-start the configured agent. TOTOPO_AUTOSTART is set by docker run when the host-global setting is on.' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo '# The exported TOTOPO_AUTOSTARTED guard makes nested shells and the post-exit shell skip relaunching.' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo 'if [ -n "$TOTOPO_AUTOSTART" ] && [ -z "$TOTOPO_AUTOSTARTED" ]; then' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo '    export TOTOPO_AUTOSTARTED=1' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo '    echo -e "\\033[32m●\\033[0m  \\033[90mAuto-start enabled: launching \\033[38;5;208m\${TOTOPO_AUTOSTART}\\033[90m.\\033[0m"' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo '    echo ""' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo '    "$TOTOPO_AUTOSTART"' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo 'fi' >> ${CONTAINER_HOME}/.bashrc
 
 CMD ["/bin/bash"]
 `;

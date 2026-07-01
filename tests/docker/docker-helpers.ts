@@ -5,7 +5,10 @@
 
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { LABEL_MANAGED } from "../../src/lib/constants.js";
+import { overrideEnv } from "../helpers.js";
 
 // Re-export temp dir helpers for use in docker tests
 export { cleanTempDir, createTempDir } from "../helpers.js";
@@ -32,6 +35,28 @@ const RUN_ID = randomBytes(4).toString("hex");
 
 export function uniqueName(prefix: string): string {
     return `totopo-test-${RUN_ID}-${prefix}-${randomBytes(2).toString("hex")}`;
+}
+
+// --- Global-config isolation (keeps the docker build cache warm) --------------------------------------------------------------------------
+
+/**
+ * Override HOME to isolate reads/writes of the host-global totopo config (~/.totopo/global/config, resolved
+ * via os.homedir()) WITHOUT sending the docker CLI to an empty ~/.docker. startContainer() shells out to
+ * `docker build`, which inherits process.env, so a bare HOME override points docker at an empty config dir:
+ * it misses the warm BuildKit layer cache and rebuilds the whole production image (~3 min) on every call.
+ * Pinning DOCKER_CONFIG to the ambient config dir keeps the builder and its cache resolution intact.
+ * Returns a restore function that reverts both overrides.
+ */
+export function isolateGlobalConfigHome(home: string): () => void {
+    // Resolve the docker config dir from the ambient env BEFORE overriding HOME, mirroring what docker
+    // would have used without the override: an explicit DOCKER_CONFIG wins, else the real ~/.docker.
+    const dockerConfig = process.env.DOCKER_CONFIG ?? join(homedir(), ".docker");
+    const restoreHome = overrideEnv("HOME", home);
+    const restoreDockerConfig = overrideEnv("DOCKER_CONFIG", dockerConfig);
+    return () => {
+        restoreDockerConfig();
+        restoreHome();
+    };
 }
 
 // --- Container and image inspection ------------------------------------------------------------------------------------------------------

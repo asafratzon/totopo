@@ -54,6 +54,7 @@ export const LABEL_RUNTIME_ENV = "totopo.runtime-env";
 export const LABEL_GIT_MODE = "totopo.git-mode";
 export const LABEL_BUILD_HASH = "totopo.build-hash";
 export const LABEL_AUDIO = "totopo.audio";
+export const LABEL_AUTOSTART = "totopo.autostart";
 
 // Built-in profile names (must match keys in buildDefaultTotopoYaml in totopo-yaml.ts)
 export const PROFILE = {
@@ -106,3 +107,11 @@ export const AUDIO_COOKIE_CONTAINER_PATH = `${CONTAINER_HOME}/.config/pulse/cook
 export const AUDIO_MODE = { manual: "manual", automatic: "automatic" } as const;
 export type AudioMode = (typeof AUDIO_MODE)[keyof typeof AUDIO_MODE];
 export const AUDIO_MODES: readonly AudioMode[] = Object.values(AUDIO_MODE);
+
+// Auto-start agent (host-global, stored in ~/.totopo/global/config). When set to a supported agent, the
+// container's login shell launches it automatically on session entry and drops to a shell when it exits.
+// The string values are the actual shell commands (claude/opencode/codex); "off" disables it (the default).
+// A user's favorite agent is a person-level preference, so this is global rather than per-workspace.
+export const AUTO_START = { off: "off", claude: "claude", opencode: "opencode", codex: "codex" } as const;
+export type AutoStartAgent = (typeof AUTO_START)[keyof typeof AUTO_START];
+export const AUTO_START_AGENTS: readonly AutoStartAgent[] = Object.values(AUTO_START);

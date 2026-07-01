@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, test } from "node:test";
-import { AUDIO_MODE, GLOBAL_CONFIG_FILE, GLOBAL_DIR, TOTOPO_DIR } from "../src/lib/constants.js";
-import { globalConfigPath, readAudioMode, writeAudioMode } from "../src/lib/global-config.js";
+import { AUDIO_MODE, AUTO_START, GLOBAL_CONFIG_FILE, GLOBAL_DIR, TOTOPO_DIR } from "../src/lib/constants.js";
+import { globalConfigPath, readAudioMode, readAutoStartAgent, writeAudioMode, writeAutoStartAgent } from "../src/lib/global-config.js";
 import { cleanTempDir, createTempDir, overrideEnv } from "./helpers.js";
 
 describe("global-config", () => {
@@ -56,5 +56,32 @@ describe("global-config", () => {
         const content = readFileSync(globalConfigPath(), "utf8");
         assert.ok(content.includes("audio_mode=automatic"), "audio_mode should be updated");
         assert.ok(content.includes("future_key=keep-me"), "unrelated keys should be preserved");
+    });
+
+    test("readAutoStartAgent defaults to off when the config file is missing", () => {
+        assert.equal(readAutoStartAgent(), AUTO_START.off);
+        assert.ok(!existsSync(globalConfigPath()), "reading should not create the file");
+    });
+
+    test("writeAutoStartAgent creates the file on demand and round-trips every agent", () => {
+        for (const agent of [AUTO_START.claude, AUTO_START.opencode, AUTO_START.codex, AUTO_START.off]) {
+            writeAutoStartAgent(agent);
+            assert.ok(existsSync(globalConfigPath()), "writing should create the config file");
+            assert.equal(readAutoStartAgent(), agent);
+        }
+    });
+
+    test("readAutoStartAgent coerces an unrecognized value to off", () => {
+        mkdirSync(join(fakeHome, TOTOPO_DIR, GLOBAL_DIR), { recursive: true });
+        writeFileSync(globalConfigPath(), "auto_start_agent=gemini\n");
+        assert.equal(readAutoStartAgent(), AUTO_START.off);
+    });
+
+    test("auto-start and audio settings coexist without clobbering each other", () => {
+        writeAudioMode(AUDIO_MODE.automatic);
+        writeAutoStartAgent(AUTO_START.claude);
+
+        assert.equal(readAudioMode(), AUDIO_MODE.automatic);
+        assert.equal(readAutoStartAgent(), AUTO_START.claude);
     });
 });

@@ -80,7 +80,7 @@ export async function run(args: MenuArgs): Promise<string> {
     const options: Option[] = [
         { value: "dev", label: "Open session", hint: "start or resume the dev container" },
         ...(workspaceRunning ? [{ value: "stop", label: "Stop container", hint: "stops this workspace's container" }] : []),
-        { value: "settings", label: "Settings", hint: "git mode, shadow paths, voice, rebuild" },
+        { value: "settings", label: "Settings", hint: "git mode, shadow paths, voice, auto-start, rebuild" },
         { value: "advanced", label: "Advanced", hint: "stop, clear, remove, uninstall" },
         { value: "help", label: "Help", hint: "official docs" },
         { value: "quit", label: "Quit" },

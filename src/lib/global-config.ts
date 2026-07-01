@@ -7,13 +7,24 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { AUDIO_MODE, AUDIO_MODES, type AudioMode, GLOBAL_CONFIG_FILE, GLOBAL_DIR, TOTOPO_DIR } from "./constants.js";
+import {
+    AUDIO_MODE,
+    AUDIO_MODES,
+    AUTO_START,
+    AUTO_START_AGENTS,
+    type AudioMode,
+    type AutoStartAgent,
+    GLOBAL_CONFIG_FILE,
+    GLOBAL_DIR,
+    TOTOPO_DIR,
+} from "./constants.js";
 
 // --- Keys --------------------------------------------------------------------------------------------------------------------------------
 
 /** Field names mapped to the keys written in the global config file. */
 export const GLOBAL_CONFIG_KEYS = {
     audioMode: "audio_mode",
+    autoStartAgent: "auto_start_agent",
 } as const;
 
 // --- Path --------------------------------------------------------------------------------------------------------------------------------
@@ -68,5 +79,20 @@ export function readAudioMode(): AudioMode {
 export function writeAudioMode(audioMode: AudioMode): void {
     const config = parseGlobalConfig();
     config.set(GLOBAL_CONFIG_KEYS.audioMode, audioMode);
+    writeGlobalConfig(config);
+}
+
+// --- Auto-start agent --------------------------------------------------------------------------------------------------------------------
+
+/** Read the agent to auto-start on session entry. Defaults to off when unset, missing, or unrecognized. */
+export function readAutoStartAgent(): AutoStartAgent {
+    const value = parseGlobalConfig().get(GLOBAL_CONFIG_KEYS.autoStartAgent);
+    return value !== undefined && (AUTO_START_AGENTS as readonly string[]).includes(value) ? (value as AutoStartAgent) : AUTO_START.off;
+}
+
+/** Write the agent to auto-start. Creates the config file on demand and preserves all other keys. */
+export function writeAutoStartAgent(agent: AutoStartAgent): void {
+    const config = parseGlobalConfig();
+    config.set(GLOBAL_CONFIG_KEYS.autoStartAgent, agent);
     writeGlobalConfig(config);
 }
