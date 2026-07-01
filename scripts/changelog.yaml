@@ -1,6 +1,12 @@
 in_progress:
   base_version: 3.10.2
-  entries: []
+  entries:
+    - version: "3.10.2"
+      date: "2026-07-01"
+      fixed:
+        - >-
+          Session start is quieter - Docker's stray "What's next" hint block (the `docker debug` suggestion) no longer
+          leaks into totopo's output between session-start steps.
 releases:
   - version: 3.10.1
     date: "2026-06-30"

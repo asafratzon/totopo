@@ -19,6 +19,12 @@ import { isAudioServerRunning } from "../dist/lib/audio-host.js";
 import { GITHUB_README_URL, repairTotopoYaml } from "../dist/lib/totopo-yaml.js";
 import { deriveContainerName, findTotopoYamlDir, listWorkspaceIds, resolveWorkspace } from "../dist/lib/workspace-identity.js";
 
+// --- Suppress Docker CLI hints ------------------------------------------------------------------------------------------------------------
+// Docker prints a "What's next:" hint block (about `docker debug`) to stderr after commands like `docker run`. Our
+// interactive docker calls inherit stderr, so the hint leaks between totopo's own log steps. totopo owns this process
+// and never wants those hints, so force it off unconditionally; every docker child inherits this env.
+process.env.DOCKER_CLI_HINTS = "false";
+
 // --- Guard: inside container -------------------------------------------------------------------------------------------------------------
 try {
     if (execSync("whoami", { encoding: "utf8" }).trim() === "devuser") {
