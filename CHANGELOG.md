@@ -7,6 +7,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [3.10.2] — 2026-07-01
+
+### Fixed
+
+- Session start is quieter - Docker's stray "What's next" hint block (the `docker debug` suggestion) no longer leaks into totopo's output between session-start steps.
+
+---
+
 ## [3.10.1] — 2026-06-30
 
 ### Changed
