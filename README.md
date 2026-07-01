@@ -81,12 +81,12 @@ On every run, totopo shows the workspace menu:
 
 - **Open session** — start or resume the dev container and connect
 - **Stop container** — stop the running container
-- **Settings** — git mode, shadow paths, voice, rebuild, reset config
+- **Settings** — git mode, shadow paths, voice, auto-start agent, rebuild, reset config
 - **Advanced** — multi-workspace management (stop containers, clear memory, uninstall)
 
 ### Working directory
 
-The workspace is always mounted at `/workspace` inside the container. When you run totopo from a subdirectory, you get a quick prompt to start **here** or at the **workspace root**. If you're already at the workspace root, the session starts directly at `/workspace`.
+The workspace is always mounted at `/workspace` inside the container. The session opens wherever you ran totopo — from a subdirectory it starts at the matching path under `/workspace`, and from the workspace root it starts at `/workspace`. The whole workspace root stays mounted either way, so `cd /workspace` always reaches it.
 
 ## Core Features
 
@@ -247,6 +247,12 @@ Claude Code's `/voice` records from a mic via SoX, but a container has none (on 
 **Linux / Windows (manual):** automation is macOS-only. **Enable wiring**, then run your own PulseAudio server reachable at TCP `4713` (load `module-native-protocol-tcp`). It must accept totopo's cookie at `~/.totopo/global/pulse-cookie` (mounted read-only into the container), or load the module with `auth-anonymous=1`. On Windows the source is typically the WSLg PulseAudio server.
 
 > **Security:** while running, the server exposes your mic on a local TCP port, gated by an `auth-ip-acl` (private networks only) and — the real gate — a **dedicated, rotating cookie**: totopo-owned (not your general PulseAudio credential), mounted read-only, regenerated on every server start, so a leaked cookie dies on the next restart. Still, run the server only while you need voice and stop it after. A deliberate widening of totopo's boundary — see [Threat Model](#threat-model).
+
+## Auto-start agent
+
+By default a session drops you into a shell where you run `claude`, `opencode`, or `codex` yourself. To launch your favorite agent automatically as each session starts, pick it under **Settings → Auto-start agent**. Quit the agent and you land back in the container shell (the session stays open) — the info banner still lists how to run `status`, `exit`, and the other agents.
+
+This is a host-global preference (stored in `~/.totopo/global/config`), so it applies to every workspace. Changing it recreates the current workspace's container; other workspaces pick it up on their next session.
 
 ## Troubleshooting
 

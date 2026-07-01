@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { audioStateLabel } from "../src/commands/dev.js";
+import { audioStateLabel, resolveWorkdir } from "../src/commands/dev.js";
 
 describe("audioStateLabel", () => {
     test("returns the plain false label when audio is off, regardless of cookie path", () => {
@@ -26,5 +26,15 @@ describe("audioStateLabel", () => {
 
     test("audio on is always distinct from audio off", () => {
         assert.notEqual(audioStateLabel(true, undefined), audioStateLabel(false, undefined));
+    });
+});
+
+describe("resolveWorkdir", () => {
+    test("returns the container workspace root when invoked at the workspace root", () => {
+        assert.equal(resolveWorkdir("/home/user/proj", "/home/user/proj"), "/workspace");
+    });
+
+    test("maps a sub-directory to the matching path under the container workspace", () => {
+        assert.equal(resolveWorkdir("/home/user/proj", "/home/user/proj/apps/orot-core"), "/workspace/apps/orot-core");
     });
 });
