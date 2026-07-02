@@ -15,11 +15,13 @@ import {
     AUDIO_MODE,
     AUDIO_PULSE_SERVER,
     AUDIODRIVER_VALUE,
+    AUTO_START,
     CONTAINER_STARTUP,
     CONTAINER_WORKSPACE,
     GIT_MODE,
     type GitMode,
     LABEL_AUDIO,
+    LABEL_AUTOSTART,
     LABEL_GIT_MODE,
     LABEL_MANAGED,
     LABEL_PROFILE,
@@ -29,7 +31,7 @@ import {
     RUNTIME_ENV,
 } from "../lib/constants.js";
 import { buildDockerfile, buildImageWithTempfile, computeBuildHash } from "../lib/dockerfile-builder.js";
-import { readAudioMode } from "../lib/global-config.js";
+import { readAudioMode, readAutoStartAgent } from "../lib/global-config.js";
 import { isImageStale } from "../lib/migrate-to-latest.js";
 import { buildPnpmStoreMountArgs } from "../lib/pnpm-store.js";
 import { connectedSessionCount, containerSessionCount, loginShellExecArgs } from "../lib/sessions.js";
@@ -39,22 +41,13 @@ import { readTotopoYaml } from "../lib/totopo-yaml.js";
 import type { WorkspaceContext } from "../lib/workspace-identity.js";
 import { readActiveProfile, readAudio, readGitMode, writeActiveProfile } from "../lib/workspace-identity.js";
 
-// --- Prompt: working directory selection -------------------------------------------------------------------------------------------------
-async function promptWorkdir(workspaceDir: string, cwd: string): Promise<string> {
+// --- Working directory resolution ---------------------------------------------------------------------------------------------------------
+// Always open the session where totopo was invoked. The whole workspace root is bind-mounted at
+// CONTAINER_WORKSPACE regardless, so this only sets the shell's opening directory. From a sub-dir,
+// `cd /workspace` reaches the root - nothing is hidden either way. Exported for testing.
+export function resolveWorkdir(workspaceDir: string, cwd: string): string {
     if (cwd === workspaceDir) return CONTAINER_WORKSPACE;
-    const relPath = relative(workspaceDir, cwd);
-    const choice = await select({
-        message: "Start session:",
-        options: [
-            { value: "here", label: `Here  (./${relPath})` },
-            { value: "root", label: "Workspace root" },
-        ],
-    });
-    if (isCancel(choice)) {
-        cancel("Cancelled.");
-        process.exit(0);
-    }
-    return choice === "here" ? `${CONTAINER_WORKSPACE}/${relPath}` : CONTAINER_WORKSPACE;
+    return `${CONTAINER_WORKSPACE}/${relative(workspaceDir, cwd)}`;
 }
 
 // --- Countdown helper --------------------------------------------------------------------------------------------------------------------
@@ -109,15 +102,18 @@ interface ContainerInfo {
     runtimeEnvLabel: string;
     gitModeLabel: string;
     audioLabel: string;
+    autoStartLabel: string;
 }
 
 // Returns null when the container does not exist (docker inspect exits non-zero).
 function inspectContainer(containerName: string): ContainerInfo | null {
-    const fmt = `{{.State.Status}}|{{index .Config.Labels "${LABEL_SHADOWS}"}}|{{index .Config.Labels "${LABEL_PROFILE}"}}|{{index .Config.Labels "${LABEL_RUNTIME_ENV}"}}|{{index .Config.Labels "${LABEL_GIT_MODE}"}}|{{index .Config.Labels "${LABEL_AUDIO}"}}`;
+    const fmt = `{{.State.Status}}|{{index .Config.Labels "${LABEL_SHADOWS}"}}|{{index .Config.Labels "${LABEL_PROFILE}"}}|{{index .Config.Labels "${LABEL_RUNTIME_ENV}"}}|{{index .Config.Labels "${LABEL_GIT_MODE}"}}|{{index .Config.Labels "${LABEL_AUDIO}"}}|{{index .Config.Labels "${LABEL_AUTOSTART}"}}`;
     const result = spawnSync("docker", ["inspect", "--format", fmt, containerName], { encoding: "utf8", stdio: "pipe" });
     if (result.status !== 0) return null;
     const clean = (s: string) => (s === "<no value>" ? "" : s);
-    const [status = "", shadows = "", profile = "", runtimeEnv = "", gitMode = "", audio = ""] = result.stdout.trim().split("|");
+    const [status = "", shadows = "", profile = "", runtimeEnv = "", gitMode = "", audio = "", autoStart = ""] = result.stdout
+        .trim()
+        .split("|");
     return {
         status,
         shadowLabel: clean(shadows),
@@ -125,6 +121,7 @@ function inspectContainer(containerName: string): ContainerInfo | null {
         runtimeEnvLabel: clean(runtimeEnv),
         gitModeLabel: clean(gitMode),
         audioLabel: clean(audio),
+        autoStartLabel: clean(autoStart),
     };
 }
 
@@ -243,6 +240,11 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
     // Shadow mounts must come AFTER the workspace mount to overlay correctly
     const mountArgs = ["-v", `${workspaceRoot}:${CONTAINER_WORKSPACE}`, ...shadowMountArgs, ...agentMounts, ...pnpmStoreMounts];
 
+    // --- Auto-start agent (host-global) --------------------------------------------------------------------------------------------------
+    // Read from the global config, not opts: the favorite agent is a person-level preference shared across
+    // all workspaces (like the audio mode), so every workspace's container reflects the same value.
+    const autoStartAgent = readAutoStartAgent();
+
     // --- Container labels ----------------------------------------------------------------------------------------------------------------
     const labelArgs = [
         "--label",
@@ -257,6 +259,8 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
         `${LABEL_GIT_MODE}=${gitMode}`,
         "--label",
         `${LABEL_AUDIO}=${audioStateLabel(audio, audioCookiePath)}`,
+        "--label",
+        `${LABEL_AUTOSTART}=${autoStartAgent}`,
     ];
 
     // --- Runtime env vars -----------------------------------------------------------------------------------------------------------------
@@ -266,6 +270,8 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
         `TOTOPO_WORKSPACE=${workspaceName}`,
         "-e",
         `TOTOPO_GIT_MODE=${gitMode}`,
+        // Only set when enabled: ~/.bashrc auto-launches the agent when TOTOPO_AUTOSTART is a non-empty command.
+        ...(autoStartAgent !== AUTO_START.off ? ["-e", `TOTOPO_AUTOSTART=${autoStartAgent}`] : []),
     ];
 
     // --- Audio bridge (Claude Code /voice) ------------------------------------------------------------------------------------------------
@@ -301,8 +307,11 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
         const runtimeEnvChanged = info.runtimeEnvLabel !== runtimeEnvLabel();
         const gitModeChanged = info.gitModeLabel !== gitMode;
         const audioChanged = info.audioLabel !== audioStateLabel(audio, audioCookiePath);
+        // Treat an absent label (pre-feature container) as "off" so a still-default setting does not force a
+        // spurious recreate on the first upgrade - the stale-image prompt handles the mandatory rebuild instead.
+        const autoStartChanged = (info.autoStartLabel || AUTO_START.off) !== autoStartAgent;
 
-        if (shadowChanged || profileChanged || runtimeEnvChanged || gitModeChanged || audioChanged) {
+        if (shadowChanged || profileChanged || runtimeEnvChanged || gitModeChanged || audioChanged || autoStartChanged) {
             stopAndRemoveContainer(containerName);
             containerStatus = null;
 
@@ -316,6 +325,11 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
                 if (!quiet) log.info(`Git mode changed (${info.gitModeLabel || "<unset>"} -> ${gitMode}) — recreating container...`);
             } else if (audioChanged) {
                 if (!quiet) log.info(`Voice/audio ${audio ? "enabled" : "disabled"} — recreating container...`);
+            } else if (autoStartChanged) {
+                if (!quiet)
+                    log.info(
+                        `Auto-start changed (${info.autoStartLabel || AUTO_START.off} -> ${autoStartAgent}) — recreating container...`,
+                    );
             } else {
                 if (!quiet) log.info("Runtime environment updated — recreating container...");
             }
@@ -419,8 +433,8 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
         process.exit(1);
     }
 
-    // --- Prompt for working directory ----------------------------------------------------------------------------------------------------
-    const workdir = await promptWorkdir(workspaceDir, cwd);
+    // --- Resolve working directory -------------------------------------------------------------------------------------------------------
+    const workdir = resolveWorkdir(workspaceDir, cwd);
 
     // --- Profile selection ---------------------------------------------------------------------------------------------------------------
     const profiles = yaml.profiles ?? {};
@@ -503,7 +517,7 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
     let stale = isImageStale(containerName, expectedBuildHash);
     if (stale) {
         log.warn(
-            "totopo's latest release includes an updated container image.\n  Please rebuild to update — this will not affect agent memory, settings, or your data.",
+            "totopo's latest release includes an updated container image.\nPlease rebuild to update — this will not affect agent memory, settings, or your data.",
         );
         const rebuild = await confirm({
             message: "Rebuild now? (Recommended)",

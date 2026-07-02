@@ -7,6 +7,24 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [3.11.0] — 2026-07-02
+
+### Added
+
+- Auto-start agent - pick your favorite agent (Claude Code, OpenCode, or Codex) under Settings > Auto-start agent and it launches automatically as each session opens; quit it and you drop back to the container shell with the session still running. It's a host-global preference that applies to every workspace. Existing containers are offered a rebuild on next session start.
+
+### Changed
+
+- Starting a session from a sub-directory no longer prompts "Here / Workspace root" - the session always opens where you ran totopo, and the full workspace root stays mounted so `cd /workspace` reaches it either way.
+
+### Fixed
+
+- A voice-enabled session exiting no longer shows a spurious "Could not stop pulseaudio." warning when the audio server did in fact stop - totopo now waits for the server to exit before reporting.
+- Cancelling first-time setup now removes the totopo.yaml it just created, leaving your directory exactly as it was before you started.
+- In the pre-setup menu, choosing Advanced and then Back now returns to the menu instead of quitting totopo.
+
+---
+
 ## [3.10.2] — 2026-07-01
 
 ### Fixed

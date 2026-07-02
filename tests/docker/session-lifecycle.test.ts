@@ -14,9 +14,11 @@ import type { StartContainerOpts } from "../../src/commands/dev.js";
 import { audioStateLabel, startContainer } from "../../src/commands/dev.js";
 import {
     AUDIO_COOKIE_CONTAINER_PATH,
+    AUTO_START,
     CONTAINER_STARTUP,
     GIT_MODE,
     LABEL_AUDIO,
+    LABEL_AUTOSTART,
     LABEL_GIT_MODE,
     LABEL_MANAGED,
     LABEL_PROFILE,
@@ -24,6 +26,7 @@ import {
     PROFILE,
 } from "../../src/lib/constants.js";
 import { buildDockerfile, buildImageWithTempfile, computeBuildHash } from "../../src/lib/dockerfile-builder.js";
+import { writeAutoStartAgent } from "../../src/lib/global-config.js";
 import { isImageStale } from "../../src/lib/migrate-to-latest.js";
 import { connectedSessionCount, containerSessionCount, loginShellExecArgs } from "../../src/lib/sessions.js";
 import { expandShadowPatterns } from "../../src/lib/shadows.js";
@@ -37,6 +40,7 @@ import {
     dockerExtraHosts,
     forceRemoveContainer,
     forceRemoveImage,
+    isolateGlobalConfigHome,
     MINIMAL_DOCKERFILE,
     MINIMAL_DOCKERFILE_TEMPLATE,
     requireDocker,
@@ -274,6 +278,44 @@ describe("session lifecycle", () => {
         const result = await startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { gitMode: GIT_MODE.strict }));
         assert.equal(result, "created", "container should be recreated when git mode changes");
         assert.equal(dockerContainerLabel(containerName, LABEL_GIT_MODE), GIT_MODE.strict);
+    });
+
+    // Auto-start is a host-global setting read from ~/.totopo/global/config, so these tests isolate HOME to
+    // a temp dir rather than passing it through makeOpts. isolateGlobalConfigHome also pins DOCKER_CONFIG so
+    // the inherited-env docker build keeps its warm cache instead of rebuilding the whole image.
+    test("auto-start off by default: label is off and no launch env var", async () => {
+        const home = createTempDir();
+        const restore = isolateGlobalConfigHome(home);
+        try {
+            await startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
+            assert.equal(dockerContainerLabel(containerName, LABEL_AUTOSTART), AUTO_START.off);
+            assert.equal(
+                dockerExec(containerName, ["printenv", "TOTOPO_AUTOSTART"]).stdout,
+                "",
+                "TOTOPO_AUTOSTART must be unset when auto-start is off",
+            );
+        } finally {
+            restore();
+            await cleanTempDir(home);
+        }
+    });
+
+    test("auto-start on: label and env reflect the chosen agent, and a change recreates the container", async () => {
+        const home = createTempDir();
+        const restore = isolateGlobalConfigHome(home);
+        try {
+            await startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
+            assert.equal(dockerContainerLabel(containerName, LABEL_AUTOSTART), AUTO_START.off);
+
+            writeAutoStartAgent(AUTO_START.claude);
+            const result = await startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
+            assert.equal(result, "created", "container should be recreated when the auto-start agent changes");
+            assert.equal(dockerContainerLabel(containerName, LABEL_AUTOSTART), AUTO_START.claude);
+            assert.equal(dockerExec(containerName, ["printenv", "TOTOPO_AUTOSTART"]).stdout, AUTO_START.claude);
+        } finally {
+            restore();
+            await cleanTempDir(home);
+        }
     });
 
     test("audio off by default: no label flag, no PulseAudio env, no extra host", async () => {

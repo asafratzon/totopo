@@ -35,6 +35,14 @@ describe("buildDockerfile", () => {
         assert.ok(result.includes("codex"));
     });
 
+    test("appends the guarded auto-start block driven by TOTOPO_AUTOSTART", () => {
+        const result = buildDockerfile(BASE_TEMPLATE);
+        // The launch is gated on TOTOPO_AUTOSTART (set by docker run) and guarded by TOTOPO_AUTOSTARTED
+        // so nested and post-exit shells do not relaunch.
+        assert.ok(result.includes("$TOTOPO_AUTOSTART"));
+        assert.ok(result.includes("TOTOPO_AUTOSTARTED"));
+    });
+
     test("without profile hook - no profile section", () => {
         const result = buildDockerfile(BASE_TEMPLATE);
         assert.ok(!result.includes("Profile hook"));

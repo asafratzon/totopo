@@ -1,13 +1,13 @@
 // =========================================================================================================================================
-// src/commands/settings.ts - Settings submenu: git mode, shadow paths, voice, rebuild, reset config
+// src/commands/settings.ts - Settings submenu: git mode, shadow paths, voice, auto-start, rebuild, reset config
 // =========================================================================================================================================
 
 import { spawnSync } from "node:child_process";
 import { relative } from "node:path";
 import { cancel, confirm, isCancel, log, multiselect, note, outro, path, select, text } from "@clack/prompts";
 import { getStatus, IS_MACOS, installPulse, startServer, stopServer, testMic } from "../lib/audio-host.js";
-import { AUDIO_MODE, AUDIO_TCP_PORT, GIT_MODE, type GitMode } from "../lib/constants.js";
-import { readAudioMode, writeAudioMode } from "../lib/global-config.js";
+import { AUDIO_MODE, AUDIO_TCP_PORT, AUTO_START, type AutoStartAgent, GIT_MODE, type GitMode } from "../lib/constants.js";
+import { readAudioMode, readAutoStartAgent, writeAudioMode, writeAutoStartAgent } from "../lib/global-config.js";
 import { countPatternHits } from "../lib/shadows.js";
 import { buildDefaultTotopoYaml, readTotopoYaml, writeTotopoYaml } from "../lib/totopo-yaml.js";
 import type { WorkspaceContext } from "../lib/workspace-identity.js";
@@ -279,6 +279,39 @@ async function audioMenu(ctx: WorkspaceContext): Promise<void> {
     }
 }
 
+// --- Auto-start agent menu ---------------------------------------------------------------------------------------------------------------
+async function autoStartMenu(ctx: WorkspaceContext): Promise<void> {
+    const current = readAutoStartAgent();
+
+    note(
+        "When set, the chosen agent launches automatically as you enter the container; quit it and you drop to a shell.\n" +
+            "This is a host-global preference — it applies to every workspace.",
+        "Auto-start agent",
+    );
+
+    const choice = await select<AutoStartAgent>({
+        message: "Auto-start agent:",
+        options: [
+            { value: AUTO_START.off, label: "Off", hint: current === AUTO_START.off ? "current · default" : "default" },
+            { value: AUTO_START.claude, label: "Claude Code", hint: current === AUTO_START.claude ? "current · claude" : "claude" },
+            { value: AUTO_START.opencode, label: "OpenCode", hint: current === AUTO_START.opencode ? "current · opencode" : "opencode" },
+            { value: AUTO_START.codex, label: "Codex", hint: current === AUTO_START.codex ? "current · codex" : "codex" },
+        ],
+        initialValue: current,
+    });
+
+    if (isCancel(choice)) return;
+    if (choice === current) return;
+
+    writeAutoStartAgent(choice);
+    log.success(
+        choice === AUTO_START.off
+            ? "Auto-start disabled — you'll land in a shell. Applies to all workspaces."
+            : `Auto-start set to ${choice} for all workspaces.`,
+    );
+    await promptStopContainer(ctx);
+}
+
 // --- Prompt to stop container ------------------------------------------------------------------------------------------------------------
 async function promptStopContainer(ctx: WorkspaceContext): Promise<void> {
     const containerName = ctx.containerName;
@@ -338,6 +371,7 @@ export async function run(ctx: WorkspaceContext): Promise<"back" | "rebuild" | "
             { value: "git-mode", label: "Git mode", hint: `current: ${currentGitMode}` },
             { value: "shadow-paths", label: "Shadow paths", hint: "manage shadow patterns" },
             { value: "audio", label: "Voice / audio", hint: "Claude Code /voice mic setup" },
+            { value: "auto-start", label: "Auto-start agent", hint: `current: ${readAutoStartAgent()}` },
             { value: "rebuild", label: "Rebuild container", hint: "force a fresh image build" },
             { value: "clean-rebuild", label: "Clean rebuild", hint: "fresh build, no cache" },
             { value: "reset", label: "Reset config", hint: "restore totopo.yaml to defaults" },
@@ -359,6 +393,9 @@ export async function run(ctx: WorkspaceContext): Promise<"back" | "rebuild" | "
                 break;
             case "audio":
                 await audioMenu(ctx);
+                break;
+            case "auto-start":
+                await autoStartMenu(ctx);
                 break;
             case "rebuild":
                 return "rebuild";
