@@ -47,7 +47,23 @@ function tryGetGitRoot(cwd: string): string | null {
     }
 }
 
+// Public entry point. Wraps the interactive setup so an aborted run (the user cancels a prompt, or an
+// unexpected error) rolls back a totopo.yaml we created this session, leaving the directory as we found it.
 export async function run(cwd: string): Promise<WorkspaceContext | null> {
+    // Records a totopo.yaml this run creates (never a pre-existing one) so the finally can remove it.
+    const created: { yamlPath: string | null } = { yamlPath: null };
+    let result: WorkspaceContext | null = null;
+    try {
+        result = await runSetup(cwd, created);
+        return result;
+    } finally {
+        // Non-completion means cancelled (result stays null) or threw (also null). Success assigns result,
+        // so a created config survives only when setup actually finished.
+        if (!result && created.yamlPath) safeRmSync(created.yamlPath, { force: true });
+    }
+}
+
+async function runSetup(cwd: string, created: { yamlPath: string | null }): Promise<WorkspaceContext | null> {
     const toTildePath = (p: string) => (p.startsWith(homedir()) ? p.replace(homedir(), "~") : p);
 
     // --- Detect context ------------------------------------------------------------------------------------------------------------------
@@ -147,7 +163,8 @@ export async function run(cwd: string): Promise<WorkspaceContext | null> {
         // Build and write totopo.yaml
         yaml = buildDefaultTotopoYaml(workspaceId);
         writeTotopoYaml(workspaceRoot, yaml, { includeExtendedTemplate: true });
-        log.success(`Created ${toTildePath(join(workspaceRoot, TOTOPO_YAML))}`);
+        created.yamlPath = join(workspaceRoot, TOTOPO_YAML);
+        log.success(`Created ${toTildePath(created.yamlPath)}`);
     }
 
     // --- Non-git warning -----------------------------------------------------------------------------------------------------------------

@@ -114,21 +114,28 @@ try {
 if (!workspace) {
     // If other workspaces already exist, let the user choose setup vs manage
     if (listWorkspaceIds().length > 0) {
-        process.stdout.write("\n");
-        const choice = await select({
-            message: "What would you like to do?",
-            options: [
-                { value: "setup", label: "Set up totopo for this directory" },
-                { value: "advanced", label: "Advanced" },
-            ],
-        });
-        if (isCancel(choice)) {
-            cancel();
-            process.exit(0);
-        }
-        if (choice === "advanced") {
-            await advancedMenu();
-            process.exit(0);
+        while (true) {
+            process.stdout.write("\n");
+            const choice = await select({
+                message: "What would you like to do?",
+                options: [
+                    { value: "setup", label: "Set up totopo for this directory" },
+                    { value: "advanced", label: "Advanced" },
+                ],
+            });
+            if (isCancel(choice)) {
+                cancel();
+                process.exit(0);
+            }
+            if (choice === "advanced") {
+                // "Back" returns here to re-show this chooser; a terminal action (uninstall) returns
+                // undefined and exits, matching the main menu loop's handling below.
+                const result = await advancedMenu();
+                if (result === "back") continue;
+                process.exit(0);
+            }
+            // "setup" - leave the chooser and fall through to onboarding.
+            break;
         }
     }
 

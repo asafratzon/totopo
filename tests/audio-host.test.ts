@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, test } from "node:test";
-import { ensureCookieFile, hostCookiePath } from "../src/lib/audio-host.js";
+import { ensureCookieFile, hostCookiePath, waitUntilStopped } from "../src/lib/audio-host.js";
 import { GLOBAL_DIR, PULSE_COOKIE_FILE, TOTOPO_DIR } from "../src/lib/constants.js";
 import { cleanTempDir, createTempDir, overrideEnv } from "./helpers.js";
 
@@ -37,5 +37,32 @@ describe("audio-host dedicated cookie", () => {
         const again = ensureCookieFile();
         assert.equal(again, path);
         assert.deepEqual(readFileSync(path), first, "existing cookie must be left untouched");
+    });
+});
+
+describe("waitUntilStopped", () => {
+    test("returns true as soon as the daemon reports stopped, without exhausting attempts", () => {
+        let checks = 0;
+        // Still running for the first two checks, then gone (mirrors --kill exiting asynchronously).
+        const isRunning = () => {
+            checks++;
+            return checks <= 2;
+        };
+        const sleeps: number[] = [];
+        const ok = waitUntilStopped(isRunning, 10, 100, (ms) => sleeps.push(ms));
+        assert.equal(ok, true);
+        assert.equal(checks, 3, "stops checking once the daemon is gone");
+        assert.deepEqual(sleeps, [100, 100], "sleeps only between checks that still saw it running");
+    });
+
+    test("returns false when the daemon never stops within the attempt budget", () => {
+        let checks = 0;
+        const isRunning = () => {
+            checks++;
+            return true;
+        };
+        const ok = waitUntilStopped(isRunning, 3, 100, () => {});
+        assert.equal(ok, false);
+        assert.equal(checks, 4, "3 in-loop checks plus a final check");
     });
 });

@@ -138,12 +138,35 @@ export function startServer(): ActionResult {
     return { ok: false, message: "pulseaudio did not come up. Check Console.app logs and retry." };
 }
 
+// Block the current thread for `ms` without a busy-loop or an external `sleep` binary (portable across
+// macOS and Linux). Used to let pulseaudio finish exiting after --kill before we re-check its state.
+function sleepSync(ms: number): void {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+// Poll `isRunning` until the daemon reports stopped, up to `attempts` checks spaced by `delayMs`, and
+// return true as soon as it is gone. `pulseaudio --kill` only signals the daemon (it exits asynchronously),
+// so an immediate check can still see it running - polling avoids a false "Could not stop" on a stop that
+// actually succeeded a moment later. `sleep` is injectable so tests run without real delays.
+export function waitUntilStopped(
+    isRunning: () => boolean,
+    attempts: number,
+    delayMs: number,
+    sleep: (ms: number) => void = sleepSync,
+): boolean {
+    for (let i = 0; i < attempts; i++) {
+        if (!isRunning()) return true;
+        sleep(delayMs);
+    }
+    return !isRunning();
+}
+
 // Stop the host daemon. Safe to call when nothing is running.
 export function stopServer(): ActionResult {
     if (!isPulseInstalled()) return { ok: true, message: "pulseaudio is not installed; nothing to stop." };
     if (!isAudioServerRunning()) return { ok: true, message: "pulseaudio is not running." };
     spawnSync("pulseaudio", ["--kill"], { stdio: "pipe" });
-    if (!isAudioServerRunning()) return { ok: true, message: "pulseaudio stopped." };
+    if (waitUntilStopped(isAudioServerRunning, 10, 100)) return { ok: true, message: "pulseaudio stopped." };
     return { ok: false, message: "Could not stop pulseaudio." };
 }
 
