@@ -162,7 +162,7 @@ async function runSetup(cwd: string, created: { yamlPath: string | null }): Prom
 
         // Build and write totopo.yaml
         yaml = buildDefaultTotopoYaml(workspaceId);
-        writeTotopoYaml(workspaceRoot, yaml, { includeExtendedTemplate: true });
+        writeTotopoYaml(workspaceRoot, yaml);
         created.yamlPath = join(workspaceRoot, TOTOPO_YAML);
         log.success(`Created ${toTildePath(created.yamlPath)}`);
     }

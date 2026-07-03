@@ -2,8 +2,6 @@ import assert from "node:assert/strict";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { load as loadYaml } from "js-yaml";
-import { PROFILE } from "../src/lib/constants.js";
 import {
     buildDefaultTotopoYaml,
     readTotopoYaml,
@@ -130,45 +128,79 @@ describe("writeTotopoYaml", () => {
         const read = readTotopoYaml(tmp);
         assert.equal(read?.workspace_id, "roundtrip-test");
         assert.deepEqual(read?.shadow_paths, ["node_modules", ".env*"]);
-        assert.ok(read?.profiles?.default);
-        assert.equal(read?.profiles?.extended, undefined);
+        assert.equal(read?.profiles, undefined, "minimal default has no profiles block");
+        assert.equal(read?.env_file, undefined, "minimal default has no env_file");
         await cleanTempDir(tmp);
     });
 
-    test("includeExtendedTemplate emits a commented extended block that can be uncommented to a valid profile", async () => {
+    test("generated default is minimal: workspace_id + shadow_paths, a Help pointer, and no scaffolding", async () => {
         const tmp = createTempDir();
-        const config = buildDefaultTotopoYaml("template-test");
-        writeTotopoYaml(tmp, config, { includeExtendedTemplate: true });
-
+        writeTotopoYaml(tmp, buildDefaultTotopoYaml("minimal-test"));
         const raw = readFileSync(join(tmp, "totopo.yaml"), "utf8");
-        assert.ok(raw.includes("# Uncomment to enable additional runtimes"), "prompt line should be present");
-        assert.ok(raw.includes("# extended:"), "commented extended profile should be present");
 
-        // Uncomment only the lines between the `# extended:` marker and the trailing footer comment,
-        // then verify the full file parses with both profiles. This proves the commented block is
-        // structurally valid YAML once a user strips the leading "# ".
-        const lines = raw.split("\n");
-        const extStart = lines.findIndex((l) => l.includes("# extended:"));
-        const footIdx = lines.findIndex((l) => l.includes("# Add more profiles here"));
-        assert.ok(extStart >= 0 && footIdx > extStart, "expected commented extended block before footer");
+        // Present: the two default keys and a pointer to the docs / Help menu.
+        assert.ok(raw.includes("workspace_id: minimal-test"));
+        assert.ok(raw.includes("shadow_paths:"));
+        assert.ok(raw.includes("Choose Help"), "header should point users at the Help menu for docs");
 
-        const uncommented = lines.map((l, i) => (i >= extStart && i < footIdx ? l.replace(/^ {2}# ?/, "  ") : l)).join("\n");
-        const parsed = loadYaml(uncommented) as { profiles?: Record<string, { description?: string; dockerfile_hook?: string }> };
-        assert.ok(parsed.profiles?.default, "default profile should still be present");
-        assert.ok(parsed.profiles?.extended, "uncommenting should yield an extended profile entry");
-        assert.equal(parsed.profiles?.extended?.description, "Base image + Go, Java, Rust, and Bun");
-        assert.ok(parsed.profiles?.extended?.dockerfile_hook?.includes("golang-go"), "extended hook should include the Go install line");
+        // Absent: every scaffold we deliberately stopped shipping.
+        assert.ok(!raw.includes("env_file:"), "no env_file in the minimal default");
+        assert.ok(!raw.includes("profiles:"), "no profiles block in the minimal default");
+        assert.ok(!raw.includes("# extended:"), "no commented extended profile");
+        assert.ok(!raw.includes("Uncomment to enable additional runtimes"), "no extended-profile prompt");
+        assert.ok(!raw.includes("# ports:"), "no commented ports example");
+        assert.ok(!raw.includes("EXAMPLE_PORT"), "no ports example env name");
+        assert.ok(!raw.includes("Add more profiles here"), "no profiles footer when there is no profiles block");
 
+        // And it round-trips cleanly through the schema validator.
+        assert.doesNotThrow(() => readTotopoYaml(tmp));
         await cleanTempDir(tmp);
     });
 
-    test("does not emit a commented extended block without the option (no clippy behavior)", async () => {
+    test("emits the profiles footer only when a profiles block is present", async () => {
         const tmp = createTempDir();
-        const config = buildDefaultTotopoYaml("no-clippy-test");
-        writeTotopoYaml(tmp, config);
+        writeTotopoYaml(tmp, { workspace_id: "with-profiles", profiles: { default: { description: "Base image" } } });
         const raw = readFileSync(join(tmp, "totopo.yaml"), "utf8");
-        assert.ok(!raw.includes("# extended:"), "commented extended block must not appear when option is omitted");
-        assert.ok(!raw.includes("Uncomment to enable additional runtimes"), "prompt line must not appear when option is omitted");
+        assert.ok(raw.includes("profiles:"));
+        assert.ok(raw.includes("Add more profiles here"), "footer hint should follow a profiles block");
+        await cleanTempDir(tmp);
+    });
+});
+
+// ---- ports config -----------------------------------------------------------------------------------------------------------------------
+
+describe("ports config", () => {
+    test("reads a valid ports block", async () => {
+        const tmp = createTempDir();
+        writeFileSync(
+            join(tmp, "totopo.yaml"),
+            "workspace_id: my-project\nports:\n  - port: 4820\n    ifTaken: next\n    env: EXAMPLE_PORT\n  - port: 5432\n",
+        );
+        const config = readTotopoYaml(tmp);
+        assert.equal(config?.ports?.length, 2);
+        assert.deepEqual(config?.ports?.[0], { port: 4820, ifTaken: "next", env: "EXAMPLE_PORT" });
+        assert.deepEqual(config?.ports?.[1], { port: 5432 });
+        await cleanTempDir(tmp);
+    });
+
+    test("rejects a bad ifTaken value", async () => {
+        const tmp = createTempDir();
+        writeFileSync(join(tmp, "totopo.yaml"), "workspace_id: my-project\nports:\n  - port: 4820\n    ifTaken: bogus\n");
+        assert.throws(() => readTotopoYaml(tmp), /Invalid totopo\.yaml/);
+        await cleanTempDir(tmp);
+    });
+
+    test("rejects an out-of-range port", async () => {
+        const tmp = createTempDir();
+        writeFileSync(join(tmp, "totopo.yaml"), "workspace_id: my-project\nports:\n  - port: 80\n");
+        assert.throws(() => readTotopoYaml(tmp), /Invalid totopo\.yaml/);
+        await cleanTempDir(tmp);
+    });
+
+    test("rejects an unknown field on a ports item", async () => {
+        const tmp = createTempDir();
+        writeFileSync(join(tmp, "totopo.yaml"), "workspace_id: my-project\nports:\n  - port: 4820\n    bogus: true\n");
+        assert.throws(() => readTotopoYaml(tmp), /unknown property "bogus"/);
         await cleanTempDir(tmp);
     });
 });
@@ -186,11 +218,10 @@ describe("buildDefaultTotopoYaml", () => {
         assert.deepEqual(config.shadow_paths, ["node_modules", ".env*"]);
     });
 
-    test("includes only the default profile (extended is shipped as a commented template, not a live entry)", () => {
+    test("is minimal: no profiles and no env_file (they are optional and documented via Help)", () => {
         const config = buildDefaultTotopoYaml("test-ws");
-        const profileNames = Object.keys(config.profiles ?? {});
-        assert.deepEqual(profileNames, [PROFILE.default]);
-        assert.ok(config.profiles?.default?.description, "default profile should have a description");
+        assert.equal(config.profiles, undefined, "no profiles scaffolded into the minimal default");
+        assert.equal(config.env_file, undefined, "no env_file scaffolded into the minimal default");
     });
 });
 
@@ -235,6 +266,27 @@ describe("repairTotopoYaml", () => {
         // Verify it was actually stripped - re-read should succeed
         const read = readTotopoYaml(tmp);
         assert.equal(read?.workspace_id, "strip-test");
+        await cleanTempDir(tmp);
+    });
+
+    test("does not backfill a profiles block on repair (minimal files stay minimal)", async () => {
+        const tmp = createTempDir();
+        // A file missing profiles, with an unknown field to force a repair pass.
+        writeFileSync(join(tmp, "totopo.yaml"), "workspace_id: minimal-repair\nbogus: true\n");
+        const result = repairTotopoYaml(tmp);
+        assert.ok(result.repairedYaml);
+        assert.equal(result.repairedYaml.profiles, undefined, "repair must not re-add a profiles block");
+        assert.ok(!result.message?.includes("profiles"), "repair should not report adding profiles");
+        await cleanTempDir(tmp);
+    });
+
+    test("restores the shadow_paths isolation default when absent", async () => {
+        const tmp = createTempDir();
+        writeFileSync(join(tmp, "totopo.yaml"), "workspace_id: shadow-repair\nbogus: true\n");
+        const result = repairTotopoYaml(tmp);
+        assert.ok(result.repairedYaml);
+        assert.deepEqual(result.repairedYaml.shadow_paths, ["node_modules", ".env*"]);
+        assert.ok(result.message?.includes("shadow_paths"));
         await cleanTempDir(tmp);
     });
 });

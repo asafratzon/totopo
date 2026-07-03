@@ -55,6 +55,7 @@ export const LABEL_GIT_MODE = "totopo.git-mode";
 export const LABEL_BUILD_HASH = "totopo.build-hash";
 export const LABEL_AUDIO = "totopo.audio";
 export const LABEL_AUTOSTART = "totopo.autostart";
+export const LABEL_PORTS = "totopo.ports";
 
 // Built-in profile names (must match keys in buildDefaultTotopoYaml in totopo-yaml.ts)
 export const PROFILE = {
@@ -75,8 +76,9 @@ export type GitMode = (typeof GIT_MODE)[keyof typeof GIT_MODE];
 export const GIT_MODES: readonly GitMode[] = Object.values(GIT_MODE);
 
 // Runtime env vars injected into every container via docker run -e.
-// Each flag suppresses a Claude Code feature that is inapplicable or disruptive inside the container.
+// Suppress Claude Code features that are inapplicable or disruptive inside the container, and tune session behavior.
 export const RUNTIME_ENV: Record<string, string> = {
+    CLAUDE_AFK_TIMEOUT_MS: "2147483647", // Max 32-bit timer value (~24.8 days); avoids AFK timeouts in long unattended container sessions
     CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY: "1", // Periodic feedback survey prompt is noise in ephemeral container sessions
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1", // Suppress non-essential network calls (autoupdate checks, telemetry pings)
     CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL: "1", // Skip automatic addition of the official plugin marketplace on first run

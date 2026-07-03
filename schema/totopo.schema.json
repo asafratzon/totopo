@@ -39,6 +39,33 @@
                 },
                 "additionalProperties": false
             }
+        },
+        "ports": {
+            "type": "array",
+            "description": "Host ports published into the container, identity-mapped and loopback-only (127.0.0.1:N:N), so a web tool inside the container is reachable at http://localhost:<port> on the host. Each resolved port is remembered per workspace (sticky) across container recreation.",
+            "items": {
+                "type": "object",
+                "required": ["port"],
+                "additionalProperties": false,
+                "properties": {
+                    "port": {
+                        "type": "integer",
+                        "minimum": 1024,
+                        "maximum": 65535,
+                        "description": "Desired host port and the scan start. Must be 1024-65535 (the CLI runs unprivileged)."
+                    },
+                    "ifTaken": {
+                        "type": "string",
+                        "enum": ["fail", "next"],
+                        "description": "On collision: 'fail' (default) refuses to start; 'next' scans upward from port for a free host port."
+                    },
+                    "env": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+                        "description": "Env var injected into the container with the RESOLVED port number. Required when ifTaken is 'next'."
+                    }
+                }
+            }
         }
     }
 }

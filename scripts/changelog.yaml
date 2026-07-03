@@ -1,6 +1,20 @@
 in_progress:
-  base_version: 3.11.1
-  entries: []
+  base_version: 3.12.0
+  entries:
+    - rc_version: "3.12.0-rc-1"
+      date: "2026-07-03"
+      added:
+        - >-
+          Publish workspace ports to your host - e.g. `ports: [{ port: 5173 }]` in totopo.yaml maps that port to
+          127.0.0.1:5173 (loopback only), so a Vite or Next dev server running inside the container opens at
+          http://localhost:5173 in your host browser; ports are remembered per workspace and reused across sessions,
+          and `ifTaken: next` with an `env` var (e.g. bind `python3 -m http.server "$PORT"`) auto-picks a free port
+          when your preferred one is already busy.
+      changed:
+        - >-
+          The totopo.yaml that onboarding and Settings > Reset generate is now minimal - just workspace_id and
+          shadow_paths - instead of scaffolding every optional setting; env_file, profiles, and ports stay fully
+          supported and documented, added on demand.
 releases:
   - version: 3.11.0
     date: "2026-07-02"

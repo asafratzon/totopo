@@ -76,6 +76,9 @@ The config is minimal — only `workspace_id` is required; the rest are optional
 - **`profiles`** *(optional)* — Dockerfile image variants (see [Profiles](#profiles))
 - **`shadow_paths`** *(optional)* — gitignore-style patterns hidden from agents (see [Shadow Paths](#shadow-paths))
 - **`env_file`** *(optional)* — path to env file injected at runtime (see [Environment Variables](#environment-variables))
+- **`ports`** *(optional)* — host ports published into the container so a web tool inside opens in your host browser (see [Published Ports](#published-ports))
+
+The file totopo generates (onboarding, `Settings > Reset`) is deliberately minimal — just `workspace_id` and `shadow_paths`. Add the optional settings above as you need them; each is documented in this README.
 
 On every run, totopo shows the workspace menu:
 
@@ -181,6 +184,27 @@ env_file: .env
 The file is loaded into the container's environment at session start. If the file is not found, totopo skips it with a warning.
 
 totopo also injects privacy and sandbox environment variables into every container — a universal `DO_NOT_TRACK` opt-out plus switches that disable Claude Code telemetry, error reporting, and other non-essential traffic.
+
+### Published Ports
+
+A web tool running inside the container (dev server, `python3 -m http.server`, etc.) is not reachable from your host browser by default. List it under `ports` and totopo publishes it, identity-mapped and loopback-only, at container creation:
+
+```yaml
+# totopo.yaml
+ports:
+  - port: 4820          # desired host port (1024-65535)
+    ifTaken: next       # "fail" (default) refuses to start if taken; "next" scans upward for a free port
+    env: EXAMPLE_PORT   # injected with the resolved port number (required when ifTaken: next)
+  - port: 5432
+    ifTaken: fail       # default; refuses to start if 5432 is taken
+```
+
+- **Identity-mapped, loopback-only.** A port resolving to N is published as `127.0.0.1:N:N`. It is reachable only from your own machine, never the LAN — and because the number is identical inside and outside the container, a tool's printed `http://localhost:<port>` URL just works on the host.
+- **`env`.** When set, the resolved number is injected as that env var. The tool binds it (e.g. `python3 -m http.server "$EXAMPLE_PORT"`) — one env var is the whole integration.
+- **`ifTaken`.** `fail` (default) refuses to start and names the entry if the port is taken; `next` scans upward from `port` (bounded) for a free one. `next` requires `env`, since a remapped port is unreachable unless its number is injected.
+- **Sticky per workspace.** The resolved number is remembered and reused across container recreation, so each workspace keeps its own port with no cross-workspace collisions. Editing an entry's `port` discards its old allocation; changing `ifTaken`/`env` recreates the container but keeps the port.
+
+Each session prints one line per entry (e.g. `port 4821 open → EXAMPLE_PORT`) so you always know the resolved number. Changes to `ports` take effect through the normal container-recreation flow.
 
 ### AI CLIs
 

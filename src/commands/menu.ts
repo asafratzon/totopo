@@ -51,8 +51,8 @@ export async function run(args: MenuArgs): Promise<string> {
     // Surface the host audio server. When this workspace has voice wiring on, show its state at a glance
     // (running / not running). When wiring is off but the global server happens to be up, still nudge the
     // user to stop it - totopo never stops it on its own.
-    const audioRunning = `\n${styleText("yellow", "●")} audio server running (Settings › Voice / audio)`;
-    const audioStopped = `\n${styleText("gray", "●")} audio server not running (Settings › Voice / audio)`;
+    const audioRunning = `\n${styleText("yellow", "●")} audio server running`;
+    const audioStopped = `\n${styleText("gray", "●")} audio server not running`;
     // In automatic mode (macOS) totopo starts the server when a session opens, so a "not running" notice
     // is just noise - suppress it. In manual mode (or off macOS) the user starts it, so the nudge stays.
     const autoStartsServer = IS_MACOS && readAudioMode() === AUDIO_MODE.automatic;
