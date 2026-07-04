@@ -183,10 +183,13 @@ describe("ports config", () => {
         await cleanTempDir(tmp);
     });
 
-    test("rejects an out-of-range bare integer port at the schema level", async () => {
+    test("accepts an out-of-range bare integer at the schema level (range is enforced by validatePortsConfig)", async () => {
+        // The schema only enforces coarse structure; port ranges and cross-entry rules live in ports.ts so its
+        // actionable messages (the "quote it as HOST:CONTAINER" hint) are what the user sees. See ports.test.ts.
         const tmp = createTempDir();
         writeFileSync(join(tmp, "totopo.yaml"), "workspace_id: my-project\nports:\n  - port: 80\n");
-        assert.throws(() => readTotopoYaml(tmp), /Invalid totopo\.yaml/);
+        const config = readTotopoYaml(tmp);
+        assert.deepEqual(config?.ports?.[0], { port: 80 });
         await cleanTempDir(tmp);
     });
 

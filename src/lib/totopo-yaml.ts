@@ -62,7 +62,9 @@ let _validate: ReturnType<InstanceType<typeof Ajv>["compile"]> | null = null;
 function getValidator() {
     if (!_validate) {
         const schema = JSON.parse(readFileSync(schemaPath, "utf8"));
-        const ajv = new Ajv({ allErrors: true });
+        // allowUnionTypes: the `ports` port field is intentionally an integer|string union (bare identity port or
+        // "HOST:CONTAINER" string); the schema keeps only coarse structure while ports.ts owns range/format semantics.
+        const ajv = new Ajv({ allErrors: true, allowUnionTypes: true });
         _validate = ajv.compile(schema);
     }
     return _validate;
