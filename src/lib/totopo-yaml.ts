@@ -7,6 +7,7 @@ import { basename, join } from "node:path";
 import AjvModule from "ajv";
 import { dump as dumpYaml, load as loadYaml } from "js-yaml";
 import { DEFAULT_SHADOW_PATHS, PACKAGE_ROOT, TOTOPO_YAML, WORKSPACE_ID_MAX, WORKSPACE_ID_MIN } from "./constants.js";
+import type { PortEntry } from "./ports.js";
 
 // --- Interfaces --------------------------------------------------------------------------------------------------------------------------
 
@@ -20,6 +21,7 @@ export interface TotopoYamlConfig {
     env_file?: string;
     shadow_paths?: string[];
     profiles?: Record<string, ProfileConfig>;
+    ports?: PortEntry[];
 }
 
 // --- Validation --------------------------------------------------------------------------------------------------------------------------
@@ -60,7 +62,9 @@ let _validate: ReturnType<InstanceType<typeof Ajv>["compile"]> | null = null;
 function getValidator() {
     if (!_validate) {
         const schema = JSON.parse(readFileSync(schemaPath, "utf8"));
-        const ajv = new Ajv({ allErrors: true });
+        // allowUnionTypes: the `ports` port field is intentionally an integer|string union (bare identity port or
+        // "HOST:CONTAINER" string); the schema keeps only coarse structure while ports.ts owns range/format semantics.
+        const ajv = new Ajv({ allErrors: true, allowUnionTypes: true });
         _validate = ajv.compile(schema);
     }
     return _validate;
@@ -114,7 +118,7 @@ export const GITHUB_README_URL = `https://github.com/asafratzon/totopo/blob/v${v
 const YAML_COMMENTS: Partial<Record<keyof TotopoYamlConfig, string>> = {
     workspace_id:
         "# totopo workspace config - run 'npx totopo' from anywhere under this directory tree to start your dev container.\n" +
-        "# Ask the AI agent inside the container to help you edit this file if needed.\n" +
+        "# Choose Help in the totopo menu to see the official docs and all configuration options.\n" +
         "# This file may be rewritten by totopo (repair, reset, settings changes). Custom comments will not be preserved.",
     env_file: "# Path to env file relative to this directory (e.g. '.env') - injected into the container at runtime.",
     shadow_paths: "# .gitignore-style patterns - agents see an empty, isolated copy instead of the real host data.",
@@ -124,18 +128,8 @@ const YAML_COMMENTS: Partial<Record<keyof TotopoYamlConfig, string>> = {
         "# When multiple profiles exist, totopo prompts you to pick one on session start.",
 };
 
-export interface WriteTotopoYamlOptions {
-    /**
-     * When true, append a commented-out `extended` profile block under `profiles:` so users can
-     * uncomment to enable Go/Java/Rust/Bun. Intended for factory-default writers (onboarding,
-     * reset, migration, profiles-repair). Routine saves should leave this off so a deliberately
-     * removed `extended` does not keep reappearing.
-     */
-    includeExtendedTemplate?: boolean;
-}
-
 /** Write totopo.yaml to a directory with schema header and inline comments. */
-export function writeTotopoYaml(dir: string, config: TotopoYamlConfig, opts: WriteTotopoYamlOptions = {}): void {
+export function writeTotopoYaml(dir: string, config: TotopoYamlConfig): void {
     const filePath = join(dir, TOTOPO_YAML);
     const yamlContent = dumpYaml(config, {
         lineWidth: -1,
@@ -157,76 +151,32 @@ export function writeTotopoYaml(dir: string, config: TotopoYamlConfig, opts: Wri
     }
 
     const body = output.join("\n").trimEnd();
-    const extendedBlock = opts.includeExtendedTemplate ? `\n\n${EXTENDED_PROFILE_TEMPLATE_PROMPT}\n${renderExtendedAsCommented()}` : "";
-    writeFileSync(filePath, `${body}${extendedBlock}\n${PROFILES_FOOTER_COMMENT}\n`);
+    // The "add more profiles" footer only makes sense when a profiles: block was actually written above it.
+    const footer = config.profiles && Object.keys(config.profiles).length > 0 ? `\n${PROFILES_FOOTER_COMMENT}` : "";
+    writeFileSync(filePath, `${body}${footer}\n`);
 }
 
 // --- Defaults ----------------------------------------------------------------------------------------------------------------------------
 
-const DEFAULT_PROFILE_DESCRIPTION = "Base image: Node.js, git, and AI CLIs";
-const DEFAULT_PROFILE_HOOK = `# No extras — uses the totopo base image as-is (Node.js + git + AI CLIs).
-`;
-
-const EXTENDED_PROFILE_DESCRIPTION = "Base image + Go, Java, Rust, and Bun";
-const EXTENDED_PROFILE_HOOK = `# Go
-RUN apt-get update && apt-get install -y --no-install-recommends golang-go && rm -rf /var/lib/apt/lists/*
-
-# Java (headless JDK — includes javac; needed for Kotlin, Scala, Android tooling)
-RUN apt-get update && apt-get install -y --no-install-recommends default-jdk-headless && rm -rf /var/lib/apt/lists/*
-
-# Rust (system-wide install — devuser can use cargo and rustc)
-ENV RUSTUP_HOME=/usr/local/rustup
-ENV CARGO_HOME=/usr/local/cargo
-ENV PATH=/usr/local/cargo/bin:$PATH
-RUN curl -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path && chmod -R a+rx /usr/local/cargo /usr/local/rustup
-
-# Bun (fast JS runtime, bundler, and package manager)
-ENV BUN_INSTALL=/usr/local/bun
-ENV PATH=/usr/local/bun/bin:$PATH
-RUN curl -fsSL https://bun.sh/install | bash
-`;
-
-// Appended after the last profile to hint at adding more
+// Appended after the last profile to hint at adding more (only when a profiles: block is present).
 const PROFILES_FOOTER_COMMENT = "  # Add more profiles here — or ask the agent inside the container to set one up for you.";
 
-const EXTENDED_PROFILE_TEMPLATE_PROMPT = "  # Uncomment to enable additional runtimes (Go, Java, Rust, Bun):";
-
 /**
- * Render the `extended` profile as commented-out YAML, indented to live under `profiles:`.
- * Generated via the same dumpYaml call as the live config so uncommenting (strip leading `# `
- * from each line) yields YAML the parser/schema accepts without drift.
+ * Create the minimal default TotopoYamlConfig: just the required workspace_id plus the security-relevant
+ * shadow_paths isolation default. Everything else (env_file, profiles, ports) is optional and documented
+ * via the menu's Help entry, so we do not scaffold it into freshly generated files.
  */
-function renderExtendedAsCommented(): string {
-    const dumped = dumpYaml(
-        { extended: { description: EXTENDED_PROFILE_DESCRIPTION, dockerfile_hook: EXTENDED_PROFILE_HOOK } },
-        { lineWidth: -1, quotingType: '"', forceQuotes: false },
-    );
-    return dumped
-        .split("\n")
-        .map((line) => (line.length === 0 ? "" : `  # ${line}`))
-        .join("\n")
-        .trimEnd();
-}
-
-/** Create a default TotopoYamlConfig with sane defaults. */
 export function buildDefaultTotopoYaml(workspaceId: string): TotopoYamlConfig {
     return {
         workspace_id: workspaceId,
-        env_file: "",
         shadow_paths: [...DEFAULT_SHADOW_PATHS],
-        profiles: {
-            default: {
-                description: DEFAULT_PROFILE_DESCRIPTION,
-                dockerfile_hook: DEFAULT_PROFILE_HOOK,
-            },
-        },
     };
 }
 
 // --- Repair -------------------------------------------------------------------------------------------------------------------------------
 
 /** Set of keys that TotopoYamlConfig allows (used to strip unknown fields). */
-const KNOWN_KEYS = new Set<string>(["workspace_id", "env_file", "shadow_paths", "profiles"]);
+const KNOWN_KEYS = new Set<string>(["workspace_id", "env_file", "shadow_paths", "profiles", "ports"]);
 
 export interface RepairResult {
     repairedYaml: TotopoYamlConfig | null;
@@ -268,14 +218,11 @@ export function repairTotopoYaml(dir: string): RepairResult {
             fixes.push(`added missing workspace_id ("${defaults.workspace_id}")`);
         }
 
-        // Fill missing optional fields with defaults
+        // Restore the shadow_paths isolation default when absent (security-relevant). profiles/env_file are
+        // optional and intentionally not backfilled, so a deliberately minimal file is not re-bloated on repair.
         if (!("shadow_paths" in obj)) {
             obj.shadow_paths = defaults.shadow_paths;
             fixes.push("added default shadow_paths");
-        }
-        if (!("profiles" in obj)) {
-            obj.profiles = defaults.profiles;
-            fixes.push("added default profiles");
         }
 
         if (fixes.length === 0) return { repairedYaml: null };
@@ -287,7 +234,7 @@ export function repairTotopoYaml(dir: string): RepairResult {
         }
 
         const yaml = obj as unknown as TotopoYamlConfig;
-        writeTotopoYaml(dir, yaml, { includeExtendedTemplate: fixes.includes("added default profiles") });
+        writeTotopoYaml(dir, yaml);
         return { repairedYaml: yaml, message: `Repaired ${TOTOPO_YAML}: ${fixes.join(", ")}` };
     } catch (err) {
         return { repairedYaml: null, error: `${TOTOPO_YAML} repair failed: ${err instanceof Error ? err.message : err}` };

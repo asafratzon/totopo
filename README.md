@@ -76,6 +76,9 @@ The config is minimal — only `workspace_id` is required; the rest are optional
 - **`profiles`** *(optional)* — Dockerfile image variants (see [Profiles](#profiles))
 - **`shadow_paths`** *(optional)* — gitignore-style patterns hidden from agents (see [Shadow Paths](#shadow-paths))
 - **`env_file`** *(optional)* — path to env file injected at runtime (see [Environment Variables](#environment-variables))
+- **`ports`** *(optional)* — publish container ports to the host, identity-mapped or `"HOST:CONTAINER"` (see [Published Ports](#published-ports))
+
+The file totopo generates (onboarding, `Settings > Reset`) is deliberately minimal — just `workspace_id` and `shadow_paths`. Add the optional settings above as you need them; each is documented in this README.
 
 On every run, totopo shows the workspace menu:
 
@@ -181,6 +184,27 @@ env_file: .env
 The file is loaded into the container's environment at session start. If the file is not found, totopo skips it with a warning.
 
 totopo also injects privacy and sandbox environment variables into every container — a universal `DO_NOT_TRACK` opt-out plus switches that disable Claude Code telemetry, error reporting, and other non-essential traffic.
+
+### Published Ports
+
+`ports` publishes container ports to the host, loopback-only (`127.0.0.1`), so a process listening inside the container is reachable from the host:
+
+```yaml
+# totopo.yaml
+ports:
+  - port: 5173            # identity map -> 127.0.0.1:5173:5173
+  - port: "8080:3000"     # explicit map -> host 8080 to container 3000
+  - port: 4820            # identity map, with the host port number...
+    env: EXAMPLE_PORT     # ...injected into the container as EXAMPLE_PORT
+```
+
+- **Bare integer** identity-maps the port (`5173` -> `127.0.0.1:5173:5173`).
+- **`"HOST:CONTAINER"`** maps them explicitly, host first as in docker (`"8080:3000"` -> host `8080`, container `3000`). Quote it so YAML reads a mapping, not a number.
+- **`env`** (identity entries only) injects the host port number into the container as that variable.
+- **Loopback-only** on `127.0.0.1` — reachable from your machine, never the LAN.
+- **A taken host port fails the start.** If a host port is already in use, the container will not start — so give workspaces you run in parallel distinct host ports.
+
+Each session prints one line per entry — `port 5173 open`, `port 4820 open (EXAMPLE_PORT)`, or `port 8080 -> 3000 open`. Changes to `ports` take effect on the next container recreation.
 
 ### AI CLIs
 

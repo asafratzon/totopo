@@ -12,6 +12,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { AGENTS_DIR, CLAUDE_STATUSLINE_PATH, CONTAINER_HOME, GIT_MODE, type GitMode, PACKAGE_ROOT } from "./constants.js";
+import { GITHUB_README_URL } from "./totopo-yaml.js";
 
 // --- Types -------------------------------------------------------------------------------------------------------------------------------
 
@@ -138,7 +139,7 @@ export function buildAgentContextDocs(hasGit: boolean, shadowPatterns?: string[]
         const sections = [
             loadTemplate("header"),
             loadTemplate("workspace"),
-            loadTemplate("totopo-yaml"),
+            renderTemplate(loadTemplate("totopo-yaml"), { readme_url: GITHUB_README_URL }),
             ...(shadowSection ? [shadowSection] : []),
             gitSection,
             renderTemplate(loadTemplate("constraints"), { tool_path: toolPath }),

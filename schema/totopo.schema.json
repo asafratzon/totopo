@@ -39,6 +39,26 @@
                 },
                 "additionalProperties": false
             }
+        },
+        "ports": {
+            "type": "array",
+            "description": "Container ports published to the host, loopback-only (127.0.0.1). A host port already in use fails at startup. Give each workspace its own ports to avoid collisions between parallel workspaces.",
+            "items": {
+                "type": "object",
+                "required": ["port"],
+                "additionalProperties": false,
+                "properties": {
+                    "port": {
+                        "type": ["integer", "string"],
+                        "description": "A bare integer identity-maps the port (e.g. 4820 -> 127.0.0.1:4820:4820). A quoted \"HOST:CONTAINER\" string maps them explicitly, host first as in docker (e.g. \"8080:3000\"). Both sides must be 1024-65535 (the CLI runs unprivileged)."
+                    },
+                    "env": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+                        "description": "Env var injected into the container carrying the host port number. Allowed only on identity entries (a bare port number)."
+                    }
+                }
+            }
         }
     }
 }

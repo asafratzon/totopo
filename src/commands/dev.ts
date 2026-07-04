@@ -24,6 +24,7 @@ import {
     LABEL_AUTOSTART,
     LABEL_GIT_MODE,
     LABEL_MANAGED,
+    LABEL_PORTS,
     LABEL_PROFILE,
     LABEL_RUNTIME_ENV,
     LABEL_SHADOWS,
@@ -34,6 +35,15 @@ import { buildDockerfile, buildImageWithTempfile, computeBuildHash } from "../li
 import { readAudioMode, readAutoStartAgent } from "../lib/global-config.js";
 import { isImageStale } from "../lib/migrate-to-latest.js";
 import { buildPnpmStoreMountArgs } from "../lib/pnpm-store.js";
+import {
+    assertHostPortsAvailable,
+    formatPortNotice,
+    type PortMapping,
+    portEnvArgs,
+    portPublishArgs,
+    portsLabel,
+    validatePortsConfig,
+} from "../lib/ports.js";
 import { connectedSessionCount, containerSessionCount, loginShellExecArgs } from "../lib/sessions.js";
 import { buildShadowMountArgs, ensureShadowsInSync, expandShadowPatterns } from "../lib/shadows.js";
 import type { ProfileConfig } from "../lib/totopo-yaml.js";
@@ -103,15 +113,16 @@ interface ContainerInfo {
     gitModeLabel: string;
     audioLabel: string;
     autoStartLabel: string;
+    portsLabel: string;
 }
 
 // Returns null when the container does not exist (docker inspect exits non-zero).
 function inspectContainer(containerName: string): ContainerInfo | null {
-    const fmt = `{{.State.Status}}|{{index .Config.Labels "${LABEL_SHADOWS}"}}|{{index .Config.Labels "${LABEL_PROFILE}"}}|{{index .Config.Labels "${LABEL_RUNTIME_ENV}"}}|{{index .Config.Labels "${LABEL_GIT_MODE}"}}|{{index .Config.Labels "${LABEL_AUDIO}"}}|{{index .Config.Labels "${LABEL_AUTOSTART}"}}`;
+    const fmt = `{{.State.Status}}|{{index .Config.Labels "${LABEL_SHADOWS}"}}|{{index .Config.Labels "${LABEL_PROFILE}"}}|{{index .Config.Labels "${LABEL_RUNTIME_ENV}"}}|{{index .Config.Labels "${LABEL_GIT_MODE}"}}|{{index .Config.Labels "${LABEL_AUDIO}"}}|{{index .Config.Labels "${LABEL_AUTOSTART}"}}|{{index .Config.Labels "${LABEL_PORTS}"}}`;
     const result = spawnSync("docker", ["inspect", "--format", fmt, containerName], { encoding: "utf8", stdio: "pipe" });
     if (result.status !== 0) return null;
     const clean = (s: string) => (s === "<no value>" ? "" : s);
-    const [status = "", shadows = "", profile = "", runtimeEnv = "", gitMode = "", audio = "", autoStart = ""] = result.stdout
+    const [status = "", shadows = "", profile = "", runtimeEnv = "", gitMode = "", audio = "", autoStart = "", ports = ""] = result.stdout
         .trim()
         .split("|");
     return {
@@ -122,6 +133,7 @@ function inspectContainer(containerName: string): ContainerInfo | null {
         gitModeLabel: clean(gitMode),
         audioLabel: clean(audio),
         autoStartLabel: clean(autoStart),
+        portsLabel: clean(ports),
     };
 }
 
@@ -192,6 +204,7 @@ export interface StartContainerOpts {
     audioCookiePath?: string; // Absolute host path to the PulseAudio cookie; mounted read-only for auth when set
     shadowPatterns: string[]; // Raw patterns from totopo.yaml, used for agent context docs
     workspaceName: string;
+    portMappings: PortMapping[]; // Normalized host->container mappings from validatePortsConfig
     noCache?: boolean;
     quiet?: boolean; // Suppress log output and docker stdio; used by tests
 }
@@ -214,12 +227,18 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
         audioCookiePath,
         shadowPatterns,
         workspaceName,
+        portMappings,
         noCache,
         quiet = false,
     } = opts;
-    // Used by `docker run -d` and `docker start`. Both echo the container id/name to stdout on success;
-    // drop stdout to keep that noise out of the session start, but keep stderr so real errors still show.
+    // Used by `docker start` (resume). Echoes the container id/name to stdout on success; drop stdout to keep
+    // that noise out of the session start, but keep stderr so real errors still show.
     const stdio: StdioOptions = quiet ? "pipe" : ["ignore", "ignore", "inherit"];
+
+    // --- Published ports fingerprint (static config, no host I/O here) ----------------------------------------------------------------------
+    // Ports are declared, not resolved, so the label is a pure function of the config. Host availability is
+    // probed just-in-time on the create path (assertHostPortsAvailable), never on resume/connect.
+    const currentPortsLabel = portsLabel(portMappings);
 
     // --- Sync shadows and build mount args ------------------------------------------------------------------------------------------------
     ensureShadowsInSync(cacheDir, expandedShadows, workspaceRoot);
@@ -299,7 +318,7 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
     const info = inspectContainer(containerName);
     let containerStatus = info?.status ?? null;
 
-    // --- Check for shadow, profile, runtime env, or git mode mismatch --------------------------------------------------------------------
+    // --- Recreate if shadow, profile, runtime env, git mode, audio, auto-start, or ports changed -----------------------------------------
     if (info !== null) {
         const expectedShadowLabel = shadowLabel(expandedShadows);
         const shadowChanged = info.shadowLabel !== expectedShadowLabel;
@@ -310,8 +329,10 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
         // Treat an absent label (pre-feature container) as "off" so a still-default setting does not force a
         // spurious recreate on the first upgrade - the stale-image prompt handles the mandatory rebuild instead.
         const autoStartChanged = (info.autoStartLabel || AUTO_START.off) !== autoStartAgent;
+        // Both sides are "" when a workspace declares no ports, so a container without published ports never churns on this label.
+        const portsChanged = info.portsLabel !== currentPortsLabel;
 
-        if (shadowChanged || profileChanged || runtimeEnvChanged || gitModeChanged || audioChanged || autoStartChanged) {
+        if (shadowChanged || profileChanged || runtimeEnvChanged || gitModeChanged || audioChanged || autoStartChanged || portsChanged) {
             stopAndRemoveContainer(containerName);
             containerStatus = null;
 
@@ -325,6 +346,8 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
                 if (!quiet) log.info(`Git mode changed (${info.gitModeLabel || "<unset>"} -> ${gitMode}) — recreating container...`);
             } else if (audioChanged) {
                 if (!quiet) log.info(`Voice/audio ${audio ? "enabled" : "disabled"} — recreating container...`);
+            } else if (portsChanged) {
+                if (!quiet) log.info("Ports changed — recreating container...");
             } else if (autoStartChanged) {
                 if (!quiet)
                     log.info(
@@ -351,30 +374,49 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
             process.exit(buildResult.status);
         }
 
+        // Ports are static config, so probe host availability up front. The old container was already removed on
+        // every path that reaches here, so we never probe our own live port. A taken host port fails clearly and
+        // names the entry, before docker run - so no doomed `created` container is left behind on a clash.
+        try {
+            await assertHostPortsAvailable(portMappings);
+        } catch (err) {
+            if (!quiet) outro(err instanceof Error ? err.message : String(err));
+            process.exit(1);
+        }
+
         if (!quiet) log.info("Starting dev container...");
 
-        const runResult = spawnSync(
-            "docker",
-            [
-                "run",
-                "-d",
-                "--name",
-                containerName,
-                ...mountArgs,
-                ...envFileArgs,
-                ...runtimeEnvArgs,
-                ...audioRunArgs,
-                "--security-opt",
-                "no-new-privileges:true",
-                ...labelArgs,
-                containerName,
-                "sleep",
-                "infinity",
-            ],
-            { stdio },
-        );
+        // portEnvArgs come after envFileArgs/runtimeEnvArgs/audioRunArgs so the published value wins any -e collision.
+        const runArgs = [
+            "run",
+            "-d",
+            "--name",
+            containerName,
+            ...mountArgs,
+            ...envFileArgs,
+            ...runtimeEnvArgs,
+            ...audioRunArgs,
+            ...portEnvArgs(portMappings),
+            ...portPublishArgs(portMappings),
+            "--security-opt",
+            "no-new-privileges:true",
+            ...labelArgs,
+            "--label",
+            `${LABEL_PORTS}=${currentPortsLabel}`,
+            containerName,
+            "sleep",
+            "infinity",
+        ];
+
+        // Capture stderr so the real docker error is re-emitted on failure. A single run - the pre-flight probe
+        // above already rejected any taken host port, so there is no port-race retry loop.
+        const runStdio: StdioOptions = quiet ? "pipe" : ["ignore", "ignore", "pipe"];
+        const runResult = spawnSync("docker", runArgs, { stdio: runStdio });
         if (runResult.status !== 0) {
-            if (!quiet) outro("Failed to start dev container.");
+            if (!quiet) {
+                process.stderr.write(runResult.stderr?.toString() ?? "");
+                outro("Failed to start dev container.");
+            }
             process.exit(runResult.status ?? 1);
         }
     };
@@ -430,6 +472,15 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
     const yaml = readTotopoYaml(workspaceDir);
     if (!yaml) {
         log.error("totopo.yaml not found or invalid.");
+        process.exit(1);
+    }
+
+    // --- Validate and normalize ports config (rules the schema cannot express) -----------------------------------------------------------
+    let portMappings: PortMapping[];
+    try {
+        portMappings = validatePortsConfig(yaml.ports ?? []);
+    } catch (err) {
+        log.error(err instanceof Error ? err.message : String(err));
         process.exit(1);
     }
 
@@ -507,6 +558,7 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
         ...(audioCookiePath !== undefined && { audioCookiePath }),
         shadowPatterns,
         workspaceName: ctx.workspaceId,
+        portMappings,
         ...(options?.noCache !== undefined && { noCache: options.noCache }),
     };
     await startContainer(containerOpts);
@@ -533,6 +585,12 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
             await startContainer(containerOpts);
             stale = false;
         }
+    }
+
+    // --- Published ports notice (every session start: created / resumed / connected) -----------------------------------------------------
+    // Ports are static config, so the notice derives straight from the mappings - no .lock lookup needed.
+    for (const m of portMappings) {
+        log.info(formatPortNotice(m));
     }
 
     // --- Startup checks (AI CLI update + readiness validation) ----------------------------------------------------------------------------

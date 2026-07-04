@@ -1,44 +1,10 @@
 
 # totopo workspace config - run 'npx totopo' from anywhere under this directory tree to start your dev container.
-# Ask the AI agent inside the container to help you edit this file if needed.
+# Choose Help in the totopo menu to see the official docs and all configuration options.
 # This file may be rewritten by totopo (repair, reset, settings changes). Custom comments will not be preserved.
 workspace_id: totopo
-
-# Path to env file relative to this directory (e.g. '.env') - injected into the container at runtime.
-env_file: ""
 
 # .gitignore-style patterns - agents see an empty, isolated copy instead of the real host data.
 shadow_paths:
   - node_modules
   - .env*
-
-# Dockerfile profiles - each adds on top of the totopo base image (Debian + Node.js + git + AI CLIs).
-# Useful for teams: each person can have a lean profile for their stack instead of one large shared image.
-# When multiple profiles exist, totopo prompts you to pick one on session start.
-profiles:
-  default:
-    description: "Base image: Node.js, git, and AI CLIs"
-    dockerfile_hook: |
-      # No extras — uses the totopo base image as-is (Node.js + git + AI CLIs).
-
-  # Uncomment to enable additional runtimes (Go, Java, Rust, Bun):
-  # extended:
-  #   description: Base image + Go, Java, Rust, and Bun
-  #   dockerfile_hook: |
-  #     # Go
-  #     RUN apt-get update && apt-get install -y --no-install-recommends golang-go && rm -rf /var/lib/apt/lists/*
-
-  #     # Java (headless JDK — includes javac; needed for Kotlin, Scala, Android tooling)
-  #     RUN apt-get update && apt-get install -y --no-install-recommends default-jdk-headless && rm -rf /var/lib/apt/lists/*
-
-  #     # Rust (system-wide install — devuser can use cargo and rustc)
-  #     ENV RUSTUP_HOME=/usr/local/rustup
-  #     ENV CARGO_HOME=/usr/local/cargo
-  #     ENV PATH=/usr/local/cargo/bin:$PATH
-  #     RUN curl -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path && chmod -R a+rx /usr/local/cargo /usr/local/rustup
-
-  #     # Bun (fast JS runtime, bundler, and package manager)
-  #     ENV BUN_INSTALL=/usr/local/bun
-  #     ENV PATH=/usr/local/bun/bin:$PATH
-  #     RUN curl -fsSL https://bun.sh/install | bash
-  # Add more profiles here — or ask the agent inside the container to set one up for you.
