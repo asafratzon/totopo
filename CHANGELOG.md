@@ -7,6 +7,19 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [3.12.0] — 2026-07-04
+
+### Added
+
+- Publish container ports to your host, loopback-only on 127.0.0.1 - add e.g. `ports: [{ port: 5173 }]` to totopo.yaml to map a port straight through, or `{ port: "8080:3000" }` to map to a different container port (host first, as in docker), optionally injecting the host port number into the container via `env`; a host port already in use fails the session start with a clear message.
+
+### Changed
+
+- The totopo.yaml that onboarding and Settings > Reset generate is now minimal - just workspace_id and shadow_paths - instead of scaffolding every optional setting; env_file, profiles, and ports stay fully supported, added on demand.
+- Long, unattended Claude Code sessions inside the container no longer stop on Claude Code's away-from-keyboard inactivity timeout. Existing containers are recreated automatically on next session start to pick up the change.
+
+---
+
 ## [3.11.0] — 2026-07-02
 
 ### Added
