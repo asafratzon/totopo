@@ -16,12 +16,10 @@ import {
     readAudio,
     readGitMode,
     readLockFile,
-    readPortAllocations,
     writeActiveProfile,
     writeAudio,
     writeGitMode,
     writeLockFile,
-    writePortAllocations,
 } from "../src/lib/workspace-identity.js";
 import { cleanTempDir, createTempDir, overrideEnv } from "./helpers.js";
 
@@ -156,7 +154,6 @@ describe("with isolated home", () => {
             assert.ok(raw.includes(`${LOCK_KEYS.activeProfile}=`), "should contain profile= key");
             assert.ok(raw.includes(`${LOCK_KEYS.gitMode}=`), "should contain git_mode= key");
             assert.ok(raw.includes(`${LOCK_KEYS.audio}=`), "should contain audio= key");
-            assert.ok(raw.includes(`${LOCK_KEYS.ports}=`), "should contain ports= key");
             assert.ok(!raw.includes("last-cli-update="), "should not contain last-cli-update= key");
             await cleanTempDir(tmp);
         });
@@ -245,59 +242,6 @@ describe("with isolated home", () => {
             const tmp = createTempDir();
             initWorkspaceDir("test-ws", tmp, PROFILE.default, GIT_MODE.local, true);
             assert.equal(readAudio("test-ws"), true);
-            await cleanTempDir(tmp);
-        });
-
-        test("readPortAllocations is empty on fresh init and for a missing lock", async () => {
-            const tmp = createTempDir();
-            initWorkspaceDir("test-ws", tmp);
-            assert.equal(readPortAllocations("test-ws").size, 0);
-            assert.equal(readPortAllocations("nonexistent-ws-id-xyz").size, 0);
-            await cleanTempDir(tmp);
-        });
-
-        test("writePortAllocations round-trips and is a no-op without a lock", async () => {
-            const tmp = createTempDir();
-            initWorkspaceDir("test-ws", tmp);
-            writePortAllocations(
-                "test-ws",
-                new Map([
-                    [4820, 4821],
-                    [5432, 5432],
-                ]),
-            );
-            assert.deepEqual(
-                [...readPortAllocations("test-ws")],
-                [
-                    [4820, 4821],
-                    [5432, 5432],
-                ],
-            );
-            // No lock file - must not throw and must not create one.
-            writePortAllocations("nonexistent-ws-id-xyz", new Map([[1, 2]]));
-            assert.equal(readPortAllocations("nonexistent-ws-id-xyz").size, 0);
-            await cleanTempDir(tmp);
-        });
-
-        test("other writers preserve port allocations", async () => {
-            const tmp = createTempDir();
-            initWorkspaceDir("test-ws", tmp);
-            writePortAllocations("test-ws", new Map([[4820, 4821]]));
-            writeGitMode("test-ws", GIT_MODE.strict);
-            writeActiveProfile("test-ws", PROFILE.extended);
-            writeAudio("test-ws", true);
-            assert.deepEqual([...readPortAllocations("test-ws")], [[4820, 4821]]);
-            await cleanTempDir(tmp);
-        });
-
-        test("writePortAllocations preserves path, profile, git mode, and audio", async () => {
-            const tmp = createTempDir();
-            initWorkspaceDir("test-ws", tmp, PROFILE.extended, GIT_MODE.unrestricted, true);
-            writePortAllocations("test-ws", new Map([[4820, 4821]]));
-            assert.equal(readActiveProfile("test-ws"), PROFILE.extended);
-            assert.equal(readGitMode("test-ws"), GIT_MODE.unrestricted);
-            assert.equal(readAudio("test-ws"), true);
-            assert.equal(readLockFile("test-ws"), tmp);
             await cleanTempDir(tmp);
         });
     });

@@ -170,27 +170,20 @@ describe("writeTotopoYaml", () => {
 // ---- ports config -----------------------------------------------------------------------------------------------------------------------
 
 describe("ports config", () => {
-    test("reads a valid ports block", async () => {
+    test("reads an identity + mapping + env block", async () => {
         const tmp = createTempDir();
         writeFileSync(
             join(tmp, "totopo.yaml"),
-            "workspace_id: my-project\nports:\n  - port: 4820\n    ifTaken: next\n    env: EXAMPLE_PORT\n  - port: 5432\n",
+            'workspace_id: my-project\nports:\n  - port: 4820\n    env: EXAMPLE_PORT\n  - port: "8080:3000"\n',
         );
         const config = readTotopoYaml(tmp);
         assert.equal(config?.ports?.length, 2);
-        assert.deepEqual(config?.ports?.[0], { port: 4820, ifTaken: "next", env: "EXAMPLE_PORT" });
-        assert.deepEqual(config?.ports?.[1], { port: 5432 });
+        assert.deepEqual(config?.ports?.[0], { port: 4820, env: "EXAMPLE_PORT" });
+        assert.deepEqual(config?.ports?.[1], { port: "8080:3000" });
         await cleanTempDir(tmp);
     });
 
-    test("rejects a bad ifTaken value", async () => {
-        const tmp = createTempDir();
-        writeFileSync(join(tmp, "totopo.yaml"), "workspace_id: my-project\nports:\n  - port: 4820\n    ifTaken: bogus\n");
-        assert.throws(() => readTotopoYaml(tmp), /Invalid totopo\.yaml/);
-        await cleanTempDir(tmp);
-    });
-
-    test("rejects an out-of-range port", async () => {
+    test("rejects an out-of-range bare integer port at the schema level", async () => {
         const tmp = createTempDir();
         writeFileSync(join(tmp, "totopo.yaml"), "workspace_id: my-project\nports:\n  - port: 80\n");
         assert.throws(() => readTotopoYaml(tmp), /Invalid totopo\.yaml/);

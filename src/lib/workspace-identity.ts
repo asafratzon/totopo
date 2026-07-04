@@ -19,7 +19,6 @@ import {
     TOTOPO_YAML,
     WORKSPACES_DIR,
 } from "./constants.js";
-import { formatPortAllocations, parsePortAllocations } from "./ports.js";
 import { readTotopoYaml } from "./totopo-yaml.js";
 
 // --- Interfaces --------------------------------------------------------------------------------------------------------------------------
@@ -37,7 +36,6 @@ export const LOCK_KEYS = {
     activeProfile: "profile",
     gitMode: "git_mode",
     audio: "audio",
-    ports: "ports",
 } as const;
 
 /** Parsed representation of a workspace .lock file. All fields are strings. */
@@ -93,7 +91,6 @@ function parseLockFile(workspaceId: string): LockFile | null {
             activeProfile: partial.activeProfile ?? PROFILE.default,
             gitMode: partial.gitMode ?? GIT_MODE.local,
             audio: partial.audio ?? "false",
-            ports: partial.ports ?? "",
         };
     } catch {
         return null;
@@ -121,7 +118,6 @@ export function writeLockFile(workspaceId: string, workspaceRoot: string): void 
         activeProfile: existing?.activeProfile ?? PROFILE.default,
         gitMode: existing?.gitMode ?? GIT_MODE.local,
         audio: existing?.audio ?? "false",
-        ports: existing?.ports ?? "",
     });
 }
 
@@ -164,18 +160,6 @@ export function writeAudio(workspaceId: string, audio: boolean): void {
     writeLockFileInternal(workspaceId, { ...existing, audio: String(audio) });
 }
 
-/** Read the sticky port allocations (configured port -> resolved port). Empty when unset or lock file is missing. */
-export function readPortAllocations(workspaceId: string): Map<number, number> {
-    return parsePortAllocations(parseLockFile(workspaceId)?.ports ?? "");
-}
-
-/** Write the sticky port allocations. No-op if the lock file is missing. Preserves all other fields. */
-export function writePortAllocations(workspaceId: string, allocations: Map<number, number>): void {
-    const existing = parseLockFile(workspaceId);
-    if (!existing) return;
-    writeLockFileInternal(workspaceId, { ...existing, ports: formatPortAllocations(allocations) });
-}
-
 // --- Workspace directory initialization --------------------------------------------------------------------------------------------------
 
 /** Initialize ~/.totopo/workspaces/<workspace_id>/ with lock file and subdirs. */
@@ -189,7 +173,7 @@ export function initWorkspaceDir(
     const dir = getWorkspaceDir(workspaceId);
     mkdirSync(join(dir, AGENTS_DIR), { recursive: true });
     mkdirSync(join(dir, SHADOWS_DIR), { recursive: true });
-    writeLockFileInternal(workspaceId, { workspaceRoot, activeProfile, gitMode, audio: String(audio), ports: "" });
+    writeLockFileInternal(workspaceId, { workspaceRoot, activeProfile, gitMode, audio: String(audio) });
 }
 
 // --- Listing -----------------------------------------------------------------------------------------------------------------------------

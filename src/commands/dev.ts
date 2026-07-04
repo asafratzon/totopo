@@ -36,14 +36,12 @@ import { readAudioMode, readAutoStartAgent } from "../lib/global-config.js";
 import { isImageStale } from "../lib/migrate-to-latest.js";
 import { buildPnpmStoreMountArgs } from "../lib/pnpm-store.js";
 import {
-    allocationsOf,
-    finalizePorts,
-    type PortEntry,
-    planPorts,
+    assertHostPortsAvailable,
+    formatPortNotice,
+    type PortMapping,
     portEnvArgs,
     portPublishArgs,
     portsLabel,
-    type ResolvedPort,
     validatePortsConfig,
 } from "../lib/ports.js";
 import { connectedSessionCount, containerSessionCount, loginShellExecArgs } from "../lib/sessions.js";
@@ -51,14 +49,7 @@ import { buildShadowMountArgs, ensureShadowsInSync, expandShadowPatterns } from 
 import type { ProfileConfig } from "../lib/totopo-yaml.js";
 import { readTotopoYaml } from "../lib/totopo-yaml.js";
 import type { WorkspaceContext } from "../lib/workspace-identity.js";
-import {
-    readActiveProfile,
-    readAudio,
-    readGitMode,
-    readPortAllocations,
-    writeActiveProfile,
-    writePortAllocations,
-} from "../lib/workspace-identity.js";
+import { readActiveProfile, readAudio, readGitMode, writeActiveProfile } from "../lib/workspace-identity.js";
 
 // --- Working directory resolution ---------------------------------------------------------------------------------------------------------
 // Always open the session where totopo was invoked. The whole workspace root is bind-mounted at
@@ -213,7 +204,7 @@ export interface StartContainerOpts {
     audioCookiePath?: string; // Absolute host path to the PulseAudio cookie; mounted read-only for auth when set
     shadowPatterns: string[]; // Raw patterns from totopo.yaml, used for agent context docs
     workspaceName: string;
-    portEntries: PortEntry[]; // Raw `ports` entries from totopo.yaml (already validated by validatePortsConfig)
+    portMappings: PortMapping[]; // Normalized host->container mappings from validatePortsConfig
     noCache?: boolean;
     quiet?: boolean; // Suppress log output and docker stdio; used by tests
 }
@@ -236,7 +227,7 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
         audioCookiePath,
         shadowPatterns,
         workspaceName,
-        portEntries,
+        portMappings,
         noCache,
         quiet = false,
     } = opts;
@@ -244,13 +235,10 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
     // that noise out of the session start, but keep stderr so real errors still show.
     const stdio: StdioOptions = quiet ? "pipe" : ["ignore", "ignore", "inherit"];
 
-    // --- Plan published ports (sticky allocations from .lock, pure - no host I/O yet) --------------------------------------------------------
-    // Read fresh on every call (workspaceName is the workspace id, the .lock key) so the stale-image rebuild's
-    // second startContainer call re-resolves from the current .lock instead of reusing a frozen plan. The
-    // finalize step (host probing) runs only on the create path below.
-    const remembered = readPortAllocations(workspaceName);
-    const { planned } = planPorts(portEntries, remembered);
-    const plannedPortsLabel = portsLabel(planned);
+    // --- Published ports fingerprint (static config, no host I/O here) ----------------------------------------------------------------------
+    // Ports are declared, not resolved, so the label is a pure function of the config. Host availability is
+    // probed just-in-time on the create path (assertHostPortsAvailable), never on resume/connect.
+    const currentPortsLabel = portsLabel(portMappings);
 
     // --- Sync shadows and build mount args ------------------------------------------------------------------------------------------------
     ensureShadowsInSync(cacheDir, expandedShadows, workspaceRoot);
@@ -341,8 +329,8 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
         // Treat an absent label (pre-feature container) as "off" so a still-default setting does not force a
         // spurious recreate on the first upgrade - the stale-image prompt handles the mandatory rebuild instead.
         const autoStartChanged = (info.autoStartLabel || AUTO_START.off) !== autoStartAgent;
-        // Both labels clean to "" when absent, so a no-ports workspace and a pre-feature container never churn.
-        const portsChanged = info.portsLabel !== plannedPortsLabel;
+        // Both sides are "" when a workspace declares no ports, so a container without published ports never churns on this label.
+        const portsChanged = info.portsLabel !== currentPortsLabel;
 
         if (shadowChanged || profileChanged || runtimeEnvChanged || gitModeChanged || audioChanged || autoStartChanged || portsChanged) {
             stopAndRemoveContainer(containerName);
@@ -386,12 +374,11 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
             process.exit(buildResult.status);
         }
 
-        // Resolve final host ports by probing the host. The container was already removed on every path that
-        // reaches here, so we never probe our own live port. Availability/config problems (fail-on-taken, scan
-        // exhausted) surface as clear errors here, before docker run.
-        let finalized: ResolvedPort[];
+        // Ports are static config, so probe host availability up front. The old container was already removed on
+        // every path that reaches here, so we never probe our own live port. A taken host port fails clearly and
+        // names the entry, before docker run - so no doomed `created` container is left behind on a clash.
         try {
-            finalized = await finalizePorts(planned);
+            await assertHostPortsAvailable(portMappings);
         } catch (err) {
             if (!quiet) outro(err instanceof Error ? err.message : String(err));
             process.exit(1);
@@ -399,8 +386,8 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
 
         if (!quiet) log.info("Starting dev container...");
 
-        // portEnvArgs come after envFileArgs/runtimeEnvArgs/audioRunArgs so the resolved value wins any -e collision.
-        const buildRunArgs = (ports: ResolvedPort[]): string[] => [
+        // portEnvArgs come after envFileArgs/runtimeEnvArgs/audioRunArgs so the published value wins any -e collision.
+        const runArgs = [
             "run",
             "-d",
             "--name",
@@ -409,43 +396,22 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
             ...envFileArgs,
             ...runtimeEnvArgs,
             ...audioRunArgs,
-            ...portEnvArgs(ports),
-            ...portPublishArgs(ports),
+            ...portEnvArgs(portMappings),
+            ...portPublishArgs(portMappings),
             "--security-opt",
             "no-new-privileges:true",
             ...labelArgs,
             "--label",
-            `${LABEL_PORTS}=${portsLabel(ports)}`,
+            `${LABEL_PORTS}=${currentPortsLabel}`,
             containerName,
             "sleep",
             "infinity",
         ];
 
-        // Capture stderr so a lost-port race ("port is already allocated") can be detected and retried; on final
-        // failure the captured stderr is re-emitted so the real docker error is still visible.
+        // Capture stderr so the real docker error is re-emitted on failure. A single run - the pre-flight probe
+        // above already rejected any taken host port, so there is no port-race retry loop.
         const runStdio: StdioOptions = quiet ? "pipe" : ["ignore", "ignore", "pipe"];
-        const MAX_PORT_RETRIES = 3;
-        let runResult = spawnSync("docker", buildRunArgs(finalized), { stdio: runStdio });
-        for (let attempt = 0; runResult.status !== 0 && attempt < MAX_PORT_RETRIES; attempt++) {
-            const stderr = runResult.stderr?.toString() ?? "";
-            const raced = /port is already allocated|address already in use/i.test(stderr);
-            const hasNext = finalized.some((f) => (f.entry.ifTaken ?? "fail") === "next");
-            // A fail entry losing its port is a genuine loud failure - do not retry. Only re-resolve when a next
-            // entry can move to a different port (concurrent-start TOCTOU, or the userland-proxy=false window).
-            if (!raced || !hasNext) break;
-            if (!quiet) log.warn("A published port was taken during startup — re-resolving and retrying...");
-            // Only exclude the ports of next entries (the ones that can move). Fail entries re-probe fresh on
-            // retry, so a genuinely-lost fail port still errors loudly, but a still-free one is not spuriously
-            // rejected just because it shared this run with a next entry that raced.
-            const exclude = new Set(finalized.filter((f) => (f.entry.ifTaken ?? "fail") === "next").map((f) => f.resolved));
-            try {
-                finalized = await finalizePorts(planned, exclude);
-            } catch (err) {
-                if (!quiet) outro(err instanceof Error ? err.message : String(err));
-                process.exit(1);
-            }
-            runResult = spawnSync("docker", buildRunArgs(finalized), { stdio: runStdio });
-        }
+        const runResult = spawnSync("docker", runArgs, { stdio: runStdio });
         if (runResult.status !== 0) {
             if (!quiet) {
                 process.stderr.write(runResult.stderr?.toString() ?? "");
@@ -453,9 +419,6 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
             }
             process.exit(runResult.status ?? 1);
         }
-
-        // Persist the sticky allocations now that creation succeeded (keyed on configured port; stale keys pruned).
-        writePortAllocations(workspaceName, allocationsOf(finalized));
     };
 
     if (containerStatus === null) {
@@ -512,10 +475,10 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
         process.exit(1);
     }
 
-    // --- Validate ports config (semantic rules the schema cannot express) ----------------------------------------------------------------
-    const portEntries = yaml.ports ?? [];
+    // --- Validate and normalize ports config (rules the schema cannot express) -----------------------------------------------------------
+    let portMappings: PortMapping[];
     try {
-        validatePortsConfig(portEntries);
+        portMappings = validatePortsConfig(yaml.ports ?? []);
     } catch (err) {
         log.error(err instanceof Error ? err.message : String(err));
         process.exit(1);
@@ -595,7 +558,7 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
         ...(audioCookiePath !== undefined && { audioCookiePath }),
         shadowPatterns,
         workspaceName: ctx.workspaceId,
-        portEntries,
+        portMappings,
         ...(options?.noCache !== undefined && { noCache: options.noCache }),
     };
     await startContainer(containerOpts);
@@ -625,12 +588,9 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
     }
 
     // --- Published ports notice (every session start: created / resumed / connected) -----------------------------------------------------
-    // Read from the .lock so the resolved number is shown even on resume/connect, and especially when
-    // ifTaken:next moved it. The arrow is a UI string literal (allowed by scripts/check.ts).
-    const allocations = readPortAllocations(ctx.workspaceId);
-    for (const entry of portEntries) {
-        const resolved = allocations.get(entry.port) ?? entry.port;
-        log.info(`port ${resolved} open${entry.env ? ` → ${entry.env}` : ""}`);
+    // Ports are static config, so the notice derives straight from the mappings - no .lock lookup needed.
+    for (const m of portMappings) {
+        log.info(formatPortNotice(m));
     }
 
     // --- Startup checks (AI CLI update + readiness validation) ----------------------------------------------------------------------------

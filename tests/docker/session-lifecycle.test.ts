@@ -95,7 +95,7 @@ function makeOpts(
         audio: false,
         shadowPatterns: [],
         workspaceName: "test-workspace",
-        portEntries: [],
+        portMappings: [],
         quiet: true,
         ...overrides,
     };
