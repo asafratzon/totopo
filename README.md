@@ -187,7 +187,7 @@ totopo also injects privacy and sandbox environment variables into every contain
 
 ### Published Ports
 
-`ports` publishes container ports to the host, loopback-only (`127.0.0.1`), so a process listening inside the container is reachable from the host:
+`ports` publishes container ports to the host, loopback-only (`127.0.0.1`), so a process listening on all interfaces (`0.0.0.0`) inside the container is reachable from the host:
 
 ```yaml
 # totopo.yaml
@@ -202,6 +202,7 @@ ports:
 - **`"HOST:CONTAINER"`** maps them explicitly, host first as in docker (`"8080:3000"` -> host `8080`, container `3000`). Quote it so YAML reads a mapping, not a number.
 - **`env`** (identity entries only) injects the host port number into the container as that variable.
 - **Loopback-only** on `127.0.0.1` — reachable from your machine, never the LAN.
+- **Bind `0.0.0.0` inside the container, not `127.0.0.1`/`localhost`.** Publishing forwards the host to the container's external interface, so a loopback-only server is unreachable — you get an empty response, not a connection refusal. Many dev servers default to localhost: for example Vite needs `--host`, Next needs `-H 0.0.0.0`.
 - **A taken host port fails the start.** If a host port is already in use, the container will not start — so give workspaces you run in parallel distinct host ports.
 
 Each session prints one line per entry — `port 5173 open`, `port 4820 open (EXAMPLE_PORT)`, or `port 8080 -> 3000 open`. Changes to `ports` take effect on the next container recreation.
