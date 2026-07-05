@@ -7,6 +7,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [3.12.1] — 2026-07-05
+
+### Changed
+
+- Published-ports docs now make explicit that a server must listen on all interfaces (0.0.0.0), not 127.0.0.1/localhost, to be reachable from the host - many dev servers (for example Vite) default to localhost and need a flag such as --host.
+
+---
+
 ## [3.12.0] — 2026-07-04
 
 ### Added

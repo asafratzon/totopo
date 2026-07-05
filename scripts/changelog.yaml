@@ -1,14 +1,14 @@
 in_progress:
-  base_version: 3.12.1
-  entries:
-    - version: 3.12.1
-      date: "2026-07-05"
-      changed:
-        - >-
-          Published-ports docs now make explicit that a server must listen on all interfaces (0.0.0.0),
-          not 127.0.0.1/localhost, to be reachable from the host - many dev servers (for example Vite)
-          default to localhost and need a flag such as --host.
+  base_version: 3.12.2
+  entries: []
 releases:
+  - version: 3.12.1
+    date: "2026-07-05"
+    changed:
+      - >-
+        Published-ports docs now make explicit that a server must listen on all interfaces (0.0.0.0), not
+        127.0.0.1/localhost, to be reachable from the host - many dev servers (for example Vite) default to localhost
+        and need a flag such as --host.
   - version: 3.12.0
     date: "2026-07-04"
     added:
