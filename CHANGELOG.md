@@ -7,6 +7,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [3.12.2] — 2026-07-06
+
+### Fixed
+
+- With automatic audio control on (macOS), the host audio server now shuts down when your last totopo session closes even if that final session was not voice-enabled - previously closing a non-audio workspace last could leave the server running.
+
+---
+
 ## [3.12.1] — 2026-07-05
 
 ### Changed
