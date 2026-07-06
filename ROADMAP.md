@@ -1,7 +1,5 @@
 ## Backlog
 
-- rewrite all commits history just in order to remove claude from all commit messages
-
 ## Ideas
 
 - `npx totopo -q 'direct message to claude in running container'` --> to return the response to the user. 

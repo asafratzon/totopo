@@ -10,6 +10,10 @@ Local sandbox for AI agents.
 ![npm downloads](https://img.shields.io/npm/dm/totopo)
 ![license](https://img.shields.io/npm/l/totopo)
 
+> [!IMPORTANT]
+> This is a hobby project, developed with heavy assistance from Claude Code.
+> Use it at your own risk.
+
 ## Who this is for
 
 Developers who use `claude`, `codex`, or `opencode` **interactively** — one human pair-programming with one agent.
