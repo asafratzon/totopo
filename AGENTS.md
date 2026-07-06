@@ -41,6 +41,10 @@ Container isolation is the product. Never weaken:
 
 - Never commit without explicit user instruction
 - Never edit `scripts/changelog.yaml` without explicit user approval
+- Never add AI/Claude co-author trailers or attribution to commit messages; commits must contain no reference to the tools used to author them.
+- When writing or substantially editing long Markdown files, put each full sentence on its own line. Preserve normal Markdown structure, but avoid wrapping multiple sentences onto one phsical line.
+- When making technical decisions, do not give much weight to development cost. Instead, prefer quality, simplicity, robustness, scalability and long term maintainability.
+- Never use em dash "—", use plain dash instead "-".
 
 ## Skills
 

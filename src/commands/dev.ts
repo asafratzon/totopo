@@ -16,6 +16,7 @@ import {
     AUDIO_PULSE_SERVER,
     AUDIODRIVER_VALUE,
     AUTO_START,
+    type AudioMode,
     CONTAINER_STARTUP,
     CONTAINER_WORKSPACE,
     GIT_MODE,
@@ -165,6 +166,21 @@ export function audioStateLabel(audio: boolean, audioCookiePath: string | undefi
         .digest("hex")
         .slice(0, 12);
     return `true:${fingerprint}`;
+}
+
+// --- Auto-stop decision (host audio server) ----------------------------------------------------------------------------------------------
+// Whether automatic-mode teardown should stop the shared host audio server now. Deliberately independent
+// of THIS workspace's audio wiring: the server is a single host-wide resource, so the last session to
+// close must stop it even when that session was not itself voice-wired. `serverRunning` and
+// `connectedSessions` are thunks so the `&&` chain keeps its short-circuit - the session scan runs only
+// when the server is actually up (no cost on non-audio exits), and never when off macOS or in manual mode.
+export function shouldStopHostAudioServer(
+    isMacos: boolean,
+    audioMode: AudioMode,
+    serverRunning: () => boolean,
+    connectedSessions: () => number,
+): boolean {
+    return isMacos && audioMode === AUDIO_MODE.automatic && serverRunning() && connectedSessions() === 0;
 }
 
 // --- Stop and remove container -----------------------------------------------------------------------------------------------------------
@@ -616,10 +632,10 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
     });
 
     // --- Auto-stop host audio server (automatic mode, macOS) -----------------------------------------------------------------------------
-    // Control returns here synchronously when the user exits the shell. In automatic mode, stop the
-    // global host server only when no totopo session anywhere is still connected (the just-exited shell
-    // is already reaped, so 0 is the all-clear). Conservative by design: a lingering session keeps it up.
-    if (IS_MACOS && audio && readAudioMode() === AUDIO_MODE.automatic && isAudioServerRunning() && connectedSessionCount() === 0) {
+    // Control returns here synchronously when the user exits the shell. The just-exited shell is already
+    // reaped, so connectedSessionCount() === 0 is the all-clear. See shouldStopHostAudioServer for why
+    // the decision ignores this workspace's audio wiring and stays conservative about lingering sessions.
+    if (shouldStopHostAudioServer(IS_MACOS, readAudioMode(), isAudioServerRunning, connectedSessionCount)) {
         const res = stopServer();
         if (res.ok) log.info("Host audio server stopped (no active sessions).");
         else log.warn(res.message);

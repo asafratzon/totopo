@@ -1,6 +1,13 @@
 in_progress:
   base_version: 3.12.2
-  entries: []
+  entries:
+    - version: "3.12.2"
+      date: "2026-07-06"
+      fixed:
+        - >-
+          With automatic audio control on (macOS), the host audio server now shuts down when your last totopo
+          session closes even if that final session was not voice-enabled - previously closing a non-audio
+          workspace last could leave the server running.
 releases:
   - version: 3.12.1
     date: "2026-07-05"
