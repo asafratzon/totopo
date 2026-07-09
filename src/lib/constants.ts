@@ -56,13 +56,10 @@ export const LABEL_BUILD_HASH = "totopo.build-hash";
 export const LABEL_AUDIO = "totopo.audio";
 export const LABEL_AUTOSTART = "totopo.autostart";
 export const LABEL_PORTS = "totopo.ports";
+export const LABEL_ENV = "totopo.env";
 
-// Built-in profile names (must match keys in buildDefaultTotopoYaml in totopo-yaml.ts)
-export const PROFILE = {
-    default: "default",
-    extended: "extended",
-} as const;
-export type BuiltInProfile = (typeof PROFILE)[keyof typeof PROFILE];
+// Fallback active-profile name - used for the container label and .lock file when a workspace defines no profiles of its own.
+export const DEFAULT_PROFILE = "default";
 
 // Git guardrails modes (per-workspace, stored in .lock).
 // Single source of truth lives in templates/runtime-constants.mjs so container-side

@@ -118,7 +118,7 @@ describe("portPublishArgs / portEnvArgs", () => {
 describe("portsLabel", () => {
     const a: PortMapping[] = [{ host: 8080, container: 3000 }];
 
-    test("empty list fingerprints to the empty string (no churn, no spurious recreate)", () => {
+    test("empty list fingerprints to the empty string (no spurious recreate)", () => {
         assert.equal(portsLabel([]), "");
     });
 

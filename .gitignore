@@ -28,12 +28,12 @@ Thumbs.db
 # Editor
 *.swp
 *.swo
-# Claude Code — ignore everything except project-level skills
+# Claude Code - ignore everything except project-level skills
 .claude/*
 !.claude/skills/
 
 # Build output
 dist/
 
-# totopo — agent session data is local only
+# totopo - agent session data is local only
 .totopo/agents/

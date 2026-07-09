@@ -11,7 +11,7 @@
 //   v3-rc-1/rc-2 (~/.totopo/workspaces/<workspace_id>/)
 //     Renamed projects/ to workspaces/, hash dirs to workspace_id dirs
 //     totopo.yaml required, used project_id key
-//     Per-workspace env_file replaces global .env
+//     Per-workspace env config replaces global .env
 //
 //   v3-rc-3+ (latest)
 //     project_id renamed to workspace_id in totopo.yaml
@@ -30,11 +30,11 @@ import { confirm, isCancel, log, note } from "@clack/prompts";
 import { load as loadYaml } from "js-yaml";
 import {
     AGENTS_DIR,
+    DEFAULT_PROFILE,
     GIT_MODE,
     GLOBAL_DIR,
     LABEL_BUILD_HASH,
     LOCK_FILE,
-    PROFILE,
     PULSE_COOKIE_FILE,
     SHADOWS_DIR,
     TOTOPO_DIR,
@@ -250,7 +250,7 @@ async function migrateLegacyV1WorkspaceArtifacts(cwd: string, requireConfirmatio
 }
 
 /**
- * v3-rc-1/rc-2 → latest: Rename ~/.totopo/projects/ → ~/.totopo/workspaces/.
+ * v2.x → latest: Rename ~/.totopo/projects/ → ~/.totopo/workspaces/ (the projects/ layout is the v2.x one).
  * Stops running containers first because they have bind mounts into the old path.
  */
 function migrateProjectsDir(): void {
@@ -338,25 +338,88 @@ function migrateV2Workspaces(): void {
 }
 
 /**
- * v3-rc-1/rc-2 → latest: Rename project_id → workspace_id in totopo.yaml.
- * Only migrates the current workspace (found by walking up from cwd).
- * Other workspaces are migrated when totopo is invoked from their directory.
+ * v3 release candidates → latest: cleanup for structures that existed only in v3 RCs, never in a stable release.
+ * RCs carry no compatibility promise, so this is best-effort for anyone (a maintainer's own machine, say) still on
+ * an RC-era workspace. Three idempotent transformations, run in RC order:
+ *   - project_id → workspace_id in totopo.yaml (rc-1/rc-2). Only the current workspace, walked up from cwd; others
+ *     migrate when totopo runs from their directory.
+ *   - .lock positional line format → key=value (rc-6).
+ *   - the misleading "yaml=" .lock key (it holds the workspace root path) → "root=" (rc-8).
+ * The .lock format upgrade runs before the key rename so a freshly upgraded file already carries root=.
  */
-function migrateTotopoYaml(cwd: string): void {
+function migrateV3PreRelease(cwd: string): void {
+    // Rename project_id -> workspace_id in the current workspace's totopo.yaml.
+    const dir = findTotopoYamlDir(cwd);
+    if (dir) {
+        const filePath = join(dir, TOTOPO_YAML);
+        try {
+            const content = readFileSync(filePath, "utf8");
+            const raw = loadYaml(content);
+            if (typeof raw === "object" && raw !== null) {
+                const obj = raw as Record<string, unknown>;
+                if ("project_id" in obj && !("workspace_id" in obj)) {
+                    writeFileSync(filePath, content.replace(/^project_id:/m, "workspace_id:"));
+                    log.success("Migrated totopo.yaml: project_id renamed to workspace_id");
+                }
+            }
+        } catch {
+            // Unreadable or invalid yaml - skip, will fail later with a clear error.
+        }
+    }
+
+    // Upgrade every workspace's .lock: positional -> key=value, then the legacy "yaml=" key -> "root=".
+    const baseDir = getWorkspacesBaseDir();
+    if (!existsSync(baseDir)) return;
+
+    for (const entry of readdirSync(baseDir)) {
+        const lockPath = join(baseDir, entry, LOCK_FILE);
+        try {
+            let content = readFileSync(lockPath, "utf8");
+
+            // Positional format has no "=" on the first line - rewrite the first two lines as key=value.
+            const lines = content
+                .trimEnd()
+                .split("\n")
+                .map((l) => l.trim())
+                .filter(Boolean);
+            const [firstLine, secondLine] = lines;
+            if (firstLine && !firstLine.includes("=")) {
+                const activeProfile = secondLine ?? DEFAULT_PROFILE;
+                content = `${LOCK_KEYS.workspaceRoot}=${firstLine}\n${LOCK_KEYS.activeProfile}=${activeProfile}\n`;
+                writeFileSync(lockPath, content);
+            }
+
+            // Rename the legacy "yaml=" key to "root=" (files still in that intermediate format).
+            if (content.includes("yaml=")) {
+                writeFileSync(lockPath, content.replace(/^yaml=/m, `${LOCK_KEYS.workspaceRoot}=`));
+            }
+        } catch {
+            // unreadable -- skip, will surface as a broken workspace elsewhere
+        }
+    }
+}
+
+/**
+ * v3.12.2 and earlier -> latest: Rename env_file -> env in totopo.yaml. The `env` field supersedes the old
+ * single-path `env_file`: it accepts a scalar or a list, where each entry is either an env-file path or an
+ * inline KEY=VALUE. A lone path is still valid `env`, so the scalar value carries over unchanged and this is a
+ * text-based key rename that preserves comments and formatting. Only migrates the current workspace (found by
+ * walking up from cwd); others are migrated when totopo runs from their directory. Idempotent - skips when
+ * there is no env_file line or an env: line already exists.
+ */
+function migrateEnvFileToEnv(cwd: string): void {
     const dir = findTotopoYamlDir(cwd);
     if (!dir) return;
 
     const filePath = join(dir, TOTOPO_YAML);
     try {
         const content = readFileSync(filePath, "utf8");
-        const raw = loadYaml(content);
-        if (typeof raw !== "object" || raw === null) return;
-        const obj = raw as Record<string, unknown>;
-        if (!("project_id" in obj) || "workspace_id" in obj) return;
+        // A path (source): match the literal env_file key so a later constant rename cannot break this migration.
+        if (!/^env_file:/m.test(content) || /^env:/m.test(content)) return;
 
-        // Replace key in raw text to preserve comments and formatting
-        writeFileSync(filePath, content.replace(/^project_id:/m, "workspace_id:"));
-        log.success("Migrated totopo.yaml: project_id renamed to workspace_id");
+        // Replace the key in raw text to preserve comments, formatting, and the scalar value.
+        writeFileSync(filePath, content.replace(/^env_file:/m, "env:"));
+        log.success("Migrated totopo.yaml: env_file renamed to env");
     } catch {
         // Unreadable or invalid yaml - skip, will fail later with a clear error
     }
@@ -364,15 +427,15 @@ function migrateTotopoYaml(cwd: string): void {
 
 /**
  * v2.x → latest: Remove legacy ~/.totopo/.env global key file.
- * API keys are now declared per-workspace via env_file in totopo.yaml.
+ * API keys are now declared per-workspace via env in totopo.yaml.
  */
 function migrateGlobalEnv(): void {
     const globalEnv = join(homedir(), ".totopo", ".env");
     if (!existsSync(globalEnv)) return;
 
     log.warn(
-        "Removed legacy ~/.totopo/.env - API keys are now declared per-workspace via env_file in totopo.yaml.\n" +
-            "  Set env_file in totopo.yaml to point to an env file in your workspace.",
+        "Removed legacy ~/.totopo/.env - API keys are now declared per-workspace via env in totopo.yaml.\n" +
+            "  Set env in totopo.yaml to point to an env file in your workspace.",
     );
     safeRmSync(globalEnv);
 }
@@ -385,53 +448,6 @@ interface Migration {
     from: string;
     description: string;
     run: () => void | Promise<void>;
-}
-
-/**
- * v3-rc-6 and earlier: Upgrade .lock files from positional line format to key=value format.
- * Detects old format by absence of "=" on the first line. Idempotent — skips already-upgraded files.
- */
-function migrateLockFileFormat(): void {
-    const baseDir = getWorkspacesBaseDir();
-    if (!existsSync(baseDir)) return;
-
-    for (const entry of readdirSync(baseDir)) {
-        const lockPath = join(baseDir, entry, LOCK_FILE);
-        try {
-            const lines = readFileSync(lockPath, "utf8")
-                .trimEnd()
-                .split("\n")
-                .map((l) => l.trim())
-                .filter(Boolean);
-            const [firstLine, secondLine] = lines;
-            if (!firstLine || firstLine.includes("=")) continue; // empty or already new format
-            const activeProfile = secondLine ?? PROFILE.default;
-            writeFileSync(lockPath, `${LOCK_KEYS.workspaceRoot}=${firstLine}\n${LOCK_KEYS.activeProfile}=${activeProfile}\n`);
-        } catch {
-            // unreadable -- skip, will surface as a broken workspace elsewhere
-        }
-    }
-}
-
-/**
- * v3-rc-8 and earlier: Rename the "yaml" key to "root" in .lock files.
- * The "yaml" key name was misleading — it holds the workspace root path, not YAML content.
- * Detects old format by presence of a line starting with "yaml=". Idempotent.
- */
-function migrateLockKeyYamlToRoot(): void {
-    const baseDir = getWorkspacesBaseDir();
-    if (!existsSync(baseDir)) return;
-
-    for (const entry of readdirSync(baseDir)) {
-        const lockPath = join(baseDir, entry, LOCK_FILE);
-        try {
-            const content = readFileSync(lockPath, "utf8");
-            if (!content.includes("yaml=")) continue;
-            writeFileSync(lockPath, content.replace(/^yaml=/m, `${LOCK_KEYS.workspaceRoot}=`));
-        } catch {
-            // unreadable -- skip, will surface as a broken workspace elsewhere
-        }
-    }
 }
 
 /**
@@ -486,7 +502,7 @@ export function migrateAddGitMode(): number {
 
     if (migrated > 0) {
         note(
-            `totopo v3.4.0 introduces git modes for workspaces.\nDefault is 'local' (previous behavior — local commits allowed, remote blocked).\nTwo opt-in modes are available: 'strict' (read-only, all mutations blocked) and 'unrestricted' (no totopo-enforced restrictions).\nSwitch via the totopo menu > Settings > Git mode.`,
+            `totopo v3.4.0 introduces git modes for workspaces.\nDefault is 'local' (previous behavior - local commits allowed, remote blocked).\nTwo opt-in modes are available: 'strict' (read-only, all mutations blocked) and 'unrestricted' (no totopo-enforced restrictions).\nSwitch via the totopo menu > Settings > Git mode.`,
             "Git modes",
         );
     }
@@ -596,7 +612,13 @@ function migrateRemoveDeprecatedYamlFields(cwd: string): void {
 
         try {
             writeTotopoYaml(dir, obj as unknown as TotopoYamlConfig);
-            readTotopoYaml(dir);
+            // Guard against a corrupt write only - re-parse and confirm it is still a YAML object. Do NOT validate
+            // against the current schema here: this is a historical migration, and a key that a newer migration has
+            // not renamed yet (e.g. the old env_file) is not this step's concern. Validating against the latest
+            // schema would reject that key and revert this edit, which is what forced newer migrations to run first.
+            // Final schema validation happens at startup via readTotopoYaml / repairTotopoYaml.
+            const reparsed = loadYaml(readFileSync(filePath, "utf8"));
+            if (typeof reparsed !== "object" || reparsed === null) throw new Error("write produced non-object yaml");
         } catch {
             writeFileSync(filePath, content);
             return;
@@ -612,12 +634,14 @@ function migrateRemoveDeprecatedYamlFields(cwd: string): void {
     }
 }
 
-// Order matters: migrateProjectsDir must run before migrateV2Workspaces because
-// step 2 scans ~/.totopo/workspaces/ which only exists after step 1 renames projects/.
-// Steps 3 and 4 are independent of each other and of steps 1-2.
-// migrateLockFileFormat and migrateLockKeyYamlToRoot must run last so all workspace
-// dirs are in their final location first. migrateLockKeyYamlToRoot runs after
-// migrateLockFileFormat so the latter always writes "root=" for freshly upgraded files.
+// Order is chronological by `from` (oldest first). `from` is documentation only and does not drive execution.
+// One ordering constraint rides along with the version order: within v2.x, migrateProjectsDir must precede
+// migrateV2Workspaces, because the latter scans ~/.totopo/workspaces/ which only exists after the former renames
+// projects/ -> workspaces/. (The RC-era .lock upgrades also have an internal order, but it is handled inside
+// migrateV3PreRelease rather than by array position.)
+// Each migration only assumes the shape its predecessors produced, never one a newer migration will later create -
+// no step reaches into the current schema (the totopo.yaml migrations are text/object edits, and
+// migrateRemoveDeprecatedYamlFields checks only that its write is still parseable yaml).
 function buildMigrations(cwd: string, skipAnyConfirmations: boolean): Migration[] {
     return [
         {
@@ -625,12 +649,14 @@ function buildMigrations(cwd: string, skipAnyConfirmations: boolean): Migration[
             description: "Remove workspace-local .totopo/ artifacts",
             run: () => migrateLegacyV1WorkspaceArtifacts(cwd, !skipAnyConfirmations),
         },
-        { from: "v3-rc-1/rc-2", description: "Rename ~/.totopo/projects/ to ~/.totopo/workspaces/", run: migrateProjectsDir },
+        { from: "v2.x", description: "Rename ~/.totopo/projects/ to ~/.totopo/workspaces/", run: migrateProjectsDir },
         { from: "v2.x", description: "Hash-based dirs to workspace_id-based dirs + totopo.yaml", run: migrateV2Workspaces },
-        { from: "v3-rc-1/rc-2", description: "Rename project_id to workspace_id in totopo.yaml", run: () => migrateTotopoYaml(cwd) },
         { from: "v2.x", description: "Remove legacy ~/.totopo/.env global key file", run: migrateGlobalEnv },
-        { from: "v3-rc-6", description: "Upgrade .lock files from positional to key=value format", run: migrateLockFileFormat },
-        { from: "v3-rc-8", description: "Rename 'yaml' key to 'root' in .lock files", run: migrateLockKeyYamlToRoot },
+        {
+            from: "pre-v3.0.0",
+            description: "RC-era cleanup: workspace_id rename + .lock format/key upgrades",
+            run: () => migrateV3PreRelease(cwd),
+        },
         { from: "v3.1.0", description: "Remove last-cli-update key from .lock files", run: migrateRemoveLastCliUpdate },
         {
             from: "v3.2.1",
@@ -640,6 +666,7 @@ function buildMigrations(cwd: string, skipAnyConfirmations: boolean): Migration[
         { from: "v3.4.0", description: "Add git_mode=local to .lock files (preserves pre-v3.4.0 behavior)", run: migrateAddGitMode },
         { from: "v3.9.0", description: "Add audio=false to .lock files (preserves pre-v3.9.0 behavior)", run: migrateAddAudio },
         { from: "v3.10.0", description: "Move pulse cookie to ~/.totopo/global/", run: migrateMoveAudioCookie },
+        { from: "v3.12.2", description: "Rename env_file to env in totopo.yaml", run: () => migrateEnvFileToEnv(cwd) },
     ];
 }
 

@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { styleText } from "node:util";
 import { box, cancel, isCancel, select } from "@clack/prompts";
 import { IS_MACOS } from "../lib/audio-host.js";
-import { AUDIO_MODE, PROFILE } from "../lib/constants.js";
+import { AUDIO_MODE, DEFAULT_PROFILE } from "../lib/constants.js";
 import { readAudioMode } from "../lib/global-config.js";
 import { readTotopoYaml } from "../lib/totopo-yaml.js";
 import type { WorkspaceContext } from "../lib/workspace-identity.js";
@@ -41,13 +41,13 @@ export async function run(args: MenuArgs): Promise<string> {
     const cachedProfile = readActiveProfile(ctx.workspaceId);
     // Fall back to a profile that actually exists (default if present, else the first) so the box never
     // shows a name absent from totopo.yaml. The line only renders when there are >1, so the list is non-empty there.
-    const fallbackProfile = profileNames.includes(PROFILE.default) ? PROFILE.default : (profileNames[0] ?? PROFILE.default);
+    const fallbackProfile = profileNames.includes(DEFAULT_PROFILE) ? DEFAULT_PROFILE : (profileNames[0] ?? DEFAULT_PROFILE);
     const activeProfile = cachedProfile && profileNames.includes(cachedProfile) ? cachedProfile : fallbackProfile;
     const profileLine = profileNames.length > 1 ? `\nprofile:     ${activeProfile}` : "";
 
     // --- Status box ----------------------------------------------------------------------------------------------------------------------
     const containerStatus = workspaceRunning ? "running" : "stopped";
-    const gitNotice = hasGit ? "" : `\n${styleText("yellow", "●")} no git — agent changes are not tracked`;
+    const gitNotice = hasGit ? "" : `\n${styleText("yellow", "●")} no git - agent changes are not tracked`;
     // Surface the host audio server. When this workspace has voice wiring on, show its state at a glance
     // (running / not running). When wiring is off but the global server happens to be up, still nudge the
     // user to stop it - totopo never stops it on its own.

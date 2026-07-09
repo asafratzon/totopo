@@ -48,7 +48,7 @@ CMD ["/bin/bash"]
 
 /**
  * Assemble a Dockerfile from the base template, optional profile hook, and USER instruction.
- * The resulting Dockerfile is never persisted — it's written to a temp file at build time.
+ * The resulting Dockerfile is never persisted - it's written to a temp file at build time.
  */
 export function buildDockerfile(baseTemplatePath: string, profileHook?: string): string {
     let content = readFileSync(baseTemplatePath, "utf8");

@@ -110,7 +110,7 @@ export function validateChangelog(data: Changelog): void {
         const hasVersion = typeof raw.version === "string";
 
         if (hasRcVersion && hasVersion) {
-            errors.push(`${prefix}: has both 'rc_version' and 'version' — use one or the other`);
+            errors.push(`${prefix}: has both 'rc_version' and 'version' - use one or the other`);
         } else if (!hasRcVersion && !hasVersion) {
             errors.push(`${prefix}: missing 'rc_version' (for RC entries) or 'version' (for stable entries)`);
         }

@@ -1,6 +1,6 @@
 // =========================================================================================================================================
 // src/commands/dev.ts - Start the dev container and connect via docker exec
-// In-memory Dockerfile build, profile selection, pattern-based shadows, env_file handling, runtime env injection.
+// In-memory Dockerfile build, profile selection, pattern-based shadows, env handling, runtime env injection.
 // =========================================================================================================================================
 
 import { type StdioOptions, spawnSync } from "node:child_process";
@@ -19,20 +19,22 @@ import {
     type AudioMode,
     CONTAINER_STARTUP,
     CONTAINER_WORKSPACE,
+    DEFAULT_PROFILE,
     GIT_MODE,
     type GitMode,
     LABEL_AUDIO,
     LABEL_AUTOSTART,
+    LABEL_ENV,
     LABEL_GIT_MODE,
     LABEL_MANAGED,
     LABEL_PORTS,
     LABEL_PROFILE,
     LABEL_RUNTIME_ENV,
     LABEL_SHADOWS,
-    PROFILE,
     RUNTIME_ENV,
 } from "../lib/constants.js";
 import { buildDockerfile, buildImageWithTempfile, computeBuildHash } from "../lib/dockerfile-builder.js";
+import { type EnvConfig, envLabel, envRunArgs, envWarnings, validateEnvConfig } from "../lib/env.js";
 import { readAudioMode, readAutoStartAgent } from "../lib/global-config.js";
 import { isImageStale } from "../lib/migrate-to-latest.js";
 import { buildPnpmStoreMountArgs } from "../lib/pnpm-store.js";
@@ -75,10 +77,10 @@ async function countdown(seconds: number, message: string): Promise<void> {
 async function selectProfile(ctx: WorkspaceContext, profiles: Record<string, ProfileConfig>): Promise<string> {
     const profileNames = Object.keys(profiles);
     if (profileNames.length <= 1) {
-        return profileNames[0] ?? PROFILE.default;
+        return profileNames[0] ?? DEFAULT_PROFILE;
     }
 
-    const currentProfile = readActiveProfile(ctx.workspaceId) ?? PROFILE.default;
+    const currentProfile = readActiveProfile(ctx.workspaceId) ?? DEFAULT_PROFILE;
 
     const choice = await select({
         message: "Profile:",
@@ -115,17 +117,17 @@ interface ContainerInfo {
     audioLabel: string;
     autoStartLabel: string;
     portsLabel: string;
+    envLabel: string;
 }
 
 // Returns null when the container does not exist (docker inspect exits non-zero).
 function inspectContainer(containerName: string): ContainerInfo | null {
-    const fmt = `{{.State.Status}}|{{index .Config.Labels "${LABEL_SHADOWS}"}}|{{index .Config.Labels "${LABEL_PROFILE}"}}|{{index .Config.Labels "${LABEL_RUNTIME_ENV}"}}|{{index .Config.Labels "${LABEL_GIT_MODE}"}}|{{index .Config.Labels "${LABEL_AUDIO}"}}|{{index .Config.Labels "${LABEL_AUTOSTART}"}}|{{index .Config.Labels "${LABEL_PORTS}"}}`;
+    const fmt = `{{.State.Status}}|{{index .Config.Labels "${LABEL_SHADOWS}"}}|{{index .Config.Labels "${LABEL_PROFILE}"}}|{{index .Config.Labels "${LABEL_RUNTIME_ENV}"}}|{{index .Config.Labels "${LABEL_GIT_MODE}"}}|{{index .Config.Labels "${LABEL_AUDIO}"}}|{{index .Config.Labels "${LABEL_AUTOSTART}"}}|{{index .Config.Labels "${LABEL_PORTS}"}}|{{index .Config.Labels "${LABEL_ENV}"}}`;
     const result = spawnSync("docker", ["inspect", "--format", fmt, containerName], { encoding: "utf8", stdio: "pipe" });
     if (result.status !== 0) return null;
     const clean = (s: string) => (s === "<no value>" ? "" : s);
-    const [status = "", shadows = "", profile = "", runtimeEnv = "", gitMode = "", audio = "", autoStart = "", ports = ""] = result.stdout
-        .trim()
-        .split("|");
+    const [status = "", shadows = "", profile = "", runtimeEnv = "", gitMode = "", audio = "", autoStart = "", ports = "", env = ""] =
+        result.stdout.trim().split("|");
     return {
         status,
         shadowLabel: clean(shadows),
@@ -135,6 +137,7 @@ function inspectContainer(containerName: string): ContainerInfo | null {
         audioLabel: clean(audio),
         autoStartLabel: clean(autoStart),
         portsLabel: clean(ports),
+        envLabel: clean(env),
     };
 }
 
@@ -213,7 +216,7 @@ export interface StartContainerOpts {
     activeProfile: string;
     profileHook: string | undefined;
     expandedShadows: string[]; // Already expanded by expandShadowPatterns()
-    envFilePath: string | undefined; // Resolved absolute path, or undefined if not set/missing
+    envConfig: EnvConfig; // Normalized env-file paths + inline vars from validateEnvConfig
     hasGit: boolean;
     gitMode: GitMode;
     audio: boolean; // Claude Code /voice bridge: inject PulseAudio env + --add-host when true
@@ -236,7 +239,7 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
         activeProfile,
         profileHook,
         expandedShadows,
-        envFilePath,
+        envConfig,
         hasGit,
         gitMode,
         audio,
@@ -256,6 +259,10 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
     // probed just-in-time on the create path (assertHostPortsAvailable), never on resume/connect.
     const currentPortsLabel = portsLabel(portMappings);
 
+    // --- Env fingerprint (inline vars + resolved file contents) -----------------------------------------------------------------------------
+    // Covers inline vars and the contents of every existing env file, so editing either recreates the container.
+    const currentEnvLabel = envLabel(envConfig);
+
     // --- Sync shadows and build mount args ------------------------------------------------------------------------------------------------
     ensureShadowsInSync(cacheDir, expandedShadows, workspaceRoot);
     const shadowMountArgs = buildShadowMountArgs(cacheDir, expandedShadows);
@@ -263,11 +270,8 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
     // --- Agent context -------------------------------------------------------------------------------------------------------------------
     const agentDocs = buildAgentContextDocs(hasGit, shadowPatterns, gitMode);
 
-    // --- Env file args -------------------------------------------------------------------------------------------------------------------
-    const envFileArgs: string[] = [];
-    if (envFilePath) {
-        envFileArgs.push("--env-file", envFilePath);
-    }
+    // --- Env args (env files + inline vars) ----------------------------------------------------------------------------------------------
+    const envArgs = envRunArgs(envConfig);
 
     // --- Build mount args ----------------------------------------------------------------------------------------------------------------
     const agentMounts = buildAgentMountArgs(cacheDir);
@@ -345,32 +349,45 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
         // Treat an absent label (pre-feature container) as "off" so a still-default setting does not force a
         // spurious recreate on the first upgrade - the stale-image prompt handles the mandatory rebuild instead.
         const autoStartChanged = (info.autoStartLabel || AUTO_START.off) !== autoStartAgent;
-        // Both sides are "" when a workspace declares no ports, so a container without published ports never churns on this label.
+        // Both sides are "" when a workspace declares no ports, so a container without published ports never recreates on this label.
         const portsChanged = info.portsLabel !== currentPortsLabel;
+        // Both sides are "" when a workspace declares no env, so a container without env injection never recreates on this label.
+        const envChanged = info.envLabel !== currentEnvLabel;
 
-        if (shadowChanged || profileChanged || runtimeEnvChanged || gitModeChanged || audioChanged || autoStartChanged || portsChanged) {
+        if (
+            shadowChanged ||
+            profileChanged ||
+            runtimeEnvChanged ||
+            gitModeChanged ||
+            audioChanged ||
+            autoStartChanged ||
+            portsChanged ||
+            envChanged
+        ) {
             stopAndRemoveContainer(containerName);
             containerStatus = null;
 
             if (profileChanged) {
                 // Profile change means different Dockerfile - must rebuild image
-                if (!quiet) log.info(`Profile changed (${info.profileLabel} -> ${activeProfile}) — rebuilding...`);
+                if (!quiet) log.info(`Profile changed (${info.profileLabel} -> ${activeProfile}) - rebuilding...`);
                 spawnSync("docker", ["rmi", containerName], { stdio: "pipe" });
             } else if (shadowChanged) {
-                if (!quiet) log.info("Shadow paths changed — recreating container...");
+                if (!quiet) log.info("Shadow paths changed - recreating container...");
             } else if (gitModeChanged) {
-                if (!quiet) log.info(`Git mode changed (${info.gitModeLabel || "<unset>"} -> ${gitMode}) — recreating container...`);
+                if (!quiet) log.info(`Git mode changed (${info.gitModeLabel || "<unset>"} -> ${gitMode}) - recreating container...`);
             } else if (audioChanged) {
-                if (!quiet) log.info(`Voice/audio ${audio ? "enabled" : "disabled"} — recreating container...`);
+                if (!quiet) log.info(`Voice/audio ${audio ? "enabled" : "disabled"} - recreating container...`);
             } else if (portsChanged) {
-                if (!quiet) log.info("Ports changed — recreating container...");
+                if (!quiet) log.info("Ports changed - recreating container...");
+            } else if (envChanged) {
+                if (!quiet) log.info("Environment variables changed - recreating container...");
             } else if (autoStartChanged) {
                 if (!quiet)
                     log.info(
-                        `Auto-start changed (${info.autoStartLabel || AUTO_START.off} -> ${autoStartAgent}) — recreating container...`,
+                        `Auto-start changed (${info.autoStartLabel || AUTO_START.off} -> ${autoStartAgent}) - recreating container...`,
                     );
             } else {
-                if (!quiet) log.info("Runtime environment updated — recreating container...");
+                if (!quiet) log.info("Runtime environment updated - recreating container...");
             }
         }
     }
@@ -402,14 +419,14 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
 
         if (!quiet) log.info("Starting dev container...");
 
-        // portEnvArgs come after envFileArgs/runtimeEnvArgs/audioRunArgs so the published value wins any -e collision.
+        // portEnvArgs come after envArgs/runtimeEnvArgs/audioRunArgs so the published value wins any -e collision.
         const runArgs = [
             "run",
             "-d",
             "--name",
             containerName,
             ...mountArgs,
-            ...envFileArgs,
+            ...envArgs,
             ...runtimeEnvArgs,
             ...audioRunArgs,
             ...portEnvArgs(portMappings),
@@ -419,6 +436,8 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
             ...labelArgs,
             "--label",
             `${LABEL_PORTS}=${currentPortsLabel}`,
+            "--label",
+            `${LABEL_ENV}=${currentEnvLabel}`,
             containerName,
             "sleep",
             "infinity",
@@ -520,15 +539,16 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
         log.warn(`Skipped ${skippedTracked.length} shadow path(s) tracked by git`);
     }
 
-    // --- Env file ------------------------------------------------------------------------------------------------------------------------
-    let envFilePath: string | undefined;
-    if (yaml.env_file) {
-        const resolved = join(workspaceDir, yaml.env_file);
-        if (existsSync(resolved)) {
-            envFilePath = resolved;
-        } else {
-            log.warn(`env_file "${yaml.env_file}" not found — skipping`);
-        }
+    // --- Env (env files + inline vars) ---------------------------------------------------------------------------------------------------
+    let envConfig: EnvConfig;
+    try {
+        envConfig = validateEnvConfig(yaml.env, workspaceDir);
+    } catch (err) {
+        log.error(err instanceof Error ? err.message : String(err));
+        process.exit(1);
+    }
+    for (const warning of envWarnings(envConfig)) {
+        log.warn(warning);
     }
 
     const hasGit = existsSync(join(workspaceDir, ".git"));
@@ -567,7 +587,7 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
         activeProfile,
         profileHook,
         expandedShadows,
-        envFilePath,
+        envConfig,
         hasGit,
         gitMode,
         audio,
@@ -585,7 +605,7 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
     let stale = isImageStale(containerName, expectedBuildHash);
     if (stale) {
         log.warn(
-            "totopo's latest release includes an updated container image.\nPlease rebuild to update — this will not affect agent memory, settings, or your data.",
+            "This container's image is out of date.\nPlease rebuild to update - this will not affect agent memory, settings, or your data.",
         );
         const rebuild = await confirm({
             message: "Rebuild now? (Recommended)",

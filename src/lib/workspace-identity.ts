@@ -9,11 +9,11 @@ import { dirname, join } from "node:path";
 import {
     AGENTS_DIR,
     CONTAINER_NAME_PREFIX,
+    DEFAULT_PROFILE,
     GIT_MODE,
     GIT_MODES,
     type GitMode,
     LOCK_FILE,
-    PROFILE,
     SHADOWS_DIR,
     TOTOPO_DIR,
     TOTOPO_YAML,
@@ -47,17 +47,17 @@ const FILE_KEY_TO_FIELD = Object.fromEntries(Object.entries(LOCK_KEYS).map(([fie
     keyof typeof LOCK_KEYS
 >;
 
-/** Pre-computed entries for writing — avoids re-casting on every write. */
+/** Pre-computed entries for writing - avoids re-casting on every write. */
 const LOCK_ENTRIES = Object.entries(LOCK_KEYS) as [keyof LockFile, string][];
 
 // --- Path helpers ------------------------------------------------------------------------------------------------------------------------
 
-/** Base directory for all workspace caches — ~/.totopo/workspaces/ */
+/** Base directory for all workspace caches - ~/.totopo/workspaces/ */
 export function getWorkspacesBaseDir(): string {
     return join(homedir(), TOTOPO_DIR, WORKSPACES_DIR);
 }
 
-/** Cache directory for a specific workspace — ~/.totopo/workspaces/<workspace_id>/ */
+/** Cache directory for a specific workspace - ~/.totopo/workspaces/<workspace_id>/ */
 export function getWorkspaceDir(workspaceId: string): string {
     return join(getWorkspacesBaseDir(), workspaceId);
 }
@@ -88,7 +88,7 @@ function parseLockFile(workspaceId: string): LockFile | null {
         if (!partial.workspaceRoot) return null;
         return {
             workspaceRoot: partial.workspaceRoot,
-            activeProfile: partial.activeProfile ?? PROFILE.default,
+            activeProfile: partial.activeProfile ?? DEFAULT_PROFILE,
             gitMode: partial.gitMode ?? GIT_MODE.local,
             audio: partial.audio ?? "false",
         };
@@ -115,7 +115,7 @@ export function writeLockFile(workspaceId: string, workspaceRoot: string): void 
     const existing = parseLockFile(workspaceId);
     writeLockFileInternal(workspaceId, {
         workspaceRoot,
-        activeProfile: existing?.activeProfile ?? PROFILE.default,
+        activeProfile: existing?.activeProfile ?? DEFAULT_PROFILE,
         gitMode: existing?.gitMode ?? GIT_MODE.local,
         audio: existing?.audio ?? "false",
     });
@@ -166,7 +166,7 @@ export function writeAudio(workspaceId: string, audio: boolean): void {
 export function initWorkspaceDir(
     workspaceId: string,
     workspaceRoot: string,
-    activeProfile: string = PROFILE.default,
+    activeProfile: string = DEFAULT_PROFILE,
     gitMode: GitMode = GIT_MODE.local,
     audio = false,
 ): void {

@@ -34,7 +34,7 @@ async function shadowPathsMenu(ctx: WorkspaceContext): Promise<void> {
     }
 
     log.message(
-        "Shadow patterns block the agent from seeing matching host paths —\n" +
+        "Shadow patterns block the agent from seeing matching host paths -\n" +
             "the container gets an empty, isolated copy instead.\n" +
             "Supports gitignore-style patterns (e.g. node_modules, .env*).\n" +
             "Git-tracked paths are skipped to avoid worktree diversions.",
@@ -143,9 +143,9 @@ async function gitModeMenu(ctx: WorkspaceContext): Promise<void> {
     const current = readGitMode(ctx.workspaceId) ?? GIT_MODE.local;
 
     note(
-        "Local         — local mutations allowed; remote blocked\n" +
-            "Strict        — read-only; mutations and remote blocked\n" +
-            "Unrestricted  — no totopo-enforced restrictions",
+        "Local         - local mutations allowed; remote blocked\n" +
+            "Strict        - read-only; mutations and remote blocked\n" +
+            "Unrestricted  - no totopo-enforced restrictions",
         "Git mode",
     );
 
@@ -212,7 +212,7 @@ async function audioMenu(ctx: WorkspaceContext): Promise<void> {
 
         if (!IS_MACOS) {
             log.info(
-                "Host server control is automated on macOS only. On Linux/Windows, start a PulseAudio server on the host manually — see the README.",
+                "Host server control is automated on macOS only. On Linux/Windows, start a PulseAudio server on the host manually - see the README.",
             );
         }
 
@@ -267,7 +267,7 @@ async function audioMenu(ctx: WorkspaceContext): Promise<void> {
         } else if (action === "stop") {
             result = stopServer();
         } else {
-            log.info("Recording 3 seconds — speak now...");
+            log.info("Recording 3 seconds - speak now...");
             result = testMic();
         }
 
@@ -285,7 +285,7 @@ async function autoStartMenu(ctx: WorkspaceContext): Promise<void> {
 
     note(
         "When set, the chosen agent launches automatically as you enter the container; quit it and you drop to a shell.\n" +
-            "This is a host-global preference — it applies to every workspace.",
+            "This is a host-global preference - it applies to every workspace.",
         "Auto-start agent",
     );
 
@@ -306,7 +306,7 @@ async function autoStartMenu(ctx: WorkspaceContext): Promise<void> {
     writeAutoStartAgent(choice);
     log.success(
         choice === AUTO_START.off
-            ? "Auto-start disabled — you'll land in a shell. Applies to all workspaces."
+            ? "Auto-start disabled - you'll land in a shell. Applies to all workspaces."
             : `Auto-start set to ${choice} for all workspaces.`,
     );
     await promptStopContainer(ctx);
@@ -328,7 +328,7 @@ async function promptStopContainer(ctx: WorkspaceContext): Promise<void> {
 
     const shouldStop = await confirm({ message: "Stop the running container so changes apply on next session?" });
     if (isCancel(shouldStop) || !shouldStop) {
-        log.warn("Container still running with old config — it will be recreated on next session.");
+        log.warn("Container still running with old config - it will be recreated on next session.");
         return;
     }
 
@@ -349,7 +349,7 @@ async function resetTotopoYaml(ctx: WorkspaceContext): Promise<void> {
     note(
         "This will reset totopo.yaml to the minimal default (workspace_id + shadow_paths).\n" +
             "Your workspace_id is preserved; shadow_paths reset to the defaults (node_modules, .env*).\n" +
-            "Any env_file, profiles, or ports settings will be removed - re-add them from the docs (menu > Help).",
+            "Any env, profiles, or ports settings will be removed - re-add them from the docs (menu > Help).",
         "Reset totopo.yaml",
     );
 
@@ -448,5 +448,5 @@ export async function resetImage(containerName: string): Promise<void> {
         spawnSync("docker", ["rmi", containerName], { stdio: "pipe" });
     }
 
-    log.info("Image removed — starting fresh build…");
+    log.info("Image removed - starting fresh build…");
 }

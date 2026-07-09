@@ -1,5 +1,5 @@
 # =============================================================================
-# totopo — Secure AI Dev Container (essentials base)
+# totopo - Secure AI Dev Container (essentials base)
 # =============================================================================
 # Non-root user, git remote block, AI tools: opencode, claude, codex
 # Base runtime: Node.js LTS + python3 (for build scripts)
@@ -24,7 +24,7 @@ LABEL totopo.managed=true
 ENV COLORTERM=truecolor
 
 # ---------------------------------------------------------------------------
-# Layer 1 — System packages
+# Layer 1 - System packages
 # ---------------------------------------------------------------------------
 RUN apt-get update && apt-get install -y --no-install-recommends \
     # Core utilities
@@ -42,20 +42,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------
-# Layer 2 — fd (from apt fd-find; Debian names the binary 'fdfind')
+# Layer 2 - fd (from apt fd-find; Debian names the binary 'fdfind')
 # Symlink to 'fd' so the tool is callable by its upstream name.
 # ---------------------------------------------------------------------------
 RUN ln -sf "$(command -v fdfind)" /usr/local/bin/fd
 
 # ---------------------------------------------------------------------------
-# Layer 3 — yq (GitHub release, pinned)
+# Layer 3 - yq (GitHub release, pinned)
 # ---------------------------------------------------------------------------
 RUN ARCH=$(dpkg --print-architecture) && \
     curl -fsSL "https://github.com/mikefarah/yq/releases/download/v4.53.3/yq_linux_${ARCH}" \
         -o /usr/local/bin/yq && chmod +x /usr/local/bin/yq
 
 # ---------------------------------------------------------------------------
-# Layer 4 — GitHub CLI
+# Layer 4 - GitHub CLI
 # ---------------------------------------------------------------------------
 RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
         | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg && \
@@ -65,20 +65,20 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     apt-get update && apt-get install -y gh && rm -rf /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------
-# Layer 5 — Node.js 24 LTS (via NodeSource)
+# Layer 5 - Node.js 24 LTS (via NodeSource)
 # Trixie's apt nodejs is 20.x; NodeSource is pinned to the current Active LTS (24.x).
 # ---------------------------------------------------------------------------
 RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
     apt-get install -y nodejs && rm -rf /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------
-# Layer 6 — Git remote block (security boundary)
+# Layer 6 - Git remote block (security boundary)
 # ---------------------------------------------------------------------------
 RUN git config --system protocol.allow never && \
     git config --system protocol.file.allow always
 
 # ---------------------------------------------------------------------------
-# Layer 7 — Global npm tools (pnpm pinned; AI CLIs always latest)
+# Layer 7 - Global npm tools (pnpm pinned; AI CLIs always latest)
 # pnpm is pinned exact: pnpm 11 changed where global settings are read from
 # (~/.config/pnpm/config.yaml, no longer ~/.npmrc), so an unpinned major bump
 # can silently break the baked store-dir config.
@@ -91,7 +91,7 @@ RUN npm install -g \
     && npm cache clean --force
 
 # ---------------------------------------------------------------------------
-# Layer 8 — Non-root user
+# Layer 8 - Non-root user
 # ---------------------------------------------------------------------------
 RUN groupadd --gid 1001 devuser && \
     useradd --uid 1001 --gid devuser --shell /bin/bash --create-home devuser && \
@@ -100,7 +100,7 @@ RUN groupadd --gid 1001 devuser && \
     chown -R devuser:devuser /home/devuser
 
 # ---------------------------------------------------------------------------
-# Layer 9 — Bake startup script + git mode helper + shared constants + pnpm config into image
+# Layer 9 - Bake startup script + git mode helper + shared constants + pnpm config into image
 # pnpm 11+ reads settings from ~/.config/pnpm/config.yaml; ~/.npmrc covers anyone pinning pnpm <= 10.
 # ---------------------------------------------------------------------------
 COPY npmrc /home/devuser/.npmrc
@@ -111,7 +111,7 @@ COPY runtime-constants.mjs /home/devuser/runtime-constants.mjs
 RUN chown devuser:devuser /home/devuser/.npmrc /home/devuser/.config/pnpm/config.yaml /home/devuser/startup.mjs /home/devuser/startup-git-mode.mjs /home/devuser/runtime-constants.mjs
 
 # ---------------------------------------------------------------------------
-# Layer 10 — Bake git read-only wrapper into image
+# Layer 10 - Bake git read-only wrapper into image
 # Symlinked to /usr/local/bin/git by startup.mjs when git_mode=strict.
 # ---------------------------------------------------------------------------
 RUN mkdir -p /usr/local/share/totopo
@@ -119,7 +119,7 @@ COPY git-readonly-wrapper.mjs /usr/local/share/totopo/git-readonly
 RUN chmod +x /usr/local/share/totopo/git-readonly
 
 # ---------------------------------------------------------------------------
-# Layer 11 — Bake Claude default status line script
+# Layer 11 - Bake Claude default status line script
 # Referenced from ~/.claude/settings.json (statusLine.command) at session start.
 # ---------------------------------------------------------------------------
 COPY claude-statusline.sh /usr/local/share/totopo/claude-statusline.sh

@@ -4,7 +4,7 @@ Contributions are welcome - whether it's a bug report, a feature request, or a p
 
 ## Reporting issues & requesting features
 
-If you run into something unexpected or have an idea for an improvement, feel free to [open an issue](../../issues). There's no formal template — just describe what you encountered or what you'd like to see.
+If you run into something unexpected or have an idea for an improvement, feel free to [open an issue](../../issues). There's no formal template - just describe what you encountered or what you'd like to see.
 
 ## Pull requests
 
@@ -50,20 +50,20 @@ Place final GIFs in `.github/assets/` and uncomment the relevant placeholder in 
 
 ### Releases
 
-`scripts/changelog.yaml` is the source of truth for all release notes. `CHANGELOG.md` is a generated artifact — never edit it by hand; regenerate with `pnpm generate-changelog`.
+`scripts/changelog.yaml` is the source of truth for all release notes. `CHANGELOG.md` is a generated artifact - never edit it by hand; regenerate with `pnpm generate-changelog`.
 
-- `pnpm release` — unified release script (publish RC, promote RC to stable, or publish stable directly)
-- `/release` — guided workflow inside the container that checks the registry, helps draft changelog entries, and commits
+- `pnpm release` - unified release script (publish RC, promote RC to stable, or publish stable directly)
+- `/release` - guided workflow inside the container that checks the registry, helps draft changelog entries, and commits
 
 Use the `/release` skill inside the container to prepare, then run `pnpm release` on the host to publish.
 
 #### Release flows
 
-**Release candidate** — publish a `-rc-N` version under the `rc` dist-tag for testing with `npx totopo@rc`. RC development happens on a dedicated branch (e.g. `v3.1.0-rc-development`), not on `main`.
+**Release candidate** - publish a `-rc-N` version under the `rc` dist-tag for testing with `npx totopo@rc`. RC development happens on a dedicated branch (e.g. `v3.1.0-rc-development`), not on `main`.
 
-**Promote rc to stable** — squash RC entries, regenerate CHANGELOG.md, squash-merge the RC branch into `main`, publish as `latest`, and remove the `rc` dist-tag.
+**Promote rc to stable** - squash RC entries, regenerate CHANGELOG.md, squash-merge the RC branch into `main`, publish as `latest`, and remove the `rc` dist-tag.
 
-**Direct stable release** — bypass the RC lane entirely. Use when the change is small enough to ship without a testing phase. Publishes directly as `latest` from the current branch.
+**Direct stable release** - bypass the RC lane entirely. Use when the change is small enough to ship without a testing phase. Publishes directly as `latest` from the current branch.
 
 #### changelog.yaml format
 
@@ -92,9 +92,9 @@ releases:
     security:  # security fixes (always include if applicable)
 ```
 
-Entries use `rc_version` for RC flow or `version` for direct stable flow — never both. Only include categories that have entries. Keep entries concise — one line per item.
+Entries use `rc_version` for RC flow or `version` for direct stable flow - never both. Only include categories that have entries. Keep entries concise - one line per item.
 
-**Cumulative convention**: each RC entry should be a cumulative description of the full release — not just its delta from the previous RC. When drafting a new entry, carry forward all items from previous RC entries that still apply. Promotion uses only the latest RC entry as the release notes. Earlier entries serve as a development audit trail.
+**Cumulative convention**: each RC entry should be a cumulative description of the full release - not just its delta from the previous RC. When drafting a new entry, carry forward all items from previous RC entries that still apply. Promotion uses only the latest RC entry as the release notes. Earlier entries serve as a development audit trail.
 
 #### npm dist-tags
 

@@ -18,7 +18,7 @@ export interface ProfileConfig {
 
 export interface TotopoYamlConfig {
     workspace_id: string;
-    env_file?: string;
+    env?: string | string[];
     shadow_paths?: string[];
     profiles?: Record<string, ProfileConfig>;
     ports?: PortEntry[];
@@ -120,7 +120,9 @@ const YAML_COMMENTS: Partial<Record<keyof TotopoYamlConfig, string>> = {
         "# totopo workspace config - run 'npx totopo' from anywhere under this directory tree to start your dev container.\n" +
         "# Choose Help in the totopo menu to see the official docs and all configuration options.\n" +
         "# This file may be rewritten by totopo (repair, reset, settings changes). Custom comments will not be preserved.",
-    env_file: "# Path to env file relative to this directory (e.g. '.env') - injected into the container at runtime.",
+    env:
+        "# Environment injected into the container - a single value or a list.\n" +
+        "# Each entry is an env-file path relative to this directory (e.g. '.env') or an inline 'KEY=VALUE' variable.",
     shadow_paths: "# .gitignore-style patterns - agents see an empty, isolated copy instead of the real host data.",
     profiles:
         "# Dockerfile profiles - each adds on top of the totopo base image (Debian + Node.js + git + AI CLIs).\n" +
@@ -159,11 +161,11 @@ export function writeTotopoYaml(dir: string, config: TotopoYamlConfig): void {
 // --- Defaults ----------------------------------------------------------------------------------------------------------------------------
 
 // Appended after the last profile to hint at adding more (only when a profiles: block is present).
-const PROFILES_FOOTER_COMMENT = "  # Add more profiles here — or ask the agent inside the container to set one up for you.";
+const PROFILES_FOOTER_COMMENT = "  # Add more profiles here - or ask the agent inside the container to set one up for you.";
 
 /**
  * Create the minimal default TotopoYamlConfig: just the required workspace_id plus the security-relevant
- * shadow_paths isolation default. Everything else (env_file, profiles, ports) is optional and documented
+ * shadow_paths isolation default. Everything else (env, profiles, ports) is optional and documented
  * via the menu's Help entry, so we do not scaffold it into freshly generated files.
  */
 export function buildDefaultTotopoYaml(workspaceId: string): TotopoYamlConfig {
@@ -176,7 +178,7 @@ export function buildDefaultTotopoYaml(workspaceId: string): TotopoYamlConfig {
 // --- Repair -------------------------------------------------------------------------------------------------------------------------------
 
 /** Set of keys that TotopoYamlConfig allows (used to strip unknown fields). */
-const KNOWN_KEYS = new Set<string>(["workspace_id", "env_file", "shadow_paths", "profiles", "ports"]);
+const KNOWN_KEYS = new Set<string>(["workspace_id", "env", "shadow_paths", "profiles", "ports"]);
 
 export interface RepairResult {
     repairedYaml: TotopoYamlConfig | null;
@@ -218,7 +220,7 @@ export function repairTotopoYaml(dir: string): RepairResult {
             fixes.push(`added missing workspace_id ("${defaults.workspace_id}")`);
         }
 
-        // Restore the shadow_paths isolation default when absent (security-relevant). profiles/env_file are
+        // Restore the shadow_paths isolation default when absent (security-relevant). profiles/env are
         // optional and intentionally not backfilled, so a deliberately minimal file is not re-bloated on repair.
         if (!("shadow_paths" in obj)) {
             obj.shadow_paths = defaults.shadow_paths;

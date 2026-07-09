@@ -39,7 +39,7 @@ export async function syncGithubReleases(packageName: string): Promise<void> {
     // -- Check gh availability ------------------------------------------------------------------------------------------------------------
     const ghCheck = run("gh", ["--version"]);
     if (!ghCheck.ok) {
-        log.warn("gh CLI not found — skipping GitHub release sync");
+        log.warn("gh CLI not found - skipping GitHub release sync");
         log.message("Install from https://cli.github.com/ to automate this step.");
         return;
     }
@@ -51,7 +51,7 @@ export async function syncGithubReleases(packageName: string): Promise<void> {
         const parsed = JSON.parse(npmResult.stdout);
         npmVersions = Array.isArray(parsed) ? parsed : [parsed];
     } catch {
-        log.warn("Could not fetch npm versions — skipping GitHub release sync");
+        log.warn("Could not fetch npm versions - skipping GitHub release sync");
         return;
     }
 
@@ -62,7 +62,7 @@ export async function syncGithubReleases(packageName: string): Promise<void> {
         const releases = JSON.parse(ghResult.stdout) as { tagName: string }[];
         ghTags = new Set(releases.map((r) => r.tagName));
     } catch {
-        log.warn(`Could not fetch GitHub releases — skipping sync${ghResult.stderr ? `: ${ghResult.stderr}` : ""}`);
+        log.warn(`Could not fetch GitHub releases - skipping sync${ghResult.stderr ? `: ${ghResult.stderr}` : ""}`);
         return;
     }
 
@@ -79,7 +79,7 @@ export async function syncGithubReleases(packageName: string): Promise<void> {
         try {
             body = (JSON.parse(bodyResult.stdout) as { body: string }).body ?? "";
         } catch {
-            /* leave body empty — will trigger update */
+            /* leave body empty - will trigger update */
         }
         if (body.trim() === "" || body.trim() === placeholderNotes(`v${version}`)) {
             needsNotes.push(version);

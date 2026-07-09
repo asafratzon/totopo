@@ -13,7 +13,7 @@ const TEMP_PREFIX = join(tmpdir(), "totopo-test-");
 
 export async function cleanTempDir(dir: string): Promise<void> {
     if (!resolve(dir).startsWith(TEMP_PREFIX)) {
-        throw new Error(`cleanTempDir: refusing to delete '${dir}' — must be under ${TEMP_PREFIX}*`);
+        throw new Error(`cleanTempDir: refusing to delete '${dir}' - must be under ${TEMP_PREFIX}*`);
     }
     // On macOS Docker Desktop, the host-side bind-mount target can briefly hold a
     // macOS indexing handle and a com.apple.provenance xattr after `docker rm -f`
