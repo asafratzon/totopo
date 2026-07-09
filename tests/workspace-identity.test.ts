@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, test } from "node:test";
-import { GIT_MODE, LOCK_FILE, PROFILE } from "../src/lib/constants.js";
+import { DEFAULT_PROFILE, GIT_MODE, LOCK_FILE } from "../src/lib/constants.js";
 import {
     checkCollision,
     deriveContainerName,
@@ -111,7 +111,7 @@ describe("with isolated home", () => {
         test("readActiveProfile returns default on fresh init", async () => {
             const tmp = createTempDir();
             initWorkspaceDir("test-ws", tmp);
-            assert.equal(readActiveProfile("test-ws"), PROFILE.default);
+            assert.equal(readActiveProfile("test-ws"), DEFAULT_PROFILE);
             await cleanTempDir(tmp);
         });
 
@@ -122,8 +122,8 @@ describe("with isolated home", () => {
         test("writeActiveProfile updates profile without changing path", async () => {
             const tmp = createTempDir();
             initWorkspaceDir("test-ws", tmp);
-            writeActiveProfile("test-ws", PROFILE.extended);
-            assert.equal(readActiveProfile("test-ws"), PROFILE.extended);
+            writeActiveProfile("test-ws", "extended");
+            assert.equal(readActiveProfile("test-ws"), "extended");
             assert.equal(readLockFile("test-ws"), tmp);
             await cleanTempDir(tmp);
         });
@@ -131,18 +131,18 @@ describe("with isolated home", () => {
         test("writeLockFile updates path without changing profile", async () => {
             const tmp1 = createTempDir();
             const tmp2 = createTempDir();
-            initWorkspaceDir("test-ws", tmp1, PROFILE.extended);
+            initWorkspaceDir("test-ws", tmp1, "extended");
             writeLockFile("test-ws", tmp2);
             assert.equal(readLockFile("test-ws"), tmp2);
-            assert.equal(readActiveProfile("test-ws"), PROFILE.extended);
+            assert.equal(readActiveProfile("test-ws"), "extended");
             await cleanTempDir(tmp1);
             await cleanTempDir(tmp2);
         });
 
         test("initWorkspaceDir with custom profile", async () => {
             const tmp = createTempDir();
-            initWorkspaceDir("test-ws", tmp, PROFILE.extended);
-            assert.equal(readActiveProfile("test-ws"), PROFILE.extended);
+            initWorkspaceDir("test-ws", tmp, "extended");
+            assert.equal(readActiveProfile("test-ws"), "extended");
             await cleanTempDir(tmp);
         });
 
@@ -171,10 +171,10 @@ describe("with isolated home", () => {
 
         test("writeGitMode updates mode without changing other fields", async () => {
             const tmp = createTempDir();
-            initWorkspaceDir("test-ws", tmp, PROFILE.extended);
+            initWorkspaceDir("test-ws", tmp, "extended");
             writeGitMode("test-ws", GIT_MODE.local);
             assert.equal(readGitMode("test-ws"), GIT_MODE.local);
-            assert.equal(readActiveProfile("test-ws"), PROFILE.extended);
+            assert.equal(readActiveProfile("test-ws"), "extended");
             assert.equal(readLockFile("test-ws"), tmp);
             await cleanTempDir(tmp);
         });
@@ -183,15 +183,15 @@ describe("with isolated home", () => {
             const tmp = createTempDir();
             initWorkspaceDir("test-ws", tmp);
             writeGitMode("test-ws", GIT_MODE.unrestricted);
-            writeActiveProfile("test-ws", PROFILE.extended);
+            writeActiveProfile("test-ws", "extended");
             assert.equal(readGitMode("test-ws"), GIT_MODE.unrestricted);
-            assert.equal(readActiveProfile("test-ws"), PROFILE.extended);
+            assert.equal(readActiveProfile("test-ws"), "extended");
             await cleanTempDir(tmp);
         });
 
         test("initWorkspaceDir with custom git mode", async () => {
             const tmp = createTempDir();
-            initWorkspaceDir("test-ws", tmp, PROFILE.default, GIT_MODE.local);
+            initWorkspaceDir("test-ws", tmp, DEFAULT_PROFILE, GIT_MODE.local);
             assert.equal(readGitMode("test-ws"), GIT_MODE.local);
             await cleanTempDir(tmp);
         });
@@ -219,10 +219,10 @@ describe("with isolated home", () => {
 
         test("writeAudio preserves path, profile, and git mode", async () => {
             const tmp = createTempDir();
-            initWorkspaceDir("test-ws", tmp, PROFILE.extended, GIT_MODE.unrestricted);
+            initWorkspaceDir("test-ws", tmp, "extended", GIT_MODE.unrestricted);
             writeAudio("test-ws", true);
             assert.equal(readAudio("test-ws"), true);
-            assert.equal(readActiveProfile("test-ws"), PROFILE.extended);
+            assert.equal(readActiveProfile("test-ws"), "extended");
             assert.equal(readGitMode("test-ws"), GIT_MODE.unrestricted);
             assert.equal(readLockFile("test-ws"), tmp);
             await cleanTempDir(tmp);
@@ -233,14 +233,14 @@ describe("with isolated home", () => {
             initWorkspaceDir("test-ws", tmp);
             writeAudio("test-ws", true);
             writeGitMode("test-ws", GIT_MODE.strict);
-            writeActiveProfile("test-ws", PROFILE.extended);
+            writeActiveProfile("test-ws", "extended");
             assert.equal(readAudio("test-ws"), true);
             await cleanTempDir(tmp);
         });
 
         test("initWorkspaceDir with custom audio flag", async () => {
             const tmp = createTempDir();
-            initWorkspaceDir("test-ws", tmp, PROFILE.default, GIT_MODE.local, true);
+            initWorkspaceDir("test-ws", tmp, DEFAULT_PROFILE, GIT_MODE.local, true);
             assert.equal(readAudio("test-ws"), true);
             await cleanTempDir(tmp);
         });

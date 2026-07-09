@@ -1,6 +1,6 @@
 ---
 name: release
-description: Prepare a release — verify changelog, check registry, stage and commit. Use when ready to publish a release candidate, promote an RC, or ship a direct stable release.
+description: Prepare a release - verify changelog, check registry, stage and commit. Use when ready to publish a release candidate, promote an RC, or ship a direct stable release.
 disable-model-invocation: true
 ---
 
@@ -8,15 +8,15 @@ disable-model-invocation: true
 
 Follow these steps in order. Stop and wait for user input at each confirmation point.
 
-## Step 1 — Read changelog state
+## Step 1 - Read changelog state
 
 Read `scripts/changelog.yaml` and extract:
 - `in_progress.base_version`
-- `in_progress.entries` (list of entries already recorded — may be RC entries with `rc_version` or stable entries with `version`)
+- `in_progress.entries` (list of entries already recorded - may be RC entries with `rc_version` or stable entries with `version`)
 
 Print a summary: base version, number of existing entries, and their version values.
 
-## Step 2 — Check npm registry
+## Step 2 - Check npm registry
 
 Run these commands and capture the output:
 
@@ -27,23 +27,23 @@ npm view totopo versions --json 2>/dev/null || echo '[]'
 
 Print the current `latest` and `rc` dist-tags (if rc exists).
 
-## Step 3 — Choose release type
+## Step 3 - Choose release type
 
 Ask the user which release flow they want:
 
-- **Release candidate** — publish an `-rc-N` version for testing
-- **Promote rc to stable** — only offer this if an `rc` dist-tag exists on npm
-- **Direct stable release** — bypass the RC lane, publish directly as `latest`
+- **Release candidate** - publish an `-rc-N` version for testing
+- **Promote rc to stable** - only offer this if an `rc` dist-tag exists on npm
+- **Direct stable release** - bypass the RC lane, publish directly as `latest`
 
 The choice determines how the remaining steps behave. Refer to it as the **release type** below.
 
-## Step 4 — Determine target version
+## Step 4 - Determine target version
 
 Check the current branch name with `git branch --show-current`.
 
 ### If release type is "Release candidate"
 
-If the branch follows the `v{X.Y.Z}-rc-development` convention, extract the version — this is a strong signal for what base version is being developed. If it differs from `in_progress.base_version`, use the branch version as the base when proposing the target RC version below.
+If the branch follows the `v{X.Y.Z}-rc-development` convention, extract the version - this is a strong signal for what base version is being developed. If it differs from `in_progress.base_version`, use the branch version as the base when proposing the target RC version below.
 
 Apply these rules:
 
@@ -53,7 +53,7 @@ Apply these rules:
    - Take the **content** (categories) from the highest-numbered unpublished entry (it should be cumulative).
    - Remove all unpublished entries from `in_progress.entries` and replace them with a single entry at the target RC version, carrying over the content and setting the date to today.
    - Show the user what you did.
-3. **If exactly one unpublished entry exists**, that entry is being updated — use its `rc_version`.
+3. **If exactly one unpublished entry exists**, that entry is being updated - use its `rc_version`.
 4. **If no unpublished entries exist**, find the highest published RC number for `base_version` and target `base_version-rc-{N+1}`. If no RCs exist yet, target `base_version-rc-1`.
 
 ### If release type is "Direct stable release"
@@ -62,13 +62,13 @@ Determine the target version based on bump type (patch/minor/major from current 
 
 ### If release type is "Promote rc to stable"
 
-The target version is the base version derived from the current `rc` dist-tag (strip the `-rc-N` suffix). No version selection needed — confirm with the user and skip to Step 6 (changelog entries already exist from RC phase).
+The target version is the base version derived from the current `rc` dist-tag (strip the `-rc-N` suffix). No version selection needed - confirm with the user and skip to Step 6 (changelog entries already exist from RC phase).
 
 **Ask the user to confirm** the target version before proceeding.
 
-## Step 5 — Review/draft changelog entry
+## Step 5 - Review/draft changelog entry
 
-**Skip this step for "Promote rc to stable"** — entries already exist from the RC phase.
+**Skip this step for "Promote rc to stable"** - entries already exist from the RC phase.
 
 ### For "Release candidate"
 
@@ -76,11 +76,11 @@ If the target RC already has an entry in `in_progress.entries`, show it and ask 
 
 If not, help the user draft a new entry. The entry must use the `rc_version` field.
 
-**Audience.** This is the public release notes — read by people who star the repo and want to know what's new. Write for them, not for the team.
+**Audience.** This is the public release notes - read by people who star the repo and want to know what's new. Write for them, not for the team.
 
-**Length.** One bullet per release theme. One sentence per bullet. A "theme" is a single feature, fix, or coherent overhaul — not each sub-aspect of it. A status-line redesign that adds a segment, retunes colors, and improves rounding is **one** bullet, not three. If you can't say it in one sentence, the bullet is too granular.
+**Length.** One bullet per release theme. One sentence per bullet. A "theme" is a single feature, fix, or coherent overhaul - not each sub-aspect of it. A status-line redesign that adds a segment, retunes colors, and improves rounding is **one** bullet, not three. If you can't say it in one sentence, the bullet is too granular.
 
-**Categories.** Use only what applies: `added`, `changed`, `fixed`, `security`. A typical release has 1-3 bullets total across all categories. More than 4 bullets is a strong signal you are over-listing — collapse related items.
+**Categories.** Use only what applies: `added`, `changed`, `fixed`, `security`. A typical release has 1-3 bullets total across all categories. More than 4 bullets is a strong signal you are over-listing - collapse related items.
 
 **Omit entirely.**
 - Internal refactors with no user-visible effect.
@@ -89,7 +89,7 @@ If not, help the user draft a new entry. The entry must use the `rc_version` fie
 - ROADMAP/TODO edits.
 - Anything you cannot explain to a user without naming a file or module.
 
-**Cumulative convention.** The new RC entry describes the **full release** as it would appear in the final notes — not just the delta from the previous RC. Review all previous RC entries in `in_progress.entries` and carry forward any items that still apply. The latest entry becomes the published release notes when promoted; earlier RC entries are development audit trail.
+**Cumulative convention.** The new RC entry describes the **full release** as it would appear in the final notes - not just the delta from the previous RC. Review all previous RC entries in `in_progress.entries` and carry forward any items that still apply. The latest entry becomes the published release notes when promoted; earlier RC entries are development audit trail.
 
 **Omit RC-relative fixes.** If a bug was introduced in a previous RC and fixed before this one, do NOT include it. Final release notes describe changes relative to the **last stable release**, not relative to previous RCs.
 
@@ -110,7 +110,7 @@ Write the entry to `scripts/changelog.yaml` under `in_progress.entries`.
 
 **Before writing**, present the draft to the user and explicitly call out any items you chose to omit (and why) so they can confirm.
 
-## Step 6 — Review test coverage
+## Step 6 - Review test coverage
 
 Review the changes included in this release and assess whether any new unit or integration tests should be added before releasing.
 
@@ -120,7 +120,7 @@ For each significant change (new feature, behaviour change, bug fix):
 
 If all changes are adequately covered, say so and move on.
 
-## Step 7 — Check for missing migrations
+## Step 7 - Check for missing migrations
 
 Review the changes included in this release and check whether any of them alter the on-disk structure that existing users would have from a previous version. Specifically, look for changes to:
 
@@ -142,27 +142,27 @@ For a new templated file `COPY`, also remind the user to add the filename to `BA
 
 If no Dockerfile or baked-template-file changes are present, say so and move on.
 
-## Step 8 — Review docs for staleness
+## Step 8 - Review docs for staleness
 
 Review these three areas and flag anything that needs updating before the release:
 
-1. **`README.md`** — does the description, feature list, and any command or path references still match the current codebase? Check for stale terminology, removed features, or new features not yet documented.
-2. **`AGENTS.md`** — does the file structure, command list, and rules section reflect the current state of the repo?
-3. **Agent context templates** (`templates/context/*.md`) — do the sandbox constraints, git policy, and workspace guidance still accurately describe what the container provides?
+1. **`README.md`** - does the description, feature list, and any command or path references still match the current codebase? Check for stale terminology, removed features, or new features not yet documented.
+2. **`AGENTS.md`** - does the file structure, command list, and rules section reflect the current state of the repo?
+3. **Agent context templates** (`templates/context/*.md`) - do the sandbox constraints, git policy, and workspace guidance still accurately describe what the container provides?
 
 For each: if no changes are needed, say so explicitly. If changes are needed, make them and include them in the upcoming commit.
 
-## Step 9 — Lint and fix
+## Step 9 - Lint and fix
 
 Run `pnpm lint:fix` to auto-fix formatting and lint issues across the codebase. This ensures everything is clean before committing.
 
 If the command fails or reports unfixable issues, stop and show the output to the user.
 
-## Step 10 — Stage and commit
+## Step 10 - Stage and commit
 
 Check the current branch with `git branch --show-current`.
 
-- For **Release candidate**: if the branch is `main`, warn the user — RC development should happen on a dedicated branch (e.g. `v3.1.0-rc-development`), not on `main`. Ask them to switch branches before committing.
+- For **Release candidate**: if the branch is `main`, warn the user - RC development should happen on a dedicated branch (e.g. `v3.1.0-rc-development`), not on `main`. Ask them to switch branches before committing.
 - For **Direct stable release**: committing from `main` is fine.
 - For **Promote rc to stable**: a commit may not be needed if changelog entries were already committed during the RC phase. Check if there are uncommitted changes first.
 
@@ -177,9 +177,9 @@ If yes:
 
 If no, skip this step.
 
-## Step 11 — Remind about host commands and testing
+## Step 11 - Remind about host commands and testing
 
-Print this reminder exactly — do NOT add extra commands (e.g. `git push`). `pnpm release` handles everything including pushing branches and tags:
+Print this reminder exactly - do NOT add extra commands (e.g. `git push`). `pnpm release` handles everything including pushing branches and tags:
 
 > The container cannot publish to npm or push to git remotes.
 > On the host, run:
@@ -190,11 +190,11 @@ Print this reminder exactly — do NOT add extra commands (e.g. `git push`). `pn
 >
 > The script will show current registry state and let you choose the action.
 
-Then, derive a short test checklist from the changelog entry (the `added`, `changed`, and `fixed` items). For each item, suggest one concrete action the user can take to verify it works end-to-end on the host. Focus on user-visible behavior — skip internal refactors or convention changes that have no runtime effect.
+Then, derive a short test checklist from the changelog entry (the `added`, `changed`, and `fixed` items). For each item, suggest one concrete action the user can take to verify it works end-to-end on the host. Focus on user-visible behavior - skip internal refactors or convention changes that have no runtime effect.
 
 Format it as:
 
-> **Smoke tests** — run these after publishing:
+> **Smoke tests** - run these after publishing:
 >
 > ```
 > npx totopo@rc     # for RC

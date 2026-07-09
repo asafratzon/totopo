@@ -16,16 +16,18 @@ import {
     AUDIO_COOKIE_CONTAINER_PATH,
     AUTO_START,
     CONTAINER_STARTUP,
+    DEFAULT_PROFILE,
     GIT_MODE,
     LABEL_AUDIO,
     LABEL_AUTOSTART,
+    LABEL_ENV,
     LABEL_GIT_MODE,
     LABEL_MANAGED,
     LABEL_PROFILE,
     LABEL_SHADOWS,
-    PROFILE,
 } from "../../src/lib/constants.js";
 import { buildDockerfile, buildImageWithTempfile, computeBuildHash } from "../../src/lib/dockerfile-builder.js";
+import { envLabel, validateEnvConfig } from "../../src/lib/env.js";
 import { writeAutoStartAgent } from "../../src/lib/global-config.js";
 import { isImageStale } from "../../src/lib/migrate-to-latest.js";
 import { connectedSessionCount, containerSessionCount, loginShellExecArgs } from "../../src/lib/sessions.js";
@@ -86,10 +88,10 @@ function makeOpts(
         workspaceRoot,
         cacheDir,
         templatesDir: TEMPLATES_DIR,
-        activeProfile: PROFILE.default,
+        activeProfile: DEFAULT_PROFILE,
         profileHook: undefined,
         expandedShadows: [],
-        envFilePath: undefined,
+        envConfig: { inlineVars: [], files: [] },
         hasGit: false,
         gitMode: GIT_MODE.local,
         audio: false,
@@ -130,9 +132,9 @@ describe("session lifecycle", () => {
     });
 
     test("container has totopo labels set", async () => {
-        await startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { activeProfile: PROFILE.extended }));
+        await startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { activeProfile: "extended" }));
         assert.equal(dockerContainerLabel(containerName, LABEL_MANAGED), "true");
-        assert.equal(dockerContainerLabel(containerName, LABEL_PROFILE), PROFILE.extended);
+        assert.equal(dockerContainerLabel(containerName, LABEL_PROFILE), "extended");
         assert.equal(dockerContainerLabel(containerName, LABEL_SHADOWS), "");
     });
 
@@ -249,20 +251,54 @@ describe("session lifecycle", () => {
     });
 
     test("profile change triggers image rebuild and container recreation", async () => {
-        await startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { activeProfile: PROFILE.default }));
-        assert.equal(dockerContainerLabel(containerName, LABEL_PROFILE), PROFILE.default);
+        await startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { activeProfile: DEFAULT_PROFILE }));
+        assert.equal(dockerContainerLabel(containerName, LABEL_PROFILE), DEFAULT_PROFILE);
 
-        const result = await startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { activeProfile: PROFILE.extended }));
+        const result = await startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { activeProfile: "extended" }));
         assert.equal(result, "created", "container should be recreated after profile change");
-        assert.equal(dockerContainerLabel(containerName, LABEL_PROFILE), PROFILE.extended);
+        assert.equal(dockerContainerLabel(containerName, LABEL_PROFILE), "extended");
     });
 
-    test("env_file is passed to container", async () => {
+    test("env: file vars and inline vars are injected and labeled", async () => {
         const envFile = join(workspaceRoot, ".env");
         writeFileSync(envFile, "TOTOPO_TEST_VAR=hello123\n");
-        await startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { envFilePath: envFile }));
-        const result = dockerExec(containerName, ["sh", "-c", "echo $TOTOPO_TEST_VAR"]);
-        assert.equal(result.stdout, "hello123");
+        const cfg = validateEnvConfig([".env", "TOTOPO_INLINE_VAR=inline456"], workspaceRoot);
+
+        await startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { envConfig: cfg }));
+
+        // Both the file-provided var and the inline var resolve inside the container.
+        assert.equal(dockerExec(containerName, ["printenv", "TOTOPO_TEST_VAR"]).stdout, "hello123");
+        assert.equal(dockerExec(containerName, ["printenv", "TOTOPO_INLINE_VAR"]).stdout, "inline456");
+
+        // The env label is a non-empty fingerprint over the resolved config.
+        assert.equal(dockerContainerLabel(containerName, LABEL_ENV), envLabel(cfg));
+        assert.match(dockerContainerLabel(containerName, LABEL_ENV), /^[0-9a-f]{12}$/);
+    });
+
+    test("an inline var overrides a file-provided value of the same key", async () => {
+        writeFileSync(join(workspaceRoot, ".env"), "TOTOPO_DUP_VAR=from-file\n");
+        const cfg = validateEnvConfig([".env", "TOTOPO_DUP_VAR=from-inline"], workspaceRoot);
+
+        await startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { envConfig: cfg }));
+
+        assert.equal(dockerExec(containerName, ["printenv", "TOTOPO_DUP_VAR"]).stdout, "from-inline");
+    });
+
+    test("editing a referenced env file recreates the container on the next session", async () => {
+        const envFile = join(workspaceRoot, ".env");
+        writeFileSync(envFile, "TOTOPO_TEST_VAR=hello123\n");
+        await startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { envConfig: validateEnvConfig(".env", workspaceRoot) }));
+        const labelBefore = dockerContainerLabel(containerName, LABEL_ENV);
+
+        // The label fingerprints the file's contents, so an edit changes it and forces a recreate.
+        writeFileSync(envFile, "TOTOPO_TEST_VAR=changed789\n");
+        const result = await startContainer(
+            makeOpts(containerName, workspaceRoot, cacheDir, { envConfig: validateEnvConfig(".env", workspaceRoot) }),
+        );
+
+        assert.equal(result, "created", "container should be recreated when env changes");
+        assert.equal(dockerExec(containerName, ["printenv", "TOTOPO_TEST_VAR"]).stdout, "changed789");
+        assert.notEqual(dockerContainerLabel(containerName, LABEL_ENV), labelBefore, "env label must reflect the edited file");
     });
 
     test("git mode label and env var reflect the active mode", async () => {

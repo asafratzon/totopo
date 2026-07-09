@@ -8,10 +8,10 @@ supportedArchitectures:
     - linux
     - darwin
 
-# Prevent hoisting packages to the root node_modules — enforces strict dependency isolation
+# Prevent hoisting packages to the root node_modules - enforces strict dependency isolation
 shamefullyHoist: false
 
-# Supply chain protection — only allow package versions published at least 30 days ago (value in minutes)
+# Supply chain protection - only allow package versions published at least 30 days ago (value in minutes)
 minimumReleaseAge: 43200
 
 allowBuilds:

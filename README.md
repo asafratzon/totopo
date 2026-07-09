@@ -16,25 +16,25 @@ Local sandbox for AI agents.
 
 ## Who this is for
 
-Developers who use `claude`, `codex`, or `opencode` **interactively** — one human pair-programming with one agent.
+Developers who use `claude`, `codex`, or `opencode` **interactively** - one human pair-programming with one agent.
 
-totopo isn't an orchestration tool (no SDK, no parallel agents, no per-run worktrees), and its security is basic — just the minimum precautions I think anyone running AI agents should take. If you need more on either front, look elsewhere.
+totopo isn't an orchestration tool (no SDK, no parallel agents, no per-run worktrees), and its security is basic - just the minimum precautions I think anyone running AI agents should take. If you need more on either front, look elsewhere.
 
 ## Motivation
 
 Two fundamental risks when running AI agents locally:
 
-1. Agents are unpredictable — they will make mistakes that may be hard to detect or undo.
+1. Agents are unpredictable - they will make mistakes that may be hard to detect or undo.
 2. Agents are vulnerable to prompt injection and can be subtly manipulated to leak sensitive data or execute unauthorized operations.
 
-Totopo mitigates both risks by letting you run agents in a dev container — when you run totopo in a given directory, that directory is mounted as a workspace where agents can work freely, without access to the rest of your filesystem or your git remote.
+Totopo mitigates both risks by letting you run agents in a dev container - when you run totopo in a given directory, that directory is mounted as a workspace where agents can work freely, without access to the rest of your filesystem or your git remote.
 
-In practice, this means any mistake can be reverted from your git remote, and even a compromised agent can't access sensitive files on your machine — SSH keys, credentials, browser data — things a locally-running agent could otherwise do without you ever noticing.
+In practice, this means any mistake can be reverted from your git remote, and even a compromised agent can't access sensitive files on your machine - SSH keys, credentials, browser data - things a locally-running agent could otherwise do without you ever noticing.
 
 ## Requirements
 
-- [Docker](https://www.docker.com/products/docker-desktop/) — builds and runs the dev container
-- [Node.js](https://nodejs.org/) — required to run `npx totopo`
+- [Docker](https://www.docker.com/products/docker-desktop/) - builds and runs the dev container
+- [Node.js](https://nodejs.org/) - required to run `npx totopo`
 
 ## Quick Start
 
@@ -52,54 +52,54 @@ npx totopo
 Once set up, the flow is simple:
 
 1. Run `npx totopo` → **Open session**
-2. Run `claude`, `opencode`, or `codex` — pick an agent, start working
+2. Run `claude`, `opencode`, or `codex` - pick an agent, start working
 
 A few things happen automatically:
 
-- **Agents stay up to date** — totopo keeps all AI CLIs on their latest versions, checking for updates automatically.
-- **Sessions are persistent** — agent memory and settings survive container restarts and rebuilds.
-- **The blast radius is bounded** — the container can't push to remote or read outside the workspace, and you can hide files like `.env` from the agent (see [Shadow Paths](#shadow-paths)). For what this does and doesn't protect against, see [Threat Model](#threat-model).
+- **Agents stay up to date** - totopo keeps all AI CLIs on their latest versions, checking for updates automatically.
+- **Sessions are persistent** - agent memory and settings survive container restarts and rebuilds.
+- **The blast radius is bounded** - the container can't push to remote or read outside the workspace, and you can hide files like `.env` from the agent (see [Shadow Paths](#shadow-paths)). For what this does and doesn't protect against, see [Threat Model](#threat-model).
 
 For a deeper look at how totopo works and how to configure it, see the sections below.
 
 ## How totopo Works
 
-totopo organises work around **workspaces** — any directory containing a `totopo.yaml` file. Running `npx totopo` for the first time in a directory walks you through a short setup and creates `totopo.yaml` (a small, well-documented config file that lives at the workspace root).
+totopo organises work around **workspaces** - any directory containing a `totopo.yaml` file. Running `npx totopo` for the first time in a directory walks you through a short setup and creates `totopo.yaml` (a small, well-documented config file that lives at the workspace root).
 
 A few key concepts:
 
 - **Workspace ID** - a unique slug declared in `totopo.yaml`. Used for container naming (`totopo-<id>`) and the local cache directory (`~/.totopo/workspaces/<id>/`).
-- **Workspace Boundary** — `npx totopo` always resolves to the nearest `totopo.yaml` going up the directory tree. Each directory tree has exactly one workspace root.
-- **Single Workspace Container** — totopo uses one Docker container per workspace, not one per session. Open as many terminals as you need — they all connect to the same running container, keeping resource use bounded and reconnections fast.
+- **Workspace Boundary** - `npx totopo` always resolves to the nearest `totopo.yaml` going up the directory tree. Each directory tree has exactly one workspace root.
+- **Single Workspace Container** - totopo uses one Docker container per workspace, not one per session. Open as many terminals as you need - they all connect to the same running container, keeping resource use bounded and reconnections fast.
 
 ### `totopo.yaml`
 
-The config is minimal — only `workspace_id` is required; the rest are optional:
+The config is minimal - only `workspace_id` is required; the rest are optional:
 
-- **`workspace_id`** *(required)* — unique slug for container naming and cache directory
-- **`profiles`** *(optional)* — Dockerfile image variants (see [Profiles](#profiles))
-- **`shadow_paths`** *(optional)* — gitignore-style patterns hidden from agents (see [Shadow Paths](#shadow-paths))
-- **`env_file`** *(optional)* — path to env file injected at runtime (see [Environment Variables](#environment-variables))
-- **`ports`** *(optional)* — publish container ports to the host, identity-mapped or `"HOST:CONTAINER"` (see [Published Ports](#published-ports))
+- **`workspace_id`** *(required)* - unique slug for container naming and cache directory
+- **`shadow_paths`** *(optional)* - gitignore-style patterns hidden from agents (see [Shadow Paths](#shadow-paths))
+- **`env`** *(optional)* - env files and/or inline `KEY=VALUE` variables injected at runtime (see [Environment Variables](#environment-variables))
+- **`ports`** *(optional)* - publish container ports to the host, identity-mapped or `"HOST:CONTAINER"` (see [Published Ports](#published-ports))
+- **`profiles`** *(optional)* - Dockerfile image variants (see [Profiles](#profiles))
 
-The file totopo generates (onboarding, `Settings > Reset`) is deliberately minimal — just `workspace_id` and `shadow_paths`. Add the optional settings above as you need them; each is documented in this README.
+The file totopo generates (onboarding, `Settings > Reset`) is deliberately minimal - just `workspace_id` and `shadow_paths`. Add the optional settings above as you need them; each is documented in this README.
 
 On every run, totopo shows the workspace menu:
 
-- **Open session** — start or resume the dev container and connect
-- **Stop container** — stop the running container
-- **Settings** — git mode, shadow paths, voice, auto-start agent, rebuild, reset config
-- **Advanced** — multi-workspace management (stop containers, clear memory, uninstall)
+- **Open session** - start or resume the dev container and connect
+- **Stop container** - stop the running container
+- **Settings** - git mode, shadow paths, voice, auto-start agent, rebuild, reset config
+- **Advanced** - multi-workspace management (stop containers, clear memory, uninstall)
 
 ### Working directory
 
-The workspace is always mounted at `/workspace` inside the container. The session opens wherever you ran totopo — from a subdirectory it starts at the matching path under `/workspace`, and from the workspace root it starts at `/workspace`. The whole workspace root stays mounted either way, so `cd /workspace` always reaches it.
+The workspace is always mounted at `/workspace` inside the container. The session opens wherever you ran totopo - from a subdirectory it starts at the matching path under `/workspace`, and from the workspace root it starts at `/workspace`. The whole workspace root stays mounted either way, so `cd /workspace` always reaches it.
 
 ## Core Features
 
 ### Container Isolation
 
-Every session runs inside a Docker container. Your code is bind-mounted from the host — edits are immediately visible in your editor.
+Every session runs inside a Docker container. Your code is bind-mounted from the host - edits are immediately visible in your editor.
 
 | Control | Implementation |
 |---|---|
@@ -107,9 +107,9 @@ Every session runs inside a Docker container. Your code is bind-mounted from the
 | No host credentials | Host git credentials are never copied into the container |
 | No privilege escalation | `no-new-privileges:true` prevents any process from gaining elevated permissions |
 | Filesystem isolation | Only the workspace directory is mounted; the rest of the host is not visible |
-| Git guardrails | Per-workspace **git mode** controls what git can do inside the container — see [Git Modes](#git-modes) |
-| Shadow mounts | Selected paths overlaid with isolated container-local copies — see [Shadow Paths](#shadow-paths) |
-| Environment vars | Injected from a host file at session start (`env_file`) |
+| Git guardrails | Per-workspace **git mode** controls what git can do inside the container - see [Git Modes](#git-modes) |
+| Shadow mounts | Selected paths overlaid with isolated container-local copies - see [Shadow Paths](#shadow-paths) |
+| Environment vars | Injected from host env files and/or inline `KEY=VALUE` at session start (`env`) |
 
 ### Git Modes
 
@@ -118,48 +118,14 @@ Each workspace has a git mode (set via **Settings > Git mode**) that controls wh
 | Mode | Local mutations | Remote (push/pull/fetch/clone) |
 |---|---|---|
 | **local** *(default)* | Allowed | Blocked at the gitconfig protocol layer |
-| **strict** | Blocked — a read-only `git` wrapper allows inspection (`status`, `log`, `diff`, `blame`, `show`, etc.) and rejects mutations (`commit`, `add`, `reset`, `checkout`, etc.) | Blocked at the gitconfig protocol layer |
+| **strict** | Blocked - a read-only `git` wrapper allows inspection (`status`, `log`, `diff`, `blame`, `show`, etc.) and rejects mutations (`commit`, `add`, `reset`, `checkout`, etc.) | Blocked at the gitconfig protocol layer |
 | **unrestricted** | Allowed | Allowed |
 
 The active mode is recorded per workspace in `.lock`, exposed inside the container as `TOTOPO_GIT_MODE`, and reflected in the agent context so each session knows what is permitted. Switching modes recreates the container on the next session.
 
-### Profiles
-
-Profiles let you define multiple container image variants for a workspace. Useful for teams — each person can have a lean profile tailored to their stack instead of one large shared image. Each profile defines a `dockerfile_hook` — raw Dockerfile instructions appended after the base image layers:
-
-```yaml
-# totopo.yaml
-profiles:
-  default:
-    description: "Base image: Node.js, git, and AI CLIs"
-    dockerfile_hook: |
-      # No extras — uses the totopo base image as-is (Node.js + git + AI CLIs).
-
-  # Uncomment to enable additional runtimes (Go, Java, Rust, Bun):
-  # extended:
-  #   description: Base image + Go, Java, Rust, and Bun
-  #   dockerfile_hook: |
-  #     # Go
-  #     RUN apt-get update && apt-get install -y --no-install-recommends golang-go && rm -rf /var/lib/apt/lists/*
-  #     # Java (headless JDK)
-  #     RUN apt-get update && apt-get install -y --no-install-recommends default-jdk-headless && rm -rf /var/lib/apt/lists/*
-  #     # Rust (system-wide)
-  #     ENV RUSTUP_HOME=/usr/local/rustup CARGO_HOME=/usr/local/cargo PATH=/usr/local/cargo/bin:$PATH
-  #     RUN curl -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path && chmod -R a+rx /usr/local/cargo /usr/local/rustup
-  #     # Bun
-  #     ENV BUN_INSTALL=/usr/local/bun PATH=/usr/local/bun/bin:$PATH
-  #     RUN curl -fsSL https://bun.sh/install | bash
-  # Add more profiles here — or ask the agent inside the container to set one up for you.
-
-```
-
-New workspaces ship with the `default` profile active and an `extended` profile (Go, Java, Rust, Bun) included as a commented-out template — uncomment to enable. When multiple profiles are defined, totopo prompts you to pick one at session start (the choice is remembered). A profile change triggers a container rebuild on the next session.
-
-The base image is defined in [`templates/Dockerfile`](templates/Dockerfile) — inspect it to see what's already included before adding your own layers. To force a fully fresh build (no Docker layer cache), use **Settings > Clean rebuild**.
-
 ### Shadow Paths
 
-Shadow paths overlay specific files or directories with empty container-local equivalents — they apply across all profiles. Changes stay in the container-local copy; your workspace files are hidden and untouched:
+Shadow paths overlay specific files or directories with empty container-local equivalents - they apply across all profiles. Changes stay in the container-local copy; your workspace files are hidden and untouched:
 
 ```yaml
 # totopo.yaml
@@ -168,26 +134,43 @@ shadow_paths:
   - .env*           # hides .env, .env.local, etc. from agents
 ```
 
-Patterns follow gitignore syntax — patterns without a `/` match at any depth. Manage via **Settings > Shadow paths** or edit `totopo.yaml` directly. Changes take effect on the next session.
+Patterns follow gitignore syntax - patterns without a `/` match at any depth. Manage via **Settings > Shadow paths** or edit `totopo.yaml` directly. Changes take effect on the next session.
 
 Git-tracked paths are skipped to avoid worktree diversions. Shadowing them has no privacy benefit anyway since agents can `git show` tracked content. To hide a file, untrack it and add it to `.gitignore` first.
 
 Common use cases:
-- **Separate `node_modules`** — the container installs its own dependencies, avoiding platform conflicts between host and container.
-- **Hide sensitive files** — keep credentials and secrets invisible to agents.
+- **Separate `node_modules`** - the container installs its own dependencies, avoiding platform conflicts between host and container.
+- **Hide sensitive files** - keep credentials and secrets invisible to agents.
 
 ### Environment Variables
 
-You can point totopo at an env file relative to `totopo.yaml`:
+`env` injects environment into the container at session start.
+It accepts a single value or a list, and each entry is one of two things:
 
 ```yaml
 # totopo.yaml
-env_file: .env
+env:
+  - .env                  # an env-file path (no "="), loaded via --env-file
+  - .env.local            # list order matters - later files win on a duplicate key
+  - LOG_LEVEL=debug        # an inline "KEY=VALUE" variable (contains "=")
+  - FEATURE_FLAG=1
 ```
 
-The file is loaded into the container's environment at session start. If the file is not found, totopo skips it with a warning.
+A single env file can also be given as a scalar, without the list:
 
-totopo also injects privacy and sandbox environment variables into every container — a universal `DO_NOT_TRACK` opt-out plus switches that disable Claude Code telemetry, error reporting, and other non-essential traffic.
+```yaml
+# totopo.yaml
+env: .env
+```
+
+- **Classification is by the presence of `=`.**
+An entry with `=` is an inline variable; an entry without `=` is an env-file path resolved relative to `totopo.yaml`.
+- **Inline variables win over file-provided values** on a duplicate key, so you can override a file's value without editing the file.
+- **A missing env file is skipped with a warning** - the session still starts.
+- **Changing `env` recreates the container** on the next session (editing an inline variable, or the contents or path of a referenced file, all count).
+
+totopo also injects privacy and sandbox environment variables into every container - a universal `DO_NOT_TRACK` opt-out plus switches that disable Claude Code telemetry, error reporting, and other non-essential traffic.
+These always take precedence over your `env`.
 
 ### Published Ports
 
@@ -205,11 +188,39 @@ ports:
 - **Bare integer** identity-maps the port (`5173` -> `127.0.0.1:5173:5173`).
 - **`"HOST:CONTAINER"`** maps them explicitly, host first as in docker (`"8080:3000"` -> host `8080`, container `3000`). Quote it so YAML reads a mapping, not a number.
 - **`env`** (identity entries only) injects the host port number into the container as that variable.
-- **Loopback-only** on `127.0.0.1` — reachable from your machine, never the LAN.
-- **Bind `0.0.0.0` inside the container, not `127.0.0.1`/`localhost`.** Publishing forwards the host to the container's external interface, so a loopback-only server is unreachable — you get an empty response, not a connection refusal. Many dev servers default to localhost: for example Vite needs `--host`, Next needs `-H 0.0.0.0`.
-- **A taken host port fails the start.** If a host port is already in use, the container will not start — so give workspaces you run in parallel distinct host ports.
+- **Loopback-only** on `127.0.0.1` - reachable from your machine, never the LAN.
+- **Bind `0.0.0.0` inside the container, not `127.0.0.1`/`localhost`.** Publishing forwards the host to the container's external interface, so a loopback-only server is unreachable - you get an empty response, not a connection refusal. Many dev servers default to localhost: for example Vite needs `--host`, Next needs `-H 0.0.0.0`.
+- **A taken host port fails the start.** If a host port is already in use, the container will not start - so give workspaces you run in parallel distinct host ports.
 
-Each session prints one line per entry — `port 5173 open`, `port 4820 open (EXAMPLE_PORT)`, or `port 8080 -> 3000 open`. Changes to `ports` take effect on the next container recreation.
+Each session prints one line per entry - `port 5173 open`, `port 4820 open (EXAMPLE_PORT)`, or `port 8080 -> 3000 open`. Changes to `ports` take effect on the next container recreation.
+
+### Profiles
+
+Profiles let you define multiple container image variants for a workspace. Useful for teams - each person can have a lean profile tailored to their stack instead of one large shared image. Each profile defines a `dockerfile_hook` - raw Dockerfile instructions appended after the base image layers:
+
+```yaml
+# totopo.yaml
+profiles:
+  go:
+    description: Base image + Go
+    dockerfile_hook: |
+      RUN apt-get update && apt-get install -y --no-install-recommends golang-go && rm -rf /var/lib/apt/lists/*
+
+  rust:
+    description: Base image + Rust
+    dockerfile_hook: |
+      ENV RUSTUP_HOME=/usr/local/rustup CARGO_HOME=/usr/local/cargo PATH=/usr/local/cargo/bin:$PATH
+      RUN curl -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path && chmod -R a+rx /usr/local/cargo /usr/local/rustup
+
+  # Add more profiles here - or ask the agent inside the container to set one up for you.
+```
+
+New workspaces ship without any profiles - the base image is used as-is, and `profiles` is entirely opt-in.
+Add a `profiles` block like the one above when you want image variants.
+When two or more profiles are defined, totopo prompts you to pick one at session start (the choice is remembered); when only one is defined it is selected automatically.
+A profile change triggers a container rebuild on the next session.
+
+The base image is defined in [`templates/Dockerfile`](templates/Dockerfile) - inspect it to see what's already included before adding your own layers. To force a fully fresh build (no Docker layer cache), use **Settings > Clean rebuild**.
 
 ### AI CLIs
 
@@ -221,7 +232,7 @@ codex       # Codex (OpenAI)
 opencode    # OpenCode
 ```
 
-Agents are self-aware — sandbox constraints, git remote block, and any active shadow path overlays are injected into agent context at every session start.
+Agents are self-aware - sandbox constraints, git remote block, and any active shadow path overlays are injected into agent context at every session start.
 
 totopo keeps all three CLIs on their latest published versions, checking for updates automatically.
 
@@ -253,7 +264,7 @@ To clear memory: `npx totopo` → **Advanced > Clear agent memory**.
 
 ## What Gets Installed
 
-`totopo.yaml` lives in your workspace directory — you may commit it alongside your code. Everything else lives in `~/.totopo/` on your machine:
+`totopo.yaml` lives in your workspace directory - you may commit it alongside your code. Everything else lives in `~/.totopo/` on your machine:
 
 ```
 ~/.totopo/
@@ -269,29 +280,29 @@ To clear memory: `npx totopo` → **Advanced > Clear agent memory**.
 
 ## Voice Mode (microphone)
 
-Claude Code's `/voice` records from a mic via SoX, but a container has none (on Docker Desktop the Linux VM has no device passthrough). totopo bridges your host mic in over a local PulseAudio server — **opt-in per workspace** from **Settings → Voice / audio**.
+Claude Code's `/voice` records from a mic via SoX, but a container has none (on Docker Desktop the Linux VM has no device passthrough). totopo bridges your host mic in over a local PulseAudio server - **opt-in per workspace** from **Settings → Voice / audio**.
 
-**macOS (automated):** in that menu, **Enable wiring**, then **Install pulseaudio → Start host server → Test microphone** (approve the mic prompt for your terminal under **System Settings → Privacy & Security → Microphone**). Open a session and run `/voice`. The main menu reminds you while the server runs — stop it there when done. For hands-off control, turn **Auto start/stop** on in the same menu: totopo then starts the server when a voice-enabled session opens and stops it once your last session exits, so you never start or stop it by hand.
+**macOS (automated):** in that menu, **Enable wiring**, then **Install pulseaudio → Start host server → Test microphone** (approve the mic prompt for your terminal under **System Settings → Privacy & Security → Microphone**). Open a session and run `/voice`. The main menu reminds you while the server runs - stop it there when done. For hands-off control, turn **Auto start/stop** on in the same menu: totopo then starts the server when a voice-enabled session opens and stops it once your last session exits, so you never start or stop it by hand.
 
 **Linux / Windows (manual):** automation is macOS-only. **Enable wiring**, then run your own PulseAudio server reachable at TCP `4713` (load `module-native-protocol-tcp`). It must accept totopo's cookie at `~/.totopo/global/pulse-cookie` (mounted read-only into the container), or load the module with `auth-anonymous=1`. On Windows the source is typically the WSLg PulseAudio server.
 
-> **Security:** while running, the server exposes your mic on a local TCP port, gated by an `auth-ip-acl` (private networks only) and — the real gate — a **dedicated, rotating cookie**: totopo-owned (not your general PulseAudio credential), mounted read-only, regenerated on every server start, so a leaked cookie dies on the next restart. Still, run the server only while you need voice and stop it after. A deliberate widening of totopo's boundary — see [Threat Model](#threat-model).
+> **Security:** while running, the server exposes your mic on a local TCP port, gated by an `auth-ip-acl` (private networks only) and - the real gate - a **dedicated, rotating cookie**: totopo-owned (not your general PulseAudio credential), mounted read-only, regenerated on every server start, so a leaked cookie dies on the next restart. Still, run the server only while you need voice and stop it after. A deliberate widening of totopo's boundary - see [Threat Model](#threat-model).
 
 ## Auto-start agent
 
-By default a session drops you into a shell where you run `claude`, `opencode`, or `codex` yourself. To launch your favorite agent automatically as each session starts, pick it under **Settings → Auto-start agent**. Quit the agent and you land back in the container shell (the session stays open) — the info banner still lists how to run `status`, `exit`, and the other agents.
+By default a session drops you into a shell where you run `claude`, `opencode`, or `codex` yourself. To launch your favorite agent automatically as each session starts, pick it under **Settings → Auto-start agent**. Quit the agent and you land back in the container shell (the session stays open) - the info banner still lists how to run `status`, `exit`, and the other agents.
 
 This is a host-global preference (stored in `~/.totopo/global/config`), so it applies to every workspace. Changing it recreates the current workspace's container; other workspaces pick it up on their next session.
 
 ## Troubleshooting
 
-**Move or rename the workspace directory** — re-run `npx totopo` in the new location. totopo detects the path mismatch and guides you through realigning the workspace cache.
+**Move or rename the workspace directory** - re-run `npx totopo` in the new location. totopo detects the path mismatch and guides you through realigning the workspace cache.
 
-**Single machine** — `~/.totopo/` is local. Switching machines requires re-running setup in each workspace.
+**Single machine** - `~/.totopo/` is local. Switching machines requires re-running setup in each workspace.
 
-**Voice mode / audio** — `/voice` needs a microphone, which a container does not have by default. Enable it under **Settings → Voice / audio**; see [Voice Mode](#voice-mode-microphone).
+**Voice mode / audio** - `/voice` needs a microphone, which a container does not have by default. Enable it under **Settings → Voice / audio**; see [Voice Mode](#voice-mode-microphone).
 
-**Shift+Enter not working in VS Code terminal** — add this to your VS Code keybindings (`Cmd+Shift+P` → "Open Keyboard Shortcuts (JSON)"):
+**Shift+Enter not working in VS Code terminal** - add this to your VS Code keybindings (`Cmd+Shift+P` → "Open Keyboard Shortcuts (JSON)"):
 
 ```json
 {
@@ -307,8 +318,8 @@ This is a host-global preference (stored in `~/.totopo/global/config`), so it ap
 Totopo makes everyday agent mistakes safer. It is not built to stop a determined attacker.
 
 **What it helps with:**
-- Confused-agent mistakes — only the workspace is at risk; the rest of your machine is invisible.
-- Casual prompt injection — the agent can't read your SSH keys or push to your remote, because neither is in the container.
+- Confused-agent mistakes - only the workspace is at risk; the rest of your machine is invisible.
+- Casual prompt injection - the agent can't read your SSH keys or push to your remote, because neither is in the container.
 
 **What it does not help with:**
 - A determined adversarial agent. The network is open, and `/usr/bin/git` is reachable by absolute path even in strict mode. Anything in the workspace can still leave over HTTP.
@@ -316,8 +327,8 @@ Totopo makes everyday agent mistakes safer. It is not built to stop a determined
 - Container escapes. Totopo uses a non-root user and `no-new-privileges`, but no capability drops or seccomp profiles. For stronger isolation, use a microVM sandbox.
 - Edits to your working tree. The workspace is bind-mounted, so agent changes land on your real files. Commit often.
 
-**Voice mode widens this boundary** — enabling the mic bridge runs a host PulseAudio server that exposes your microphone over a local TCP port (cookie- and ACL-gated) for as long as it runs. Opt in only while dictating, and stop the server when done (or let automatic mode handle it on macOS); see [Voice Mode](#voice-mode-microphone).
+**Voice mode widens this boundary** - enabling the mic bridge runs a host PulseAudio server that exposes your microphone over a local TCP port (cookie- and ACL-gated) for as long as it runs. Opt in only while dictating, and stop the server when done (or let automatic mode handle it on macOS); see [Voice Mode](#voice-mode-microphone).
 
 ## Disclaimer
 
-MIT licensed and fully open source. Issues welcome — no promises on response time. Use at your own risk.
+MIT licensed and fully open source. Issues welcome - no promises on response time. Use at your own risk.

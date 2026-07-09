@@ -147,7 +147,7 @@ describe("migrate-to-latest", () => {
         await runMigration(tmp);
 
         assert.ok(!existsSync(projectsDir), "projects/ should be removed");
-        // workspaces/ version should win (not overwritten); format is upgraded to key=value by migrateLockFileFormat
+        // workspaces/ version should win (not overwritten); positional format is upgraded to key=value
         const lockContent = readFileSync(join(workspacesDir, "my-workspace", LOCK_FILE), "utf8");
         assert.ok(lockContent.includes(`${LOCK_KEYS.workspaceRoot}=/new/path`), "workspace root should be preserved");
         assert.ok(lockContent.includes(`${LOCK_KEYS.activeProfile}=default`), "profile should be preserved");
@@ -171,7 +171,7 @@ describe("migrate-to-latest", () => {
         // No error thrown
     });
 
-    // ---- migrateTotopoYaml (project_id -> workspace_id) ---------------------------------------------------------------------------------
+    // ---- migrateV3PreRelease: project_id -> workspace_id --------------------------------------------------------------------------------
 
     test("renames project_id to workspace_id in totopo.yaml", async () => {
         // Create a totopo.yaml with project_id in cwd
@@ -195,6 +195,40 @@ describe("migrate-to-latest", () => {
 
         const content = readFileSync(join(tmp, "totopo.yaml"), "utf8");
         assert.ok(content.includes("workspace_id: modern-ws"));
+    });
+
+    // ---- migrateEnvFileToEnv (env_file -> env) ------------------------------------------------------------------------------------------
+
+    test("renames env_file to env in totopo.yaml, preserving the value and comments", async () => {
+        writeFileSync(join(tmp, "totopo.yaml"), "workspace_id: envy-ws\n# keep me\nenv_file: .env\n");
+        mkdirSync(join(fakeHome, TOTOPO_DIR, WORKSPACES_DIR), { recursive: true });
+
+        await runMigration(tmp);
+
+        const content = readFileSync(join(tmp, "totopo.yaml"), "utf8");
+        assert.ok(content.includes("env: .env"), "env_file: should be renamed to env:");
+        assert.ok(!content.includes("env_file:"), "env_file: should be gone");
+        assert.ok(content.includes("# keep me"), "surrounding comments should be preserved");
+    });
+
+    test("no-op when totopo.yaml already uses env", async () => {
+        const original = "workspace_id: envy-ws\nenv:\n  - .env\n  - FOO=bar\n";
+        writeFileSync(join(tmp, "totopo.yaml"), original);
+        mkdirSync(join(fakeHome, TOTOPO_DIR, WORKSPACES_DIR), { recursive: true });
+
+        await runMigration(tmp);
+
+        assert.equal(readFileSync(join(tmp, "totopo.yaml"), "utf8"), original, "an env-based file should be untouched");
+    });
+
+    test("no-op when totopo.yaml has neither env_file nor env", async () => {
+        writeFileSync(join(tmp, "totopo.yaml"), "workspace_id: envy-ws\n");
+        mkdirSync(join(fakeHome, TOTOPO_DIR, WORKSPACES_DIR), { recursive: true });
+
+        await runMigration(tmp);
+
+        const content = readFileSync(join(tmp, "totopo.yaml"), "utf8");
+        assert.ok(!content.includes("env:"), "no env key should be introduced");
     });
 
     // ---- migrateV2Workspaces ------------------------------------------------------------------------------------------------------------
@@ -243,7 +277,7 @@ describe("migrate-to-latest", () => {
         // Let's just verify no crash
     });
 
-    // ---- migrateLockFileFormat ----------------------------------------------------------------------------------------------------------
+    // ---- migrateV3PreRelease: .lock positional -> key=value -----------------------------------------------------------------------------
 
     test("upgrades old positional .lock format to key=value", async () => {
         const wsDir = join(fakeHome, ".totopo", "workspaces", "my-ws");
@@ -269,12 +303,12 @@ describe("migrate-to-latest", () => {
         assert.equal(readFileSync(join(wsDir, LOCK_FILE), "utf8"), original);
     });
 
-    test("migrateLockFileFormat is a no-op when workspaces/ does not exist", async () => {
+    test("the .lock format upgrade is a no-op when workspaces/ does not exist", async () => {
         // fakeHome has no .totopo/ dir at all -- should not throw
         await runMigration(tmp);
     });
 
-    // ---- migrateLockKeyYamlToRoot --------------------------------------------------------------------------------------------------------
+    // ---- migrateV3PreRelease: .lock yaml= -> root= --------------------------------------------------------------------------------------
 
     test("renames yaml= key to root= in .lock files", async () => {
         const wsDir = join(fakeHome, ".totopo", "workspaces", "my-ws");
@@ -300,7 +334,7 @@ describe("migrate-to-latest", () => {
         assert.equal(readFileSync(join(wsDir, LOCK_FILE), "utf8"), original);
     });
 
-    test("migrateLockKeyYamlToRoot is a no-op when workspaces/ does not exist", async () => {
+    test("the .lock yaml= -> root= rename is a no-op when workspaces/ does not exist", async () => {
         // fakeHome has no .totopo/ dir at all -- should not throw
         await runMigration(tmp);
     });
@@ -551,6 +585,22 @@ describe("migrate-to-latest", () => {
         assert.ok(!content.includes("yaml-language-server"), "yaml-language-server header should be removed");
         assert.ok(!content.includes("name:"), "name field should be removed");
         assert.ok(content.includes("workspace_id: combo-test"), "workspace_id should be preserved");
+    });
+
+    test("removes deprecated fields and renames env_file in a single pass, in chronological order", async () => {
+        // An old file can carry both a deprecated field and the old env_file key. The deprecated-field step (v3.2.1)
+        // runs before the env rename (v3.12.2), so it must not choke on the not-yet-renamed env_file - which it would
+        // if it validated its write against the current schema. This guards that the whole chain converges in one run.
+        writeFileSync(join(tmp, "totopo.yaml"), "schema_version: 3\nworkspace_id: old-ws\nenv_file: .env\n");
+        mkdirSync(join(fakeHome, TOTOPO_DIR, WORKSPACES_DIR), { recursive: true });
+
+        await runMigration(tmp);
+
+        const content = readFileSync(join(tmp, "totopo.yaml"), "utf8");
+        assert.ok(!content.includes("schema_version"), "schema_version should be removed in the same pass");
+        assert.ok(!content.includes("env_file:"), "env_file should be renamed in the same pass");
+        assert.ok(content.includes("env: .env"), "the env_file value should carry over to env");
+        assert.ok(content.includes("workspace_id: old-ws"), "workspace_id should be preserved");
     });
 
     test("migrateRemoveDeprecatedYamlFields is a no-op when no deprecated fields present", async () => {

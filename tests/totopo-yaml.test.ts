@@ -105,8 +105,15 @@ describe("readTotopoYaml", () => {
 
     test("throws on schema violation (missing workspace_id)", async () => {
         tmp = createTempDir();
-        writeFileSync(join(tmp, "totopo.yaml"), "env_file: .env\n");
+        writeFileSync(join(tmp, "totopo.yaml"), "env: .env\n");
         assert.throws(() => readTotopoYaml(tmp), /Invalid totopo\.yaml/);
+        await cleanTempDir(tmp);
+    });
+
+    test("rejects the removed env_file key as unknown", async () => {
+        tmp = createTempDir();
+        writeFileSync(join(tmp, "totopo.yaml"), "workspace_id: my-project\nenv_file: .env\n");
+        assert.throws(() => readTotopoYaml(tmp), /unknown property "env_file"/);
         await cleanTempDir(tmp);
     });
 
@@ -129,7 +136,7 @@ describe("writeTotopoYaml", () => {
         assert.equal(read?.workspace_id, "roundtrip-test");
         assert.deepEqual(read?.shadow_paths, ["node_modules", ".env*"]);
         assert.equal(read?.profiles, undefined, "minimal default has no profiles block");
-        assert.equal(read?.env_file, undefined, "minimal default has no env_file");
+        assert.equal(read?.env, undefined, "minimal default has no env");
         await cleanTempDir(tmp);
     });
 
@@ -144,7 +151,7 @@ describe("writeTotopoYaml", () => {
         assert.ok(raw.includes("Choose Help"), "header should point users at the Help menu for docs");
 
         // Absent: every scaffold we deliberately stopped shipping.
-        assert.ok(!raw.includes("env_file:"), "no env_file in the minimal default");
+        assert.ok(!raw.includes("env:"), "no env in the minimal default");
         assert.ok(!raw.includes("profiles:"), "no profiles block in the minimal default");
         assert.ok(!raw.includes("# extended:"), "no commented extended profile");
         assert.ok(!raw.includes("Uncomment to enable additional runtimes"), "no extended-profile prompt");
@@ -201,6 +208,33 @@ describe("ports config", () => {
     });
 });
 
+// ---- env config -------------------------------------------------------------------------------------------------------------------------
+
+describe("env config", () => {
+    test("reads env as a scalar string", async () => {
+        const tmp = createTempDir();
+        writeFileSync(join(tmp, "totopo.yaml"), "workspace_id: my-project\nenv: .env\n");
+        const config = readTotopoYaml(tmp);
+        assert.equal(config?.env, ".env");
+        await cleanTempDir(tmp);
+    });
+
+    test("reads env as a list of files and inline vars", async () => {
+        const tmp = createTempDir();
+        writeFileSync(join(tmp, "totopo.yaml"), "workspace_id: my-project\nenv:\n  - .env\n  - FOO=bar\n");
+        const config = readTotopoYaml(tmp);
+        assert.deepEqual(config?.env, [".env", "FOO=bar"]);
+        await cleanTempDir(tmp);
+    });
+
+    test("rejects a non-string list item (the schema requires string entries)", async () => {
+        const tmp = createTempDir();
+        writeFileSync(join(tmp, "totopo.yaml"), "workspace_id: my-project\nenv:\n  - 42\n");
+        assert.throws(() => readTotopoYaml(tmp), /Invalid totopo\.yaml/);
+        await cleanTempDir(tmp);
+    });
+});
+
 // ---- buildDefaultTotopoYaml -------------------------------------------------------------------------------------------------------------
 
 describe("buildDefaultTotopoYaml", () => {
@@ -214,10 +248,10 @@ describe("buildDefaultTotopoYaml", () => {
         assert.deepEqual(config.shadow_paths, ["node_modules", ".env*"]);
     });
 
-    test("is minimal: no profiles and no env_file (they are optional and documented via Help)", () => {
+    test("is minimal: no profiles and no env (they are optional and documented via Help)", () => {
         const config = buildDefaultTotopoYaml("test-ws");
         assert.equal(config.profiles, undefined, "no profiles scaffolded into the minimal default");
-        assert.equal(config.env_file, undefined, "no env_file scaffolded into the minimal default");
+        assert.equal(config.env, undefined, "no env scaffolded into the minimal default");
     });
 });
 
@@ -245,7 +279,7 @@ describe("repairTotopoYaml", () => {
         const tmp = createTempDir();
         const sub = join(tmp, "my-cool-project");
         mkdirSync(sub);
-        writeFileSync(join(sub, "totopo.yaml"), "env_file: .env\n");
+        writeFileSync(join(sub, "totopo.yaml"), "env: .env\n");
         const result = repairTotopoYaml(sub);
         assert.ok(result.repairedYaml);
         assert.ok(result.repairedYaml.workspace_id.length > 0);
