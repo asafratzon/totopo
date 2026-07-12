@@ -38,6 +38,8 @@ In practice, this means any mistake can be reverted from your git remote, and ev
 
 ## Quick Start
 
+![totopo demo](.github/assets/quickstart.gif)
+
 ```bash
 cd your-project
 npx totopo
@@ -58,7 +60,7 @@ A few things happen automatically:
 
 - **Agents stay up to date** - totopo keeps all AI CLIs on their latest versions, checking for updates automatically.
 - **Sessions are persistent** - agent memory and settings survive container restarts and rebuilds.
-- **The blast radius is bounded** - the container can't push to remote or read outside the workspace, and you can hide files like `.env` from the agent (see [Shadow Paths](#shadow-paths)). For what this does and doesn't protect against, see [Threat Model](#threat-model).
+- **Agents stay inside the workspace** - they can't push to your remote or read anything outside it, and you can hide files like `.env` from them (see [Shadow Paths](#shadow-paths)). For the full picture, see [what totopo protects against](#what-totopo-protects-against).
 
 For a deeper look at how totopo works and how to configure it, see the sections below.
 
@@ -286,7 +288,7 @@ Claude Code's `/voice` records from a mic via SoX, but a container has none (on 
 
 **Linux / Windows (manual):** automation is macOS-only. **Enable wiring**, then run your own PulseAudio server reachable at TCP `4713` (load `module-native-protocol-tcp`). It must accept totopo's cookie at `~/.totopo/global/pulse-cookie` (mounted read-only into the container), or load the module with `auth-anonymous=1`. On Windows the source is typically the WSLg PulseAudio server.
 
-> **Security:** while running, the server exposes your mic on a local TCP port, gated by an `auth-ip-acl` (private networks only) and - the real gate - a **dedicated, rotating cookie**: totopo-owned (not your general PulseAudio credential), mounted read-only, regenerated on every server start, so a leaked cookie dies on the next restart. Still, run the server only while you need voice and stop it after. A deliberate widening of totopo's boundary - see [Threat Model](#threat-model).
+> **Security:** while running, the server exposes your mic on a local TCP port, gated by an `auth-ip-acl` (private networks only) and - the real gate - a **dedicated, rotating cookie**: totopo-owned (not your general PulseAudio credential), mounted read-only, regenerated on every server start, so a leaked cookie dies on the next restart. Still, run the server only while you need voice and stop it after. A deliberate widening of totopo's boundary - see [what totopo protects against](#what-totopo-protects-against).
 
 ## Auto-start agent
 
@@ -313,7 +315,7 @@ This is a host-global preference (stored in `~/.totopo/global/config`), so it ap
 }
 ```
 
-## Threat Model
+## What totopo protects against
 
 Totopo makes everyday agent mistakes safer. It is not built to stop a determined attacker.
 

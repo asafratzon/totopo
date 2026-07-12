@@ -64,6 +64,8 @@ export async function run(args: MenuArgs): Promise<string> {
         audioNotice = audioRunning;
     }
 
+    // Separate the box from whatever precedes it (usually the shell prompt) so it does not sit right after the command.
+    process.stdout.write("\n");
     box(
         `workspace:   ${ctx.workspaceId}${profileLine}\ncontainer:   ${containerStatus}${gitNotice}${audioNotice}`,
         ` totopo v${version} `,

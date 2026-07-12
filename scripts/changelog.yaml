@@ -1,6 +1,14 @@
 in_progress:
   base_version: 3.13.2
-  entries: []
+  entries:
+    - version: "3.13.2"
+      date: "2026-07-12"
+      changed:
+        - >-
+          The README now opens the Quick Start with a short animated demo of a totopo session.
+        - >-
+          The workspace menu now leaves a blank line before its info box, so the box does not sit right after the
+          command you just ran.
 releases:
   - version: 3.13.1
     date: "2026-07-12"
