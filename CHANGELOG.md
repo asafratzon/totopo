@@ -7,6 +7,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [3.13.2] - 2026-07-12
+
+### Changed
+
+- The README now opens the Quick Start with a short animated demo of a totopo session.
+- The workspace menu now leaves a blank line before its info box, so the box does not sit right after the command you just ran.
+
+---
+
 ## [3.13.1] - 2026-07-12
 
 ### Fixed
