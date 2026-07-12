@@ -144,9 +144,15 @@ if (!workspace) {
     workspace = ctx;
 }
 
-// --- Doctor (silent pre-check) -----------------------------------------------------------------------------------------------------------
-const doctorResult = await doctor(false);
+// --- Doctor (pre-check; silent on success, prints failed checks otherwise) ---------------------------------------------------------------
+const doctorResult = await doctor();
 if (!doctorResult.ok) {
+    console.error("");
+    console.error("  totopo can't start:");
+    for (const err of doctorResult.errors) {
+        console.error(`    \x1b[2m•\x1b[0m  ${err}`);
+    }
+    console.error("");
     console.error("  Fix the issues above and re-run totopo.");
     console.error("");
     process.exit(1);
