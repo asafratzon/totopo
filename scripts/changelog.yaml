@@ -1,13 +1,13 @@
 in_progress:
-  base_version: 3.13.1
-  entries:
-    - version: "3.13.1"
-      date: "2026-07-12"
-      fixed:
-        - >-
-          A failed startup check now lists what actually went wrong (for example, Docker not running) instead of
-          printing "Fix the issues above" with nothing shown above it.
+  base_version: 3.13.2
+  entries: []
 releases:
+  - version: 3.13.1
+    date: "2026-07-12"
+    fixed:
+      - >-
+        A failed startup check now lists what actually went wrong (for example, Docker not running) instead of printing
+        "Fix the issues above" with nothing shown above it.
   - version: 3.13.0
     date: "2026-07-09"
     added:

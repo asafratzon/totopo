@@ -7,6 +7,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [3.13.1] - 2026-07-12
+
+### Fixed
+
+- A failed startup check now lists what actually went wrong (for example, Docker not running) instead of printing "Fix the issues above" with nothing shown above it.
+
+---
+
 ## [3.13.0] - 2026-07-09
 
 ### Added
