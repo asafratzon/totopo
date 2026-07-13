@@ -11,13 +11,24 @@ This makes demos deterministic, fast, and runnable inside a sandbox without Dock
 
 ## Files
 
-- `demos/generate-cast.js` — the scenario. Edit this to change what the demo shows.
-- `demos/add-window.py` — wraps the GIF in a macOS-style window (title bar,
+The tooling lives in this skill's own `demos/` directory (`.claude/skills/demo/demos/`);
+paths below starting with `demos/` are relative to it. The built GIFs are committed at the
+repo root under `.github/assets/` (paths starting with `.github/` are repo-root-relative).
+
+- `demos/lib.js` - shared engine: ANSI constants, the aligned block cursor,
+  `createCast()` with `out()`/`type()`/`save()`. Scenario files import this.
+- `demos/quickstart.js` - the basic scenario (open a session, start claude by hand).
+- `demos/advanced.js` - the advanced scenario (audio server, AI CLI update
+  spinner, agent auto-start, exit + auto-shutdown flow).
+- `demos/add-window.py` - wraps a GIF in a macOS-style window (title bar,
   traffic lights, transparent rounded corners). Rarely needs changes.
-- `demos/render.sh` — full pipeline: downloads agg + JetBrains Mono from GitHub
-  releases on first run, then cast → GIF → windowed GIF into `.github/assets/`.
-- `.github/assets/quickstart.gif` — the committed output, embedded in README.md as
-  `![totopo demo](.github/assets/quickstart.gif)`.
+- `demos/render.sh [name ...]` - full pipeline: downloads agg + JetBrains Mono from
+  GitHub releases on first run, then cast → GIF → windowed GIF into `.github/assets/`.
+  With no args it renders every scenario; pass names to render selectively
+  (e.g. `./render.sh advanced`). Only re-render the demos you changed - a re-render
+  is never byte-identical (randomized typing rhythm), so it always churns the binary diff.
+- `.github/assets/quickstart.gif`, `.github/assets/advanced.gif` - the committed
+  outputs, embedded in README.md.
 
 ## Workflow for any change
 
@@ -25,8 +36,8 @@ This makes demos deterministic, fast, and runnable inside a sandbox without Dock
    source of the CLI output (menu labels, box contents, startup messages, status
    line format) before editing the scenario. Never invent text. The version
    number in the header box must match the release being shipped.
-2. Edit the scenario section of `demos/generate-cast.js`.
-3. Run `demos/render.sh`.
+2. Edit the relevant scenario file (`demos/quickstart.js` or `demos/advanced.js`).
+3. Run `demos/render.sh <name>`.
 4. **Verify visually.** Extract frames with PIL and view them:
    ```python
    from PIL import Image
@@ -35,11 +46,11 @@ This makes demos deterministic, fast, and runnable inside a sandbox without Dock
    ```
    Check at least: the header box (all four corners connected), the menu, and
    the final frame. Zoom (crop + resize with NEAREST) when checking borders.
-5. To add a second demo (e.g. an advanced-features one), copy
-   `generate-cast.js` to a new name, change the scenario and output filenames,
-   and add a matching render line in `render.sh`.
+5. To add a new demo, create a scenario file next to the existing ones (import
+   `lib.js`, end with `save("<name>.cast")`), add its name to `ALL_DEMOS` in
+   `render.sh`, and embed the new GIF in README.md.
 
-## Hard-won rendering rules — violating these produces broken output
+## Hard-won rendering rules - violating these produces broken output
 
 - **Renderer is agg, never svg-term.** SVG text rendering depends on the
   viewer's fonts and breaks box-drawing characters.
@@ -54,13 +65,15 @@ This makes demos deterministic, fast, and runnable inside a sandbox without Dock
   events that share identical timestamps.
 - Keep the terminal 90 columns wide; verify no line exceeds it (the Claude
   status line is the usual offender).
-- Use `\u001b[38;5;245m` for grey rails/dim text — theme "bright black" can be
+- Use `\u001b[38;5;245m` for grey rails/dim text - theme "bright black" can be
   near-invisible.
 
 ## Style conventions
 
-- Theme `github-dark`, font JetBrains Mono, font-size 16, ~15s total duration.
+- Theme `github-dark`, font JetBrains Mono, font-size 16; ~15s for the basic
+  demo, ~30s for the advanced one.
 - Human typing pace: 40–80 ms per keystroke, pauses before "output" appears.
 - Menu redraws (select → collapsed) use cursor-up + clear: `\u001b[NA\u001b[0J`.
-- Basic quickstart demo shows only the core flow. Advanced features (ports,
-  shadow paths, audio server, auto-start) belong in separate demo GIFs.
+- The quickstart demo shows only the core flow; feature-specific content
+  (audio server, CLI updates, auto-start, auto-shutdown) lives in `advanced.js`.
+  Further features (ports, shadow paths, git modes) belong in new demo GIFs.

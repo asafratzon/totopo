@@ -1,0 +1,6 @@
+# build artifacts and downloaded tools - only the generator scripts are source
+agg
+fonts/
+jbm.zip
+*.cast
+*-raw.gif

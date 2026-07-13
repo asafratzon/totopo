@@ -11,34 +11,17 @@ Local sandbox for AI agents.
 ![license](https://img.shields.io/npm/l/totopo)
 
 > [!IMPORTANT]
-> This is a hobby project, developed with heavy assistance from Claude Code.
-> Use it at your own risk.
-
-## Who this is for
-
-Developers who use `claude`, `codex`, or `opencode` **interactively** - one human pair-programming with one agent.
-
-totopo isn't an orchestration tool (no SDK, no parallel agents, no per-run worktrees), and its security is basic - just the minimum precautions I think anyone running AI agents should take. If you need more on either front, look elsewhere.
-
-## Motivation
-
-Two fundamental risks when running AI agents locally:
-
-1. Agents are unpredictable - they will make mistakes that may be hard to detect or undo.
-2. Agents are vulnerable to prompt injection and can be subtly manipulated to leak sensitive data or execute unauthorized operations.
-
-Totopo mitigates both risks by letting you run agents in a dev container - when you run totopo in a given directory, that directory is mounted as a workspace where agents can work freely, without access to the rest of your filesystem or your git remote.
-
-In practice, this means any mistake can be reverted from your git remote, and even a compromised agent can't access sensitive files on your machine - SSH keys, credentials, browser data - things a locally-running agent could otherwise do without you ever noticing.
-
-## Requirements
-
-- [Docker](https://www.docker.com/products/docker-desktop/) - builds and runs the dev container
-- [Node.js](https://nodejs.org/) - required to run `npx totopo`
+> This project was built with heavy Claude Code usage, so use it at your own risk.
 
 ## Quick Start
 
+Basic flow - open a session, start an agent:
+
 ![totopo demo](.github/assets/quickstart.gif)
+
+### Basic Usage
+
+Run totopo from your project directory:
 
 ```bash
 cd your-project
@@ -48,8 +31,6 @@ npx totopo
 `npx totopo` always runs the latest stable version. Alternatively, install globally to pin a specific version: `npm install -g totopo`.
 
 > **Do not install totopo as a local project dependency.** totopo stores all workspace state in `~/.totopo/`, shared across all your workspaces. A local install means different projects could run different versions, which can break schema compatibility with shared config. Use `npx` or a global install.
-
-### Basic Usage
 
 Once set up, the flow is simple:
 
@@ -63,6 +44,34 @@ A few things happen automatically:
 - **Agents stay inside the workspace** - they can't push to your remote or read anything outside it, and you can hide files like `.env` from them (see [Shadow Paths](#shadow-paths)). For the full picture, see [what totopo protects against](#what-totopo-protects-against).
 
 For a deeper look at how totopo works and how to configure it, see the sections below.
+
+### Advanced Session
+
+A session with more features turned on: the host audio server for [voice input](#voice-mode-microphone) starts automatically, [AI CLIs get updated](#ai-clis), `claude` launches via [auto-start](#auto-start-agent), and exiting shuts everything down:
+
+![totopo advanced demo](.github/assets/advanced.gif)
+
+## Requirements
+
+- [Docker](https://www.docker.com/products/docker-desktop/) - builds and runs the dev container
+- [Node.js](https://nodejs.org/) - required to run `npx totopo`
+
+## Who this is for
+
+Developers who use `claude`, `codex`, or `opencode` **interactively** - one human pair-programming with one agent.
+
+totopo isn't an orchestration tool (no SDK, no parallel agents, no per-run worktrees), and its security is basic - just the minimum precautions I think anyone running AI agents should take. If you need more on either front, look elsewhere.
+
+### Motivation
+
+Two fundamental risks when running AI agents locally:
+
+1. Agents are unpredictable - they will make mistakes that may be hard to detect or undo.
+2. Agents are vulnerable to prompt injection and can be subtly manipulated to leak sensitive data or execute unauthorized operations.
+
+Totopo mitigates both risks by letting you run agents in a dev container - when you run totopo in a given directory, that directory is mounted as a workspace where agents can work freely, without access to the rest of your filesystem or your git remote.
+
+In practice, this means any mistake can be reverted from your git remote, and even a compromised agent can't access sensitive files on your machine - SSH keys, credentials, browser data - things a locally-running agent could otherwise do without you ever noticing.
 
 ## How totopo Works
 

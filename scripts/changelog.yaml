@@ -1,6 +1,13 @@
 in_progress:
   base_version: 3.13.3
-  entries: []
+  entries:
+    - version: "3.13.3"
+      date: "2026-07-13"
+      changed:
+        - >-
+          The README Quick Start now also shows an animated demo of an advanced session - auto-started agent, voice
+          audio, AI CLI updates, and a clean shutdown on exit.
+        - The session-start countdown to skip the AI CLI update is now shorter (3 seconds instead of 5).
 releases:
   - version: 3.13.2
     date: "2026-07-12"

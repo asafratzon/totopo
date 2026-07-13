@@ -667,7 +667,7 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
     // via the "exited" -> docker start path. Runs after the global audio auto-stop above; all platforms.
     if (containerSessionCount(containerName) === 0) {
         const stopNow = await confirm({
-            message: "Last session to this container closed. Stop it to free memory? (resumes fast next time)",
+            message: "Last session to this container closed. Stop it? (resumes fast)",
             initialValue: true,
         });
         if (!isCancel(stopNow) && stopNow) {

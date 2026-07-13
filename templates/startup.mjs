@@ -201,7 +201,7 @@ if (Number.isFinite(lastUpdate) && Date.now() - lastUpdate < THROTTLE_MS) {
     if (summary) console.log("");
     if (!timestampFileExists) {
         await doUpdate("Installing AI CLIs...");
-    } else if (await promptSkipUpdate(5)) {
+    } else if (await promptSkipUpdate(3)) {
         skip("AI CLIs", "update skipped by user");
     } else {
         await doUpdate("Updating AI CLIs to latest...");
