@@ -7,6 +7,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [3.13.3] - 2026-07-13
+
+### Changed
+
+- The README Quick Start now also shows an animated demo of an advanced session - auto-started agent, voice audio, AI CLI updates, and a clean shutdown on exit.
+- The session-start countdown to skip the AI CLI update is now shorter (3 seconds instead of 5).
+
+---
+
 ## [3.13.2] - 2026-07-12
 
 ### Changed
