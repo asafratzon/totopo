@@ -75,6 +75,7 @@ export function buildDockerfile(baseTemplatePath: string, profileHook?: string):
 // Kept in sync with templates/Dockerfile by the bidirectional test in tests/dockerfile-builder.test.ts.
 export const BAKED_TEMPLATE_FILES: ReadonlyArray<string> = [
     "claude-statusline.sh",
+    "context-usage.sh",
     "git-readonly-wrapper.mjs",
     "npmrc",
     "pnpm-config.yaml",

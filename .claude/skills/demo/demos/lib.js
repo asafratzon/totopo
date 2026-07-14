@@ -59,7 +59,7 @@ export function createCast({ width = 90, height = 24, title }) {
             env: { TERM: "xterm-256color", SHELL: "/bin/zsh" },
         };
         const lines = [JSON.stringify(header), ...events.map((e) => JSON.stringify(e))];
-        fs.writeFileSync(castFile, lines.join("\n") + "\n");
+        fs.writeFileSync(castFile, `${lines.join("\n")}\n`);
         console.log(`Wrote ${castFile} (${events.length} events, ${t.toFixed(1)}s)`);
     }
 

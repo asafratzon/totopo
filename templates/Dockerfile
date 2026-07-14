@@ -125,6 +125,15 @@ RUN chmod +x /usr/local/share/totopo/git-readonly
 COPY claude-statusline.sh /usr/local/share/totopo/claude-statusline.sh
 RUN chmod +x /usr/local/share/totopo/claude-statusline.sh
 
+# ---------------------------------------------------------------------------
+# Layer 12 - Bake context-usage helper
+# Prints the context/quota snapshot written by the status line script, so
+# agents can inspect their own usage. On PATH via the symlink.
+# ---------------------------------------------------------------------------
+COPY context-usage.sh /usr/local/share/totopo/context-usage.sh
+RUN chmod +x /usr/local/share/totopo/context-usage.sh && \
+    ln -sf /usr/local/share/totopo/context-usage.sh /usr/local/bin/context-usage
+
 WORKDIR /workspace
 
 # ---------------------------------------------------------------------------

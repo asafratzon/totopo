@@ -20,7 +20,7 @@ out(NL, 0.8);
 // (src/commands/menu.ts), so the box matches the quickstart one.
 out(`${rail}${NL}`, 0.05);
 out(
-    `${rail}  ${GREY}\u250c${"\u2500".repeat(6)}${R} ${B}totopo v3.13.3${R} ${GREY}${"\u2500".repeat(6)}\u2510${R}${NL}` +
+    `${rail}  ${GREY}\u250c${"\u2500".repeat(6)}${R} ${B}totopo v3.14.0${R} ${GREY}${"\u2500".repeat(6)}\u2510${R}${NL}` +
         `${rail}  ${GREY}\u2502${R}  workspace:   ${B}my-project${R}   ${GREY}\u2502${R}${NL}` +
         `${rail}  ${GREY}\u2502${R}  container:   stopped      ${GREY}\u2502${R}${NL}` +
         `${rail}  ${GREY}\u2514${"\u2500".repeat(28)}\u2518${R}${NL}` +
@@ -38,7 +38,7 @@ out(
         `${rail}  ${GREY}\u25cb Quit${R}${NL}`,
     1.2,
 );
-out(`\u001b[6A\u001b[0J` + `${GREEN}\u25c7${R}  ${B}Menu:${R}${NL}` + `${rail}  ${GREY}Open session${R}${NL}` + `${rail}${NL}`, 0.5);
+out(`\u001b[6A\u001b[0J${GREEN}\u25c7${R}  ${B}Menu:${R}${NL}${rail}  ${GREY}Open session${R}${NL}${rail}${NL}`, 0.5);
 
 // 4. Host audio server auto-start (automatic mode) - printed before the container starts
 // (src/commands/dev.ts)
@@ -77,7 +77,7 @@ out(`${GREEN}\u25cf${R}  ${GREY}Auto-start enabled: launching ${ORANGE}claude${G
 // 9. Claude Code header, input box, status line (same as quickstart)
 out(
     ` ${ORANGE}\u2590\u259b\u2588\u2588\u2588\u259c\u258c${R}   ${B}Claude Code${R} ${GREY}v2.1.207${R}${NL}` +
-        `${ORANGE}\u259d\u259c\u2588\u2588\u2588\u2588\u2588\u259b\u2598${R}  Opus 4.8 (1M context) with xhigh effort ${GREY}\u00b7${R} Claude Team${NL}` +
+        `${ORANGE}\u259d\u259c\u2588\u2588\u2588\u2588\u2588\u259b\u2598${R}  Fable 5 (1M context) with xhigh effort ${GREY}\u00b7${R} Claude Team${NL}` +
         `  ${ORANGE}\u2598\u2598 \u259d\u259d${R}    ${GREY}/workspace${R}${NL}${NL}`,
     0.9,
 );
@@ -85,7 +85,7 @@ out(
     `${GREY}${"\u2500".repeat(88)}${R}${NL}` +
         ` ${GREY}\u276f${R} ${CURSOR}${NL}` +
         `${GREY}${"\u2500".repeat(88)}${R}${NL}` +
-        `${GREY} 0k (0%) \u00b7 ${R}${BLUE}Opus 4.8 (1M context)${R} ${MAG}xhigh${R}${GREY} \u00b7 Claude Code v2.1.207${R}${NL}`,
+        ` ${BLUE}Fable 5${R} ${MAG}xhigh${R}${GREY} \u00b7 ${R}${GREEN}0k${R}${GREY} / 1M (0%) \u00b7 Claude Code v2.1.207${R}${NL}`,
     1.6,
 );
 

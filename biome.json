@@ -22,6 +22,7 @@
                 "useOptionalChain": "error"
             },
             "style": {
+                "useTemplate": "error",
                 "noRestrictedImports": {
                     "level": "error",
                     "options": {

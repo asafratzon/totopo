@@ -7,7 +7,7 @@
 // =============================================================================
 
 import { execSync, spawn } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { checkGitMode } from "./startup-git-mode.mjs";
 
 const run = (cmd) => {
@@ -67,6 +67,26 @@ try {
     timestampFileExists = true;
 } catch {
     // File missing or unreadable -- treat as never updated
+}
+
+// -- Context snapshot cleanup (best-effort, silent) ---------------------------
+// claude-statusline.sh writes one small per-session snapshot to this directory on every
+// prompt render (see the context-usage helper). Delete week-old entries here -- covers both
+// stale *.json snapshots and orphaned .tmp.* files. Any failure is swallowed so cleanup
+// can never affect readiness checks.
+const SNAPSHOT_DIR = "/home/devuser/.claude/context-usage";
+const SNAPSHOT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+try {
+    for (const name of readdirSync(SNAPSHOT_DIR)) {
+        const path = `${SNAPSHOT_DIR}/${name}`;
+        try {
+            if (Date.now() - statSync(path).mtimeMs > SNAPSHOT_MAX_AGE_MS) unlinkSync(path);
+        } catch {
+            // Skip entries that vanish or cannot be read/removed
+        }
+    }
+} catch {
+    // Directory missing (no snapshots yet) -- nothing to clean
 }
 
 // Print npm's output indented under the bullet above, so its flush-left "changed N packages" summary

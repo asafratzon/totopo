@@ -27,12 +27,15 @@ Tell the user which state they are in, and the exact command path if custom.
 Four segments, left to right, separated by a mid-dot:
 
 ```
-174k (17%) · Opus 4.7 (1M context) high · 5h limit ▓░░░░░░░░░ (resets in 2h 15m) · Claude Code v2.1.132
+🤖 Opus 4.8 high · 🧠 174k / 1M (17%) · ⚡ ▓▓▓▓▓▓▓▓░░ 83% (🔌 2h 15m) · Claude Code v2.1.132
 ```
 
-1. **Tokens** - current context-window usage (count and percentage).
-2. **Model** - display name as provided by Claude Code (rendered as-is), followed by reasoning effort in purple (no parentheses, since the model name itself may already contain a parenthetical).
-3. **Rate-limit gauge** - bar showing share of the 5-hour window used, plus a relative countdown until it resets. Hidden on free accounts and before the first API response.
+1. **Model** - display name as provided by Claude Code after the robot icon, with any trailing parenthetical (such as "(1M context)") trimmed, followed by reasoning effort in purple.
+2. **Tokens** - current context-window usage after the brain icon: used tokens, then the window size and percentage in grey (e.g. "174k / 1M (17%)"). The size half is dropped if Claude Code does not report the window size.
+3. **Rate-limit gauge** - an energy meter of the 5-hour window: bar and percentage show the share REMAINING, not used.
+   Full and green when fresh; turns yellow at 50% left and red at 20% left as it drains.
+   The countdown after the plug icon is the time until the window recharges.
+   Hidden on free accounts and before the first API response.
 4. **Claude Code** - installed CLI version, with a freshness hint shown only once the install starts to age.
 
 Most of the line stays calm; individual segments turn **yellow** or **red** when something deserves attention - typically a nudge to *clear or compact the context*, *update the harness by opening a new totopo session*, or *watch the rate-limit window*.

@@ -1,0 +1,1 @@
+- You can check your own context-window and rate-limit usage at any time: run `context-usage`.
