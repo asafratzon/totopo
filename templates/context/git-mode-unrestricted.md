@@ -1,3 +1,1 @@
-## Git availability
-
-The user set git mode to **unrestricted** in totopo. totopo does not enforce any git-specific restrictions in this mode.
+- The user set git mode to **unrestricted** in totopo - totopo does not enforce any git-specific restrictions.

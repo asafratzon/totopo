@@ -1,7 +1,1 @@
-## Git availability
-
-The user set git mode to **local** in totopo - do not attempt remote git operations (push, pull, fetch, clone).
-
-totopo enforces this by:
-- Blocking remote access (push, pull, fetch, clone).
-- Leaving local git operations unrestricted.
+- The user set git mode to **local** in totopo - remote git operations (push, pull, fetch, clone) are blocked and will fail; local git operations are unrestricted.

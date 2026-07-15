@@ -131,25 +131,29 @@ export function buildAgentContextDocs(hasGit: boolean, shadowPatterns?: string[]
     const shadowSection =
         shadowPatterns && shadowPatterns.length > 0
             ? renderTemplate(loadTemplate("shadow-paths"), {
-                  pattern_list: shadowPatterns.map((p) => `- \`${p}\``).join("\n"),
+                  // Indented two spaces to nest under the section's leading bullet.
+                  pattern_list: shadowPatterns.map((p) => `  - \`${p}\``).join("\n"),
               })
             : null;
 
-    function build(toolPath: string): string {
+    const baselineTemplate = loadTemplate("baseline");
+
+    // The doc is one bullet list: baseline holds the unconditional bullets, followed by the
+    // conditional ones (shadow paths, git mode) and any agent-specific extras.
+    function build(toolPath: string, extraSections: string[] = []): string {
         const sections = [
-            loadTemplate("header"),
-            loadTemplate("workspace"),
-            renderTemplate(loadTemplate("totopo-yaml"), { readme_url: GITHUB_README_URL }),
+            renderTemplate(baselineTemplate, { readme_url: GITHUB_README_URL, tool_path: toolPath }),
             ...(shadowSection ? [shadowSection] : []),
             gitSection,
-            renderTemplate(loadTemplate("constraints"), { tool_path: toolPath }),
-            loadTemplate("responsibilities"),
+            ...extraSections,
         ];
-        return `${sections.join("\n\n")}\n`;
+        return `${sections.join("\n")}\n`;
     }
 
+    // The context-usage section is Claude-only: the snapshot it points at is written by the
+    // Claude Code status line, so other agents' sessions never refresh it.
     return {
-        claude: build("~/.claude/CLAUDE.md"),
+        claude: build("~/.claude/CLAUDE.md", [loadTemplate("context-usage")]),
         opencode: build("~/.config/opencode/AGENTS.md"),
         codex: build("~/.codex/AGENTS.md"),
     };

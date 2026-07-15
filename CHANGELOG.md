@@ -7,6 +7,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [3.14.0] - 2026-07-15
+
+### Added
+
+- Ask Claude how much context or quota it has left. Every Claude session now snapshots its context-window and rate-limit usage on each prompt render, and a bundled context-usage helper (plus a skill) lets Claude read it back, so "how much context is used?" now gets a correct answer. Existing containers are offered a rebuild on next session start.
+
+### Changed
+
+- The Claude status line was refreshed - the model name now leads the line behind a robot icon, context usage follows a book icon, and the rate-limit gauge now shows the energy remaining in the 5-hour window (green draining to yellow then red) with a countdown to recharge.
+
+---
+
 ## [3.13.3] - 2026-07-13
 
 ### Changed

@@ -35,9 +35,10 @@ describe("buildAgentContextDocs - placeholders", () => {
 // ---- buildAgentContextDocs - content checks ---------------------------------------------------------------------------------------------
 
 describe("buildAgentContextDocs - content", () => {
-    test("with git - contains git available content", () => {
+    test("with git - contains git mode content", () => {
         const docs = buildAgentContextDocs(true);
-        assert.ok(docs.claude.includes("Git"));
+        assert.ok(docs.claude.includes("git mode"));
+        assert.ok(!docs.claude.toLowerCase().includes("not available"));
     });
 
     test("without git - contains git unavailable content", () => {
@@ -92,6 +93,13 @@ describe("buildAgentContextDocs - content", () => {
         const docs = buildAgentContextDocs(false, undefined, GIT_MODE.unrestricted);
         assert.match(docs.claude, /not available/i);
         assert.doesNotMatch(docs.claude, /does not enforce any git-specific restrictions/i);
+    });
+
+    test("context-usage note appears only in the claude doc", () => {
+        const docs = buildAgentContextDocs(true);
+        assert.ok(docs.claude.includes("context-usage"), "claude doc should mention context-usage");
+        assert.ok(!docs.opencode.includes("context-usage"), "opencode doc should not mention context-usage");
+        assert.ok(!docs.codex.includes("context-usage"), "codex doc should not mention context-usage");
     });
 });
 
@@ -262,6 +270,15 @@ describe("injectClaudeSkills", () => {
         const content = readFileSync(skillPath, "utf8");
         assert.doesNotMatch(content, /\{\{[^}]+\}\}/, "skill file has unresolved placeholders");
         assert.ok(content.includes(CLAUDE_STATUSLINE_PATH), "skill should reference the resolved statusline path");
+        await cleanTempDir(tmp);
+    });
+
+    test("writes context-usage SKILL.md with no unresolved placeholders", async () => {
+        const tmp = createTempDir();
+        injectClaudeSkills(tmp);
+        const skillPath = join(tmp, "agents", "claude", "skills", "context-usage", "SKILL.md");
+        assert.ok(existsSync(skillPath));
+        assert.doesNotMatch(readFileSync(skillPath, "utf8"), /\{\{[^}]+\}\}/, "skill file has unresolved placeholders");
         await cleanTempDir(tmp);
     });
 
