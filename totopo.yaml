@@ -8,3 +8,6 @@ workspace_id: totopo
 shadow_paths:
   - node_modules
   - .env*
+
+env:
+  - CLAUDE_CODE_NO_FLICKER=1
