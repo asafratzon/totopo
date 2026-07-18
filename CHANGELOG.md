@@ -7,6 +7,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [3.15.0] - 2026-07-18
+
+### Changed
+
+- The workspace menu now opens with a compact one-line status header - version, workspace, and the container state while it's running - replacing the bordered status box, with any extra notices (other running containers, the audio server, no-git) collapsed onto a single quieter line below.
+
+### Fixed
+
+- pnpm's package store is now pinned to the container's mounted store path, so a stray .pnpm-store directory can no longer appear in your host repo. Existing containers are recreated automatically on next session start.
+
+---
+
 ## [3.14.0] - 2026-07-15
 
 ### Added
