@@ -4,3 +4,4 @@ fonts/
 jbm.zip
 *.cast
 *-raw.gif
+.venv/

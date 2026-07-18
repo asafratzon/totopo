@@ -39,6 +39,9 @@ export const CONTAINER_USER = "devuser";
 export const CONTAINER_HOME = `/home/${CONTAINER_USER}`;
 export const CONTAINER_WORKSPACE = "/workspace";
 export const CONTAINER_STARTUP = `${CONTAINER_HOME}/startup.mjs`;
+// pnpm's default global store path inside the container. Single source of truth for both the -v mount (pnpm-store.ts)
+// and the store-dir env var (RUNTIME_ENV below) so the mount target and the env var can never drift apart.
+export const CONTAINER_PNPM_STORE = `${CONTAINER_HOME}/.local/share/pnpm/store`;
 
 // Claude Code default status line script - baked into the image, referenced from ~/.claude/settings.json
 export const CLAUDE_STATUSLINE_PATH = "/usr/local/share/totopo/claude-statusline.sh";
@@ -73,7 +76,8 @@ export type GitMode = (typeof GIT_MODE)[keyof typeof GIT_MODE];
 export const GIT_MODES: readonly GitMode[] = Object.values(GIT_MODE);
 
 // Runtime env vars injected into every container via docker run -e.
-// Suppress Claude Code features that are inapplicable or disruptive inside the container, and tune session behavior.
+// Suppress Claude Code features that are inapplicable or disruptive inside the container, tune session behavior,
+// and pin container-isolation safeguards (e.g. pnpm's store path).
 export const RUNTIME_ENV: Record<string, string> = {
     CLAUDE_AFK_TIMEOUT_MS: "2147483647", // Max 32-bit timer value (~24.8 days); avoids AFK timeouts in long unattended container sessions
     CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY: "1", // Periodic feedback survey prompt is noise in ephemeral container sessions
@@ -85,6 +89,11 @@ export const RUNTIME_ENV: Record<string, string> = {
     DISABLE_TELEMETRY: "1", // Container sessions should not phone home
     DISABLE_UPGRADE_COMMAND: "1", // /upgrade is wrong path inside container; totopo manages CLI version
     DO_NOT_TRACK: "1", // Universal opt-out honored by many CLIs/tools running in the container
+    // Force pnpm's store to the mounted host path so a per-project .pnpm-store never leaks to the host repo (see pnpm-store.ts).
+    // This removes pnpm's store-dir auto-detection, which could otherwise pick a different path before the mount takes effect.
+    // Both the pnpm-native and legacy npm-style keys are set so older pnpm versions honor it too.
+    npm_config_store_dir: CONTAINER_PNPM_STORE,
+    pnpm_config_store_dir: CONTAINER_PNPM_STORE,
 };
 
 // Audio bridge for Claude Code /voice (opt-in, per-workspace via the .lock audio flag).

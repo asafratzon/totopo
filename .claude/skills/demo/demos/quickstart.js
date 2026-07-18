@@ -14,20 +14,12 @@ out(`\u001b[?25l${BLUE}~/p/my-project${R} ${GREEN}\u276f${R} `);
 type("npx totopo", 0.5);
 out(NL, 0.8);
 
-// 2. Header box with left rail (single block)
-// v3.13.2: a spacer rail line is printed right before the box
+// 2. Header line with left rail (single block): the bold status header from the
+// workspace menu (src/commands/menu.ts). A spacer rail line precedes it. The
+// container is stopped here, so the state is omitted (only "up" is shown, while
+// running) and no notice line follows - just version and workspace.
 out(`${rail}${NL}`, 0.05);
-
-// NOTE: every box line must be exactly the same column width (here: 30),
-// or the right border and corners will not line up.
-out(
-    `${rail}  ${GREY}\u250c${"\u2500".repeat(6)}${R} ${B}totopo v3.14.0${R} ${GREY}${"\u2500".repeat(6)}\u2510${R}${NL}` +
-        `${rail}  ${GREY}\u2502${R}  workspace:   ${B}my-project${R}   ${GREY}\u2502${R}${NL}` +
-        `${rail}  ${GREY}\u2502${R}  container:   stopped      ${GREY}\u2502${R}${NL}` +
-        `${rail}  ${GREY}\u2514${"\u2500".repeat(28)}\u2518${R}${NL}` +
-        `${rail}${NL}`,
-    0.7,
-);
+out(`${rail}  ${B}totopo v3.15.0${R}${B}${GREY} \u00b7 ${R}${B}my-project${R}${NL}${rail}${NL}`, 0.7);
 
 // 3. Menu, "Open session" selected (single block)
 out(
@@ -62,7 +54,7 @@ out(NL, 0.9);
 out(
     `${NL}` +
         ` ${ORANGE}\u2590\u259b\u2588\u2588\u2588\u259c\u258c${R}   ${B}Claude Code${R} ${GREY}v2.1.207${R}${NL}` +
-        `${ORANGE}\u259d\u259c\u2588\u2588\u2588\u2588\u2588\u259b\u2598${R}  Fable 5 (1M context) with xhigh effort ${GREY}\u00b7${R} Claude Team${NL}` +
+        `${ORANGE}\u259d\u259c\u2588\u2588\u2588\u2588\u2588\u259b\u2598${R}  Fable 5 (1M context) with high effort ${GREY}\u00b7${R} Claude Team${NL}` +
         `  ${ORANGE}\u2598\u2598 \u259d\u259d${R}    ${GREY}/workspace${R}${NL}${NL}`,
     0.9,
 );
@@ -70,7 +62,7 @@ out(
     `${GREY}${"\u2500".repeat(88)}${R}${NL}` +
         ` ${GREY}\u276f${R} ${CURSOR}${NL}` +
         `${GREY}${"\u2500".repeat(88)}${R}${NL}` +
-        ` ${BLUE}Fable 5${R} ${MAG}xhigh${R}${GREY} \u00b7 ${R}${GREEN}0k${R}${GREY} / 1M (0%) \u00b7 Claude Code v2.1.207${R}${NL}`,
+        ` ${BLUE}Fable 5${R} ${MAG}high${R}${GREY} \u00b7 ${R}${GREEN}0k${R}${GREY} / 1M (0%) \u00b7 Claude Code v2.1.207${R}${NL}`,
     3.0,
 );
 

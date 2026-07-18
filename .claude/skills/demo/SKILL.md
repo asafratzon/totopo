@@ -21,31 +21,36 @@ repo root under `.github/assets/` (paths starting with `.github/` are repo-root-
 - `demos/advanced.js` - the advanced scenario (audio server, AI CLI update
   spinner, agent auto-start, exit + auto-shutdown flow).
 - `demos/add-window.py` - wraps a GIF in a macOS-style window (title bar,
-  traffic lights, transparent rounded corners). Rarely needs changes.
-- `demos/render.sh [name ...]` - full pipeline: downloads agg + JetBrains Mono from
-  GitHub releases on first run, then cast → GIF → windowed GIF into `.github/assets/`.
-  With no args it renders every scenario; pass names to render selectively
-  (e.g. `./render.sh advanced`). Only re-render the demos you changed - a re-render
-  is never byte-identical (randomized typing rhythm), so it always churns the binary diff.
+  traffic lights, transparent rounded corners). Needs Pillow (provisioned by
+  `render.sh`, below). Rarely needs changes.
+- `demos/render.sh [name ...]` - full pipeline: cast → GIF → windowed GIF into
+  `.github/assets/`. **Self-provisioning**: on first run it downloads `agg` and the
+  fonts (JetBrains Mono + Cascadia Code) and installs Pillow into a local `.venv`
+  (falling back to a `--break-system-packages` pip install if venv is unavailable).
+  No manual setup - just run it. With no args it renders every scenario; pass names
+  to render selectively (e.g. `./render.sh advanced`). Only re-render the demos you
+  changed - a re-render is never byte-identical (randomized typing rhythm), so it
+  always churns the binary diff.
 - `.github/assets/quickstart.gif`, `.github/assets/advanced.gif` - the committed
   outputs, embedded in README.md.
 
 ## Workflow for any change
 
 1. **Fidelity first.** The demo must match the real UI verbatim. Read the actual
-   source of the CLI output (menu labels, box contents, startup messages, status
-   line format) before editing the scenario. Never invent text. The version
-   number in the header box must match the release being shipped.
+   source of the CLI output (menu labels, the workspace header line, startup
+   messages, status line format) before editing the scenario. Never invent text.
+   The version number in the header line must match the release being shipped.
 2. Edit the relevant scenario file (`demos/quickstart.js` or `demos/advanced.js`).
-3. Run `demos/render.sh <name>`.
-4. **Verify visually.** Extract frames with PIL and view them:
+3. Run `demos/render.sh <name>` (it provisions its own dependencies - see above).
+4. **Verify visually.** Extract frames with PIL and view them (use `render.sh`'s
+   `.venv/bin/python3` if the system Python lacks Pillow):
    ```python
    from PIL import Image
    im = Image.open('.github/assets/quickstart.gif'); im.seek(N)
    im.convert('RGB').save('/tmp/frame.png')
    ```
-   Check at least: the header box (all four corners connected), the menu, and
-   the final frame. Zoom (crop + resize with NEAREST) when checking borders.
+   Check at least: the workspace header line, the menu, and the final frame. Zoom
+   (crop + resize with NEAREST) when checking any box borders (e.g. drawn prompts).
 5. To add a new demo, create a scenario file next to the existing ones (import
    `lib.js`, end with `save("<name>.cast")`), add its name to `ALL_DEMOS` in
    `render.sh`, and embed the new GIF in README.md.

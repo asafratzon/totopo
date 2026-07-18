@@ -15,18 +15,12 @@ out(`\u001b[?25l${BLUE}~/p/my-project${R} ${GREEN}\u276f${R} `);
 type("npx totopo", 0.5);
 out(NL, 0.8);
 
-// 2. Header box with left rail (single block, same as quickstart)
-// With voice wiring on in automatic mode, a stopped server prints no notice line
-// (src/commands/menu.ts), so the box matches the quickstart one.
+// 2. Header line with left rail (single block, same as quickstart). The container
+// is stopped, so no state is shown; with voice wiring on in automatic mode a
+// stopped server prints no notice line either (src/commands/menu.ts), so the
+// header matches the quickstart one - just version and workspace.
 out(`${rail}${NL}`, 0.05);
-out(
-    `${rail}  ${GREY}\u250c${"\u2500".repeat(6)}${R} ${B}totopo v3.14.0${R} ${GREY}${"\u2500".repeat(6)}\u2510${R}${NL}` +
-        `${rail}  ${GREY}\u2502${R}  workspace:   ${B}my-project${R}   ${GREY}\u2502${R}${NL}` +
-        `${rail}  ${GREY}\u2502${R}  container:   stopped      ${GREY}\u2502${R}${NL}` +
-        `${rail}  ${GREY}\u2514${"\u2500".repeat(28)}\u2518${R}${NL}` +
-        `${rail}${NL}`,
-    0.7,
-);
+out(`${rail}  ${B}totopo v3.15.0${R}${B}${GREY} \u00b7 ${R}${B}my-project${R}${NL}${rail}${NL}`, 0.7);
 
 // 3. Menu, "Open session" selected, then collapsed (same as quickstart, shorter pause)
 out(
@@ -77,7 +71,7 @@ out(`${GREEN}\u25cf${R}  ${GREY}Auto-start enabled: launching ${ORANGE}claude${G
 // 9. Claude Code header, input box, status line (same as quickstart)
 out(
     ` ${ORANGE}\u2590\u259b\u2588\u2588\u2588\u259c\u258c${R}   ${B}Claude Code${R} ${GREY}v2.1.207${R}${NL}` +
-        `${ORANGE}\u259d\u259c\u2588\u2588\u2588\u2588\u2588\u259b\u2598${R}  Fable 5 (1M context) with xhigh effort ${GREY}\u00b7${R} Claude Team${NL}` +
+        `${ORANGE}\u259d\u259c\u2588\u2588\u2588\u2588\u2588\u259b\u2598${R}  Fable 5 (1M context) with high effort ${GREY}\u00b7${R} Claude Team${NL}` +
         `  ${ORANGE}\u2598\u2598 \u259d\u259d${R}    ${GREY}/workspace${R}${NL}${NL}`,
     0.9,
 );
@@ -85,7 +79,7 @@ out(
     `${GREY}${"\u2500".repeat(88)}${R}${NL}` +
         ` ${GREY}\u276f${R} ${CURSOR}${NL}` +
         `${GREY}${"\u2500".repeat(88)}${R}${NL}` +
-        ` ${BLUE}Fable 5${R} ${MAG}xhigh${R}${GREY} \u00b7 ${R}${GREEN}0k${R}${GREY} / 1M (0%) \u00b7 Claude Code v2.1.207${R}${NL}`,
+        ` ${BLUE}Fable 5${R} ${MAG}high${R}${GREY} \u00b7 ${R}${GREEN}0k${R}${GREY} / 1M (0%) \u00b7 Claude Code v2.1.207${R}${NL}`,
     1.6,
 );
 

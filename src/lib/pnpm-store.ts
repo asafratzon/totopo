@@ -8,9 +8,7 @@
 
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { CONTAINER_HOME, PNPM_STORE_DIR } from "./constants.js";
-
-const CONTAINER_PNPM_STORE = `${CONTAINER_HOME}/.local/share/pnpm/store`;
+import { CONTAINER_PNPM_STORE, PNPM_STORE_DIR } from "./constants.js";
 
 /**
  * Lazily creates the host-side pnpm store directory under the workspace cache dir

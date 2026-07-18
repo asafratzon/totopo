@@ -46,6 +46,22 @@ if [ ! -f fonts/CascadiaCode-Regular.ttf ]; then
   (cd fonts && unzip -oqj ../cascadia.zip "ttf/static/CascadiaCode-Regular.ttf") && rm cascadia.zip
 fi
 
+# add-window.py needs Pillow. Provision it automatically, like agg and the fonts above,
+# so a fresh container needs zero manual setup. Prefer an isolated venv (never touches the
+# system site-packages, which Debian marks externally-managed); fall back to a
+# --break-system-packages install if venv is unavailable. PYBIN can import PIL.
+if python3 -c 'import PIL' 2>/dev/null; then
+  PYBIN=python3
+elif [ -x .venv/bin/python3 ] && .venv/bin/python3 -c 'import PIL' 2>/dev/null; then
+  PYBIN=.venv/bin/python3
+elif python3 -m venv .venv 2>/dev/null; then
+  .venv/bin/pip install -q --disable-pip-version-check Pillow
+  PYBIN=.venv/bin/python3
+else
+  python3 -m pip install -q --break-system-packages Pillow
+  PYBIN=python3
+fi
+
 # The committed GIFs live at the repo root, not next to this skill-local tooling.
 ASSETS_DIR="$(git rev-parse --show-toplevel)/.github/assets"
 for name in "${DEMOS[@]}"; do
@@ -53,6 +69,6 @@ for name in "${DEMOS[@]}"; do
   ./agg --font-dir fonts --font-family "JetBrains Mono,Cascadia Code" \
         --theme github-dark --font-size 16 --line-height 1.0 \
         "$name.cast" "$name-raw.gif"
-  python3 add-window.py "$name-raw.gif" "$ASSETS_DIR/$name.gif"
+  "$PYBIN" add-window.py "$name-raw.gif" "$ASSETS_DIR/$name.gif"
   rm "$name-raw.gif"
 done
