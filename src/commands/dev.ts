@@ -364,31 +364,45 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
             portsChanged ||
             envChanged
         ) {
+            // Describe the change once - reused for the confirm prompt and the recreate log line below.
+            let reason: string;
+            if (profileChanged) reason = `Profile changed (${info.profileLabel} -> ${activeProfile})`;
+            else if (shadowChanged) reason = "Shadow paths changed";
+            else if (gitModeChanged) reason = `Git mode changed (${info.gitModeLabel || "<unset>"} -> ${gitMode})`;
+            else if (audioChanged) reason = `Voice/audio ${audio ? "enabled" : "disabled"}`;
+            else if (portsChanged) reason = "Ports changed";
+            else if (envChanged) reason = "Environment variables changed";
+            else if (autoStartChanged) reason = `Auto-start changed (${info.autoStartLabel || AUTO_START.off} -> ${autoStartAgent})`;
+            else reason = "Runtime environment updated";
+
+            // A running container is a live session. Recreating it stops and removes the container, so confirm
+            // before killing it - a config change should not surprise the user mid-session. Exited containers
+            // have no live session, so skip the prompt. Non-interactive callers (quiet) keep the auto-recreate.
+            const prompted = !quiet && info.status === "running";
+            if (prompted) {
+                log.warn(
+                    `${reason} - applying this needs to recreate the running container, which stops any open sessions.\n` +
+                        "Agent memory, settings, and workspace data are preserved.",
+                );
+                const recreate = await confirm({
+                    message: "Recreate the container now?",
+                    initialValue: true,
+                });
+                if (isCancel(recreate) || !recreate) {
+                    cancel("Session cancelled - container left running.");
+                    process.exit(0);
+                }
+            }
+
             stopAndRemoveContainer(containerName);
             containerStatus = null;
 
-            if (profileChanged) {
-                // Profile change means different Dockerfile - must rebuild image
-                if (!quiet) log.info(`Profile changed (${info.profileLabel} -> ${activeProfile}) - rebuilding...`);
-                spawnSync("docker", ["rmi", containerName], { stdio: "pipe" });
-            } else if (shadowChanged) {
-                if (!quiet) log.info("Shadow paths changed - recreating container...");
-            } else if (gitModeChanged) {
-                if (!quiet) log.info(`Git mode changed (${info.gitModeLabel || "<unset>"} -> ${gitMode}) - recreating container...`);
-            } else if (audioChanged) {
-                if (!quiet) log.info(`Voice/audio ${audio ? "enabled" : "disabled"} - recreating container...`);
-            } else if (portsChanged) {
-                if (!quiet) log.info("Ports changed - recreating container...");
-            } else if (envChanged) {
-                if (!quiet) log.info("Environment variables changed - recreating container...");
-            } else if (autoStartChanged) {
-                if (!quiet)
-                    log.info(
-                        `Auto-start changed (${info.autoStartLabel || AUTO_START.off} -> ${autoStartAgent}) - recreating container...`,
-                    );
-            } else {
-                if (!quiet) log.info("Runtime environment updated - recreating container...");
-            }
+            // Profile change means a different Dockerfile, so drop the image to force a fresh build.
+            if (profileChanged) spawnSync("docker", ["rmi", containerName], { stdio: "pipe" });
+
+            // The confirm prompt above already stated the reason, so only print the progress line when we
+            // did not prompt (an exited container recreated without confirmation).
+            if (!quiet && !prompted) log.info(`${reason} - ${profileChanged ? "rebuilding" : "recreating container"}...`);
         }
     }
 

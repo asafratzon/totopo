@@ -187,11 +187,19 @@ while (showMenu) {
         case "settings": {
             const settingsResult = await settingsMenu(workspace);
             if (settingsResult === "rebuild") {
-                await resetImage(workspace.containerName);
-                await dev(packageDir, workspace);
+                // resetImage returns false when the user declines a running-container rebuild - skip the
+                // build and return to the menu, leaving the live session untouched.
+                if (await resetImage(workspace.containerName)) {
+                    await dev(packageDir, workspace);
+                } else {
+                    showMenu = true;
+                }
             } else if (settingsResult === "clean-rebuild") {
-                await resetImage(workspace.containerName);
-                await dev(packageDir, workspace, { noCache: true });
+                if (await resetImage(workspace.containerName)) {
+                    await dev(packageDir, workspace, { noCache: true });
+                } else {
+                    showMenu = true;
+                }
             } else {
                 showMenu = true;
             }

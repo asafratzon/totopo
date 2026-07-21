@@ -85,9 +85,9 @@ export async function run(args: MenuArgs): Promise<string> {
     // The whole line is gray so it stays quieter than the bold header above it.
     const notices = parts.length > 0 ? [styleText("gray", parts.join(" · "))] : [];
 
-    // Separate from whatever precedes it, then print the header and any notices as clack log lines - the gray
-    // gutter lines up with the select menu that follows.
-    process.stdout.write("\n");
+    // Print the header and any notices as clack log lines. log.message already opens with a bar-gutter line, so
+    // it separates itself from whatever precedes it - no extra blank line needed. The gray gutter lines up with
+    // the select menu that follows.
     log.message([header, ...notices]);
 
     // --- Menu ----------------------------------------------------------------------------------------------------------------------------

@@ -431,12 +431,28 @@ export async function stop(containerName: string): Promise<void> {
 }
 
 // --- Reset workspace image (stop container + remove image for fresh rebuild) -------------------------------------------------------------
-export async function resetImage(containerName: string): Promise<void> {
-    const inspectResult = spawnSync("docker", ["inspect", "--type", "container", containerName], {
+// Returns false when the user declines a running-container rebuild, so the caller can skip the fresh build
+// and leave the live session untouched.
+export async function resetImage(containerName: string): Promise<boolean> {
+    const statusResult = spawnSync("docker", ["inspect", "--type", "container", "--format", "{{.State.Status}}", containerName], {
         encoding: "utf8",
         stdio: "pipe",
     });
-    if (inspectResult.status === 0) {
+    const containerExists = statusResult.status === 0;
+    const running = containerExists && statusResult.stdout.trim() === "running";
+
+    // A running container is a live session. A rebuild stops and removes it first, so confirm before
+    // killing it out from under the user rather than surprising them mid-session.
+    if (running) {
+        log.warn("Rebuilding stops and removes the running container.\nAgent memory, settings, and workspace data are preserved.");
+        const proceed = await confirm({ message: "Rebuild now?", initialValue: true });
+        if (isCancel(proceed) || !proceed) {
+            cancel("Rebuild cancelled - container left running.");
+            return false;
+        }
+    }
+
+    if (containerExists) {
         log.info(`Stopping container ${containerName}...`);
         spawnSync("docker", ["stop", containerName], { stdio: "pipe" });
         spawnSync("docker", ["rm", containerName], { stdio: "pipe" });
@@ -449,4 +465,5 @@ export async function resetImage(containerName: string): Promise<void> {
     }
 
     log.info("Image removed - starting fresh build…");
+    return true;
 }
