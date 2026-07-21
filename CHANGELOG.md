@@ -7,6 +7,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [3.15.1] - 2026-07-21
+
+### Changed
+
+- totopo now confirms before recreating a running container - a config change (profile, shadow paths, git mode, voice, ports, or environment variables) or a rebuild that would restart your live session now warns and waits for your go-ahead instead of stopping the session automatically; agent memory, settings, and workspace data are preserved either way.
+- The workspace menu no longer prints a blank line before its status header, so the menu sits directly under the command you ran.
+
+---
+
 ## [3.15.0] - 2026-07-18
 
 ### Changed
