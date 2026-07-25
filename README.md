@@ -99,7 +99,7 @@ On every run, totopo shows the workspace menu:
 
 - **Open session** - start or resume the dev container and connect
 - **Stop container** - stop the running container
-- **Settings** - git mode, shadow paths, voice, auto-start agent, rebuild, reset config
+- **Settings** - git mode, shadow paths, voice, auto-start agent, web interface, rebuild, reset config
 - **Advanced** - multi-workspace management (stop containers, clear memory, uninstall)
 
 ### Working directory
@@ -314,21 +314,21 @@ For claude, totopo picks the newest conversation that actually has messages and 
 
 ## Web agent interface
 
-An opt-in browser front-end for the agents, running inside the container.
-It relays the real agent TUI - your subscription, no API key, same sandbox - and adds what a terminal cannot: image paste, drop, and upload, and dictation.
+An opt-in browser front-end for the agents in the container.
+It relays the real agent TUI - your subscription, no API key, same sandbox - and adds what a terminal cannot: every session on one page, images, and dictation.
 Turn it on under **Settings → Web interface** (off by default), then run `webterm claude` (or `opencode` / `codex`) in the container to start it and print its URL.
 With [auto-start](#auto-start-agent) on it comes up by itself and the greeting shows the URL.
 
 ![totopo web interface](.github/assets/webterm.png)
 
-- **The page is mission control for the container.** The tab bar is every agent session running in it (up to 8, each a full process) - click to switch, `+ New session` to start one, double-click a name to rename.
-Sessions belong to the container, not the browser: a closed tab or a slept laptop ends nothing, and every session shows up wherever you open the URL (one window drives a session at a time, and another can take it over).
-- **Copy and paste behave like a terminal's.** Select and press `Cmd+C` (`Ctrl+Shift+C` on Linux/Windows) - an agent that draws its own selection (claude tracks the mouse) copies as you release the drag, and every copy says so in the status pill.
-`Ctrl+C` is never a copy; it always interrupts the agent.
-The clipboard only goes one way: the container can put text on it, never read it back through the relay.
-- **Its own sticky host port.** Each workspace keeps one loopback-only port from a range (default `3900-3999`), stored host-side and never in `totopo.yaml`, so the URL survives restarts and rebuilds; container port `3899` is reserved for the relay.
-- **Loopback-only and origin-checked**, run as the non-root user inside the same sandbox the agent already has - but the origin check is a browser gate a non-browser client can bypass, so on an untrusted shared machine leave it off.
-- The interface never blocks a session: if no port is free or the server does not come up, totopo says so and opens the session without it.
+- **Every agent in one page.** The tab bar is every session running in the container, up to 8. Click to switch, `+ New session` to start one, double-click to rename, drag to reorder.
+- **Sessions outlive the browser.** They belong to the container, so a closed tab, dropped wifi or a slept laptop ends nothing, and opening the URL anywhere shows them all. One window drives a session at a time; another can take it over.
+- **The tabs say what the agents are doing.** A light runs round a tab while its agent works, and the tab lights up when one finishes something you were not there to see. So does the browser tab, for when the window is behind something else: the title counts what is waiting, and the icon shows a blue bar while an agent works, a green dot while one waits.
+- **Images and dictation.** Paste, drop or upload an image and the agent gets its path; dictate instead of typing. Enter sends, Shift+Enter starts a line.
+- **Drafts wait where you left them.** A half-written message stays with its own session, attachments included, until you send it or end the session.
+- **Its own sticky host port.** One loopback-only port per workspace from a range (default `3900-3999`), kept host-side and never in `totopo.yaml`, so the URL survives restarts and rebuilds. Container port `3899` is reserved for the relay.
+- **Same sandbox as the terminal.** Loopback-only, origin-checked, non-root. The origin check is a browser gate a non-browser client can bypass, so leave the interface off on an untrusted shared machine.
+- **It never blocks a session.** If no port is free or the server does not come up, totopo says so and opens the session without it.
 
 ## Troubleshooting
 

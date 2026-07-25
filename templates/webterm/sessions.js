@@ -14,7 +14,48 @@ import { randomBytes } from "node:crypto";
 // How many distinct colours the browser cycles through when labelling sessions. The palette itself is
 // presentation and lives in the client; the registry only hands out the index, so every window that
 // renders the same session agrees on its colour.
-export const PALETTE_SIZE = 6;
+export const PALETTE_SIZE = 5;
+
+// --- Is the agent working? ---------------------------------------------------------------------------------------------------------------
+//
+// Nothing tells us directly: a PTY carries bytes, not "thinking" and "waiting". What it does carry is a
+// rhythm. An agent at work redraws constantly (a spinner, a tool line, streamed text); an agent waiting for
+// you writes nothing at all. So a stretch of output means working, and going quiet for WORK_QUIET_MS means it
+// stopped. This stays agent-agnostic on purpose - no output is parsed, so nothing here breaks when a CLI
+// changes its spinner, and a plain shell behaves sensibly too.
+//
+// A stretch, though, not a byte. An idle TUI is not perfectly silent: a session left alone still emits the
+// odd small redraw, and reading one of those as "working" is what makes a tab flicker at a user who is
+// waiting for their turn to type. So a stretch has to keep streaming for WORK_WARMUP_MS before it counts,
+// which no lone redraw ever does.
+//
+// The other thing that is not the agent is the user. What you type comes straight back as echo, and a TUI
+// answers each keystroke by redrawing its whole input box - plenty of output, none of it work. Output within
+// ECHO_MS of a keystroke on that session is therefore left out of the rhythm entirely.
+//
+// The last threshold is about earning attention rather than showing it. A stretch shorter than MIN_WORK_MS is
+// not a piece of work finishing - it is a redraw on resize, a one-line answer - and lighting a tab up for
+// those is what would teach the user to ignore the light.
+
+/** No output for this long means the agent stopped working. */
+export const WORK_QUIET_MS = 1_500;
+
+/** How long output has to keep coming before the session is shown as working. */
+export const WORK_WARMUP_MS = 1_200;
+
+/** Output this soon after the user typed is the echo of their own keystroke, not the agent. */
+export const ECHO_MS = 500;
+
+/** A working stretch shorter than this never raises the "it finished" alert. */
+export const MIN_WORK_MS = 3_000;
+
+/** How often tick() should be called. Fine enough that the two thresholds above land where they say. */
+export const WORK_TICK_MS = 300;
+
+// What an unnamed session is called, with its number after it. Deliberately not the relayed agent's name: one
+// server relays one agent, so "claude" on every tab said nothing that the rest of the page did not, and a bar
+// full of it read as noise. Rename a tab and this is what clearing the name falls back to.
+export const DEFAULT_LABEL = "Agent";
 
 // Longest a user-chosen session name may be. The bar is one row, so a name that ran on would push the
 // tabs around; past this it is cut. Sanitising lives here so every window agrees on the stored name.
@@ -49,16 +90,19 @@ function isOpen(socket) {
  *
  * - `spawn()` returns a PTY-like object: { onData, onExit, write, resize, kill }.
  * - `maxSessions` caps how many agents may be alive at once. This is about memory, not correctness.
- * - `agent` is the relayed agent's name; sessions are labelled "<agent> <n>".
  * - `maxBuffer` caps the replay buffer kept per session (bytes).
  * - `onEvent(event)` is called with { t: "replay" | "out" | "taken" | "exit" | "changed", ... }.
  *   Events that target one window carry that window's socket as `client`; "changed" means the session
  *   list moved and every window needs to hear about it.
  */
-export function createRegistry({ spawn, maxSessions, agent, maxBuffer, onEvent }) {
+export function createRegistry({ spawn, maxSessions, maxBuffer, onEvent }) {
     // Insertion-ordered, so iteration is always oldest session first.
     const sessions = new Map();
-    // Monotonic: numbers are never reused, so "claude 7" means the same session in every window for as
+    // Windows that have told us they are not in front of the user - behind another browser tab, or another app.
+    // Only the "it finished" alert reads this; a window that is not being looked at still drives its session.
+    // Weak, so a socket that goes away takes its entry with it and nothing has to remember to clean up.
+    const awayClients = new WeakSet();
+    // Monotonic: numbers are never reused, so "Agent 7" means the same session in every window for as
     // long as it lives, and its colour (derived from the same counter) is predictable.
     let seq = 0;
 
@@ -77,6 +121,9 @@ export function createRegistry({ spawn, maxSessions, agent, maxBuffer, onEvent }
             createdAt: session.createdAt,
             attached: isOpen(session.client),
             unread: session.unread,
+            working: session.working,
+            // "It finished something and you were not there to see it" - the one state the bar shouts about.
+            attention: session.attention,
         };
     }
 
@@ -87,6 +134,32 @@ export function createRegistry({ spawn, maxSessions, agent, maxBuffer, onEvent }
 
     function count() {
         return sessions.size;
+    }
+
+    /**
+     * True when someone is actually looking at this session: a live socket that has not said it is away. An open
+     * socket is not enough - a window behind another browser tab or another app is driving its session and would
+     * see nothing, which is exactly who the alert is for. Anything unknown counts as looking, so a client that
+     * never reports (an older page, a non-browser client) behaves the way it did before.
+     */
+    function watched(session) {
+        return isOpen(session.client) && !awayClients.has(session.client);
+    }
+
+    /**
+     * A window said whether it is in front of the user. Coming back is a visit: whatever it is driving has been
+     * seen, so its alert is spent, the same as clicking the tab.
+     */
+    function away(client, isAway) {
+        if (isAway) {
+            awayClients.add(client);
+            return;
+        }
+        awayClients.delete(client);
+        const session = sessionFor(client);
+        if (!session?.attention) return;
+        session.attention = false;
+        emit({ t: "changed" });
     }
 
     // Sessions a window is actually watching right now. This is what the host asks about before it
@@ -152,6 +225,8 @@ export function createRegistry({ spawn, maxSessions, agent, maxBuffer, onEvent }
         if (previous && previous !== session) previous.client = null;
         session.client = client;
         session.unread = false;
+        // Visiting the session is what the alert was asking for, so it is spent the moment you arrive.
+        session.attention = false;
         // Replay is emitted before anything else can reach this socket, so the window resets its
         // terminal and repaints the session exactly once - never on top of what was already there.
         emit({ t: "replay", sid: session.id, client, data: session.buffer });
@@ -195,16 +270,61 @@ export function createRegistry({ spawn, maxSessions, agent, maxBuffer, onEvent }
         if (session.buffer.length > maxBuffer) {
             session.buffer = session.buffer.slice(session.buffer.length - maxBuffer);
         }
+        const now = Date.now();
+        // Record the rhythm, but only for output the agent produced of its own accord - the echo of a
+        // keystroke is the user's, and counting it would put a tab to work while its owner types into it.
+        if (now - session.lastInputAt >= ECHO_MS) {
+            // A gap this long ended the previous stretch, so this byte starts a new one.
+            if (now - session.lastOutputAt >= WORK_QUIET_MS) session.streamSince = now;
+            session.lastOutputAt = now;
+        }
         if (isOpen(session.client)) {
             emit({ t: "out", sid: session.id, client: session.client, data });
-            return;
-        }
-        // Nobody is watching: remember that this session has something new to show and say so once,
-        // on the flip rather than on every chunk, so a busy background agent is not a broadcast storm.
-        if (!session.unread) {
+        } else if (!session.unread) {
+            // Nobody is watching: remember that this session has something new to show, once, on the flip
+            // and not on every chunk - a chatty background agent would otherwise be a broadcast storm.
             session.unread = true;
             emit({ t: "changed" });
         }
+    }
+
+    /**
+     * Move every session's working state on by one step, and raise the alert on the ones that just stopped.
+     * Called on a timer by the server rather than driven by a timer per session: the state is a function of
+     * "how long output has been running", so one sweep answers it for every session, and a registry with no
+     * timers of its own stays testable by calling this by hand. Every flip is announced here, so the whole
+     * sweep costs at most one broadcast however many sessions moved.
+     *
+     * The alert is only for sessions nobody is looking at - see watched(). A session in front of the user is
+     * already on screen, and lighting up the tab you are looking at would be telling you what you can see.
+     */
+    function tick() {
+        const now = Date.now();
+        let changed = false;
+        for (const session of sessions.values()) {
+            // Length of the current stretch, measured to its last byte rather than to now: the quiet period
+            // is how we noticed it ended, not part of the work.
+            const streamed = session.lastOutputAt - session.streamSince;
+            const working = now - session.lastOutputAt < WORK_QUIET_MS && streamed >= WORK_WARMUP_MS;
+            if (working === session.working) continue;
+            session.working = working;
+            // Going quiet after real work is the moment worth interrupting the user for. Starting up again
+            // makes any earlier "it finished" stale, so that alert is dropped and awaited afresh.
+            if (!working && streamed >= MIN_WORK_MS && !watched(session)) session.attention = true;
+            if (working) session.attention = false;
+            changed = true;
+        }
+        if (changed) emit({ t: "changed" });
+    }
+
+    /**
+     * The user typed into a session. The write to the PTY belongs to the caller; this is only the timestamp
+     * that keeps the echo coming back out of the working rhythm. Broadcasts nothing: typing changes no state
+     * a bar renders, and a frame per keystroke is exactly what this file avoids everywhere else.
+     */
+    function typed(sid) {
+        const session = sessions.get(sid);
+        if (session) session.lastInputAt = Date.now();
     }
 
     // The agent exited by itself (/exit, a crash). There is nothing left to reattach to, so the session
@@ -225,9 +345,9 @@ export function createRegistry({ spawn, maxSessions, agent, maxBuffer, onEvent }
         const session = {
             id: randomBytes(6).toString("hex"),
             seq,
-            label: `${agent} ${seq}`,
+            label: `${DEFAULT_LABEL} ${seq}`,
             // A user-chosen label, or null to fall back to `label`. The number in `label` is always kept,
-            // so clearing the name shows "claude 7" again and the tooltip can still surface it.
+            // so clearing the name shows "Agent 7" again and the tooltip can still surface it.
             name: null,
             colorIndex: (seq - 1) % PALETTE_SIZE,
             createdAt: Date.now(),
@@ -235,6 +355,14 @@ export function createRegistry({ spawn, maxSessions, agent, maxBuffer, onEvent }
             buffer: "",
             client: null,
             unread: false,
+            // The working rhythm: when the last byte arrived, when this stretch of output started, when the
+            // user last typed (so the echo can be skipped), whether it is still going, and whether the end
+            // of it is still waiting to be seen.
+            lastOutputAt: 0,
+            streamSince: 0,
+            lastInputAt: 0,
+            working: false,
+            attention: false,
         };
         session.term = spawn();
         session.term.onData((data) => onData(session, data));
@@ -297,9 +425,35 @@ export function createRegistry({ spawn, maxSessions, agent, maxBuffer, onEvent }
         return true;
     }
 
+    /**
+     * Move a session to a new place in the bar. Order is registry state, not a per-window preference: every
+     * window draws the same bar, so a drag has to move it here or the next broadcast would put it back.
+     * `index` is the position the session should end up at in the resulting list, and is clamped rather than
+     * rejected - a window whose bar moved under it mid-drag should still land somewhere sensible. Only the
+     * order changes: not the label, not the colour, not who drives it. False when nothing moved.
+     */
+    function reorder(sid, index) {
+        if (!sessions.has(sid)) return false;
+        const order = [...sessions.keys()];
+        const from = order.indexOf(sid);
+        const wanted = Number.isInteger(index) ? index : from;
+        const to = Math.max(0, Math.min(wanted, order.length - 1));
+        if (from === to) return false;
+        order.splice(from, 1);
+        order.splice(to, 0, sid);
+        // A Map keeps insertion order and cannot reorder in place, so it is rebuilt in the new order. The
+        // session objects are the same ones, so PTYs, buffers and attachments come along untouched.
+        const moved = order.map((id) => [id, sessions.get(id)]);
+        sessions.clear();
+        for (const [id, session] of moved) sessions.set(id, session);
+        emit({ t: "changed" });
+        return true;
+    }
+
     return {
         attach,
         attachedCount,
+        away,
         attachedSid,
         close,
         count,
@@ -309,7 +463,10 @@ export function createRegistry({ spawn, maxSessions, agent, maxBuffer, onEvent }
         list,
         pickForClient,
         rename,
+        reorder,
         sessionFor,
         takeover,
+        tick,
+        typed,
     };
 }

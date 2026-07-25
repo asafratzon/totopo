@@ -62,6 +62,26 @@ describe("buildDockerfile", () => {
         assert.ok(result.includes("webterm <agent>"));
     });
 
+    test("the AI CLI freshness stamp is written by the same RUN that installs them", () => {
+        const base = readFileSync(BASE_TEMPLATE, "utf8");
+        const start = base.indexOf("RUN npm install -g");
+        assert.ok(start !== -1, "expected a global npm install layer");
+        // A RUN block runs to the first line that does not continue with a backslash.
+        const block: string[] = [];
+        for (const line of base.slice(start).split("\n")) {
+            block.push(line);
+            if (!line.trimEnd().endsWith("\\")) break;
+        }
+        const runBlock = block.join("\n");
+        // Docker caches the install layer, so a stamp written by any later layer can claim the CLIs are
+        // fresh when the cache handed over months-old ones - and startup.mjs skips its update on that claim.
+        assert.ok(runBlock.includes("date -u"));
+        assert.ok(runBlock.includes("/usr/local/share/ai-cli-installed"));
+        // Later layers may only copy the stamp forward. A second date call would defeat the point.
+        assert.ok(!base.slice(start + runBlock.length).includes("date -u"));
+        assert.ok(base.includes("cp /usr/local/share/ai-cli-installed /home/devuser/.ai-cli-updated"));
+    });
+
     test("without profile hook - no profile section", () => {
         const result = buildDockerfile(BASE_TEMPLATE);
         assert.ok(!result.includes("Profile hook"));

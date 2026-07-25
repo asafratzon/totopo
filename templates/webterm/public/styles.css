@@ -7,12 +7,15 @@
     --border: #30363d;
     --text: #e6edf3;
     --muted: #8b949e;
-    --accent: #d29922;
-    --accent-hover: #e3ad33;
-    --ok: #3fb950;
     --bad: #f85149;
     /* A touch lighter than pure black so the terminal does not read as a void. */
     --term-bg: #12161d;
+    /* This workspace's colour, replaced by app.js from the palette before anything is drawn. Everything that
+       says "you are in this window" is this one hue: the composer border, the terminal edge, the active tab's
+       edge, and the buttons. The value here is only what shows if the script never runs. */
+    --ws: #2fe58a;
+    /* The interface has one accent and it is the workspace's, so a window is one colour and not two. */
+    --accent: var(--ws);
 }
 
 * {
@@ -62,20 +65,54 @@ body {
     cursor: pointer;
     position: relative;
     top: 1px;
+    /* A stacking context of its own, so the travelling light below can sit between the tab's surface and its
+       label rather than being pushed behind the whole bar. */
+    isolation: isolate;
 }
 
 .tab:hover {
     color: var(--text);
 }
 
-/* The inset top edge is the session's colour, which also visually joins the tab to the terminal. */
+/* Drag to reorder. The tab being dragged fades so the bar reads as a row with a hole in it, and the line
+   showing where it would land is drawn in the 4px gap on one side of the tab under the pointer. */
+.tab[draggable="true"] {
+    cursor: grab;
+}
+
+.tab.dragging {
+    opacity: 0.4;
+    cursor: grabbing;
+}
+
+.tab.drop-before::before,
+.tab.drop-after::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    bottom: 0;
+    width: 2px;
+    border-radius: 1px;
+    background: var(--accent);
+}
+
+.tab.drop-before::before {
+    left: -3px;
+}
+
+.tab.drop-after::after {
+    right: -3px;
+}
+
+/* The inset top edge is the workspace's colour, which also visually joins the tab to the terminal below it. */
 .tab.active {
     background: var(--term-bg);
     color: var(--text);
-    box-shadow: inset 0 2px 0 var(--sc);
+    box-shadow: inset 0 2px 0 var(--ws);
 }
 
-/* The colour is the session's identity: always shown, never earned. */
+/* The session's identity, and only that: one solid disc, always shown, never animated. Everything a session
+   is doing is said by the tab around it, which leaves the dot free to just mean "this one". */
 .tab .dot {
     flex: none;
     width: 8px;
@@ -84,24 +121,154 @@ body {
     background: var(--sc);
 }
 
-/* Output arrived while this window was looking elsewhere: the same dot pulses, the label brightens. */
+/* Output arrived while this window was looking elsewhere, but not enough of it to count as work finishing:
+   the label brightens and the dot takes a thin ring. Nothing moves - movement belongs to the two states
+   below, so a session that merely said something cannot be mistaken for one that wants you. */
 .tab.unread {
     color: var(--text);
 }
 
 .tab.unread .dot {
-    animation: pulse 1.6s ease-in-out infinite;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--sc) 22%, transparent);
 }
 
-@keyframes pulse {
+/* ---- The agent is working ---- */
+/*
+   A light travels around the tab, in that session's colour. It rides the tab's own border box as a motion
+   path, so it covers the same distance in the same time on every edge and through the corners. (The obvious
+   way to do this - a conic gradient rotating behind a ring-shaped mask - turns at a constant angle instead,
+   which on a short wide tab crawls along the middle of an edge and then whips through the corners.)
+
+   The light lives in its own layer rather than in a pseudo-element on the tab, because it has to be clipped:
+   turning a corner swings part of it outside the tab, and the tab itself cannot clip (the drop markers a drag
+   draws sit just outside it, and would be cut off).
+*/
+.tab .trace {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    border-radius: 7px 7px 0 0;
+    pointer-events: none;
+    /* Above the tab's own surface but under its label, so the light passes behind the name instead of over
+       it. This needs the tab to be a stacking context of its own (isolation, above), or a negative index
+       would drop the light behind the whole bar and out of sight. */
+    z-index: -1;
+}
+
+.tab .comet {
+    position: absolute;
+    width: 16px;
+    height: 2.5px;
+    border-radius: 2px;
+    background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--sc) 45%, transparent) 55%, var(--sc));
+    filter: drop-shadow(0 0 4px var(--sc));
+    /* The leading edge sits on the path and the body hangs inwards, so the light stays inside the tab. */
+    offset-path: border-box;
+    offset-rotate: auto;
+    offset-anchor: 50% 0%;
+    /* One lap. TRACE_MS in app.js must match: it hands each new light a negative delay from the wall clock,
+       so a bar rebuilt mid-lap carries on instead of jumping back to the start. */
+    animation: orbit 4s linear infinite;
+}
+
+@keyframes orbit {
+    from {
+        offset-distance: 0%;
+    }
+    to {
+        offset-distance: 100%;
+    }
+}
+
+/* Motion paths off a coord-box are recent CSS. Without them the light becomes a line crossing the bottom
+   edge - the same idea, one edge instead of four - rather than nothing at all. */
+@supports not (offset-path: border-box) {
+    .tab .comet {
+        left: 0;
+        right: 0;
+        bottom: 0;
+        width: auto;
+        height: 2px;
+        border-radius: 0;
+        background: linear-gradient(90deg, transparent, var(--sc), transparent);
+        background-size: 55% 100%;
+        background-repeat: no-repeat;
+        animation: sweep 1.5s linear infinite;
+    }
+
+    @keyframes sweep {
+        from {
+            background-position: -60% 0;
+        }
+        to {
+            background-position: 160% 0;
+        }
+    }
+}
+
+/* ---- It finished, and nobody was watching ---- */
+/*
+   The loudest thing the bar does, and the one it is all for: an agent that stopped needs you, and you are
+   somewhere else. It arrives with two flashes and a shove sideways - the bar never moves otherwise, so the
+   movement is what catches an eye that is not on it - and then holds lit in the session's colour until the
+   tab is visited. The held state is the part that matters: the arrival plays once and can be missed.
+*/
+.tab.attention {
+    color: var(--text);
+    background: color-mix(in srgb, var(--sc) 26%, #10151c);
+    box-shadow:
+        0 0 0 1px var(--sc),
+        0 0 18px color-mix(in srgb, var(--sc) 55%, transparent);
+}
+
+/* ARRIVAL_MS in app.js must match the total (4 x 0.34s), and is fed in as a negative delay so a re-render
+   mid-flash neither restarts it nor cuts it short. */
+.tab.attention.arriving {
+    animation:
+        alertFlash 0.34s ease-in-out 4 alternate,
+        alertNudge 0.36s ease-in-out 2;
+}
+
+@keyframes alertFlash {
+    from {
+        background: color-mix(in srgb, var(--sc) 26%, #10151c);
+    }
+    to {
+        background: color-mix(in srgb, var(--sc) 72%, #10151c);
+        color: #06090d;
+    }
+}
+
+@keyframes alertNudge {
     0%,
     100% {
-        box-shadow: 0 0 0 0 transparent;
-        opacity: 1;
+        transform: translateX(0);
     }
-    50% {
-        box-shadow: 0 0 0 4px color-mix(in srgb, var(--sc) 30%, transparent);
-        opacity: 0.85;
+    25% {
+        transform: translateX(-3px);
+    }
+    75% {
+        transform: translateX(3px);
+    }
+}
+
+/* Someone who has asked for less movement still gets both states, told without it: the working light holds
+   still on the bottom edge, and the alert simply appears already lit. */
+@media (prefers-reduced-motion: reduce) {
+    .tab .comet {
+        left: 0;
+        right: 0;
+        bottom: 0;
+        width: auto;
+        height: 2px;
+        border-radius: 0;
+        background: var(--sc);
+        offset-path: none;
+        animation: none;
+    }
+
+    .tab.attention.arriving {
+        animation: none;
     }
 }
 
@@ -217,9 +384,9 @@ body {
     height: 100%;
     background: var(--term-bg);
     overflow: hidden;
-    /* A thin edge in the attached session's colour (set inline), so the terminal itself says where
-       you are. Borders are outside clientWidth, so this does not disturb the fit calculation. */
-    border-left: 2px solid transparent;
+    /* A thin edge in the workspace's colour, so a screenshot of the terminal alone still says which window
+       it came from. Borders are outside clientWidth, so this does not disturb the fit calculation. */
+    border-left: 2px solid var(--ws);
 }
 
 /* ---- Transient status pill ---- */
@@ -314,15 +481,18 @@ body {
     color: var(--accent);
 }
 
+/* The one filled control on a card, in the workspace's colour with a near-black glyph on it - the only
+   place the hue is used as a fill rather than an edge, which is what makes it read as "this is the button". */
 .btn.primary {
-    background: rgba(210, 153, 34, 0.85);
-    color: #1c1400;
-    border-color: rgba(210, 153, 34, 0.9);
+    background: color-mix(in srgb, var(--ws) 82%, transparent);
+    color: #06090d;
+    border-color: var(--ws);
+    font-weight: 600;
 }
 
 .btn.primary:hover {
-    background: var(--accent-hover);
-    color: #1c1400;
+    background: var(--ws);
+    color: #06090d;
 }
 
 .btn.danger {
@@ -375,15 +545,16 @@ body {
     transition: border-color 0.15s ease;
 }
 
-/* Border carries the state (no separate status dot): green when you can type into the attached
-   session, amber while this window is between sessions or reconnecting. A dropped connection is not a
-   failure here - the session on the other side kept running. */
+/* Border carries the state (no separate status dot): lit in the workspace's colour when you can type into the
+   attached session, plain grey while this window is between sessions or reconnecting. A dropped connection is
+   not a failure here - the session on the other side kept running - so it goes quiet rather than warning. */
 #input.online {
-    border-color: var(--ok);
+    border-color: var(--ws);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--ws) 25%, transparent);
 }
 
 #input.waiting {
-    border-color: var(--accent);
+    border-color: var(--border);
 }
 
 #input:disabled {
@@ -409,7 +580,9 @@ body {
     gap: 6px;
 }
 
-/* Semi-transparent so they stay unobtrusive when floating over typed text; solidify on hover. */
+/* Semi-transparent so they stay unobtrusive when floating over typed text; solidify on hover. The workspace's
+   hue is in them from the start - a faint wash and a tinted edge - so the cluster belongs to the window it
+   sits in instead of being three grey squares. */
 .icon-btn {
     display: inline-flex;
     align-items: center;
@@ -417,18 +590,18 @@ body {
     width: 28px;
     height: 28px;
     padding: 0;
-    background: rgba(48, 54, 61, 0.5);
-    color: var(--text);
-    border: 1px solid rgba(48, 54, 61, 0.6);
+    background: color-mix(in srgb, var(--ws) 12%, rgba(48, 54, 61, 0.5));
+    color: color-mix(in srgb, var(--ws) 30%, var(--text));
+    border: 1px solid color-mix(in srgb, var(--ws) 28%, rgba(48, 54, 61, 0.6));
     border-radius: 7px;
     cursor: pointer;
     backdrop-filter: blur(2px);
 }
 
 .icon-btn:hover {
-    background: rgba(48, 54, 61, 0.9);
-    border-color: var(--accent);
-    color: var(--accent);
+    background: color-mix(in srgb, var(--ws) 22%, rgba(48, 54, 61, 0.9));
+    border-color: var(--ws);
+    color: var(--ws);
 }
 
 .icon-btn:disabled {
@@ -436,15 +609,16 @@ body {
     cursor: not-allowed;
 }
 
+/* Send is the one filled button in the window: the hue solid, with a near-black arrow on it. */
 .icon-btn.primary {
-    background: rgba(210, 153, 34, 0.75);
-    color: #1c1400;
-    border-color: rgba(210, 153, 34, 0.8);
+    background: color-mix(in srgb, var(--ws) 78%, transparent);
+    color: #06090d;
+    border-color: var(--ws);
 }
 
 .icon-btn.primary:hover {
-    background: var(--accent-hover);
-    color: #1c1400;
+    background: var(--ws);
+    color: #06090d;
 }
 
 #mic.recording {

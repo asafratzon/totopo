@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, test } from "node:test";
+import { afterEach, beforeEach, describe, mock, test } from "node:test";
 import { pathToFileURL } from "node:url";
 
 // The registry ships inside the image as plain JS (the container runs it with the baked node-pty), so it
@@ -10,6 +10,9 @@ import { pathToFileURL } from "node:url";
 const WEBTERM_DIR = join(import.meta.dirname, "..", "templates", "webterm");
 
 type Registry = {
+    away: (client: FakeSocket, isAway: boolean) => void;
+    tick: () => void;
+    typed: (sid: string) => void;
     attach: (sid: string, client: FakeSocket) => "attached" | "busy" | "gone";
     attachedCount: () => number;
     attachedSid: (client: FakeSocket) => string | null;
@@ -21,10 +24,11 @@ type Registry = {
     list: () => WireEntry[];
     pickForClient: (client: FakeSocket, wantSid?: string) => string | null;
     rename: (sid: string, rawName: string) => boolean;
+    reorder: (sid: string, index: number) => boolean;
     sessionFor: (client: FakeSocket) => Session | undefined;
     takeover: (sid: string, client: FakeSocket) => "attached" | "gone";
 };
-type Session = { id: string; label: string; name: string | null; colorIndex: number; term: FakeTerm };
+type Session = { id: string; label: string; name: string | null; colorIndex: number; buffer: string; term: FakeTerm };
 type WireEntry = {
     id: string;
     label: string;
@@ -33,23 +37,28 @@ type WireEntry = {
     createdAt: number;
     attached: boolean;
     unread: boolean;
+    working: boolean;
+    attention: boolean;
 };
 type Event = { t: string; sid?: string; client?: FakeSocket; data?: string; label?: string };
 
-const { createRegistry, PALETTE_SIZE, MAX_NAME_LENGTH, cleanName } = (await import(
-    pathToFileURL(join(WEBTERM_DIR, "sessions.js")).href
-)) as {
-    createRegistry: (options: {
-        spawn: () => FakeTerm;
-        maxSessions: number;
-        agent: string;
-        maxBuffer: number;
-        onEvent: (event: Event) => void;
-    }) => Registry;
-    PALETTE_SIZE: number;
-    MAX_NAME_LENGTH: number;
-    cleanName: (raw: unknown) => string | null;
-};
+const { createRegistry, PALETTE_SIZE, MAX_NAME_LENGTH, cleanName, WORK_QUIET_MS, WORK_WARMUP_MS, WORK_TICK_MS, ECHO_MS, MIN_WORK_MS } =
+    (await import(pathToFileURL(join(WEBTERM_DIR, "sessions.js")).href)) as {
+        createRegistry: (options: {
+            spawn: () => FakeTerm;
+            maxSessions: number;
+            maxBuffer: number;
+            onEvent: (event: Event) => void;
+        }) => Registry;
+        PALETTE_SIZE: number;
+        MAX_NAME_LENGTH: number;
+        cleanName: (raw: unknown) => string | null;
+        WORK_QUIET_MS: number;
+        WORK_WARMUP_MS: number;
+        WORK_TICK_MS: number;
+        ECHO_MS: number;
+        MIN_WORK_MS: number;
+    };
 
 // A browser window: the registry only ever asks whether its socket is still open (1 = WebSocket.OPEN).
 class FakeSocket {
@@ -100,7 +109,6 @@ function setup(maxSessions = 8) {
             return term;
         },
         maxSessions,
-        agent: "claude",
         maxBuffer: 64,
         onEvent: (event) => events.push(event),
     });
@@ -203,7 +211,7 @@ describe("a session outlives the browser", () => {
         assert.equal(registry.count(), 0);
         const exited = events.find((e) => e.t === "exit");
         assert.equal(exited?.sid, session.id);
-        assert.equal(exited?.label, "claude 1", "the log line names the session, so the label travels with the event");
+        assert.equal(exited?.label, "Agent 1", "the log line names the session, so the label travels with the event");
     });
 });
 
@@ -281,6 +289,27 @@ describe("closing moves the window that was driving it", () => {
         assert.equal(registry.count(), 0);
     });
 
+    test("nowhere when every session that is left is driven from another window", () => {
+        const { events, registry } = setup();
+        const window = new FakeSocket();
+        const theirs = start(registry);
+        const mine = start(registry);
+        registry.attach(theirs.id, new FakeSocket());
+        registry.attach(mine.id, window);
+        events.length = 0;
+
+        registry.close(mine.id);
+
+        // Nothing is taken from the other window, so this one is left holding no session - which the page has to
+        // show, because the screen it is still displaying belongs to the session that was just closed.
+        assert.equal(registry.attachedSid(window), null);
+        assert.equal(events.filter((e) => e.t === "replay").length, 0, "no session to replay into it");
+        assert.ok(
+            events.some((e) => e.t === "changed"),
+            "the bar still has to be redrawn",
+        );
+    });
+
     test("nowhere when the window that was driving it is gone", () => {
         const { events, registry } = setup();
         const gone = new FakeSocket();
@@ -324,7 +353,7 @@ describe("labels and colours follow one counter", () => {
 
         assert.deepEqual(
             sessions.map((s) => s.label),
-            Array.from({ length: PALETTE_SIZE + 2 }, (_, i) => `claude ${i + 1}`),
+            Array.from({ length: PALETTE_SIZE + 2 }, (_, i) => `Agent ${i + 1}`),
         );
         assert.deepEqual(
             sessions.map((s) => s.colorIndex),
@@ -337,7 +366,7 @@ describe("labels and colours follow one counter", () => {
         const first = start(registry);
         registry.close(first.id);
 
-        assert.equal(start(registry).label, "claude 2", "the next session is 2, not 1 again");
+        assert.equal(start(registry).label, "Agent 2", "the next session is 2, not 1 again");
     });
 });
 
@@ -354,7 +383,7 @@ describe("renaming a session", () => {
         assert.equal(registry.rename(session.id, "refactor auth"), true);
 
         assert.equal(entryFor(registry, session.id).name, "refactor auth");
-        assert.equal(entryFor(registry, session.id).label, "claude 1", "the default label stays, so the number is still there");
+        assert.equal(entryFor(registry, session.id).label, "Agent 1", "the default label stays, so the number is still there");
         assert.equal(events.filter((e) => e.t === "changed").length, 1, "the bar is rebroadcast once");
     });
 
@@ -403,6 +432,100 @@ describe("renaming a session", () => {
         assert.equal(cleanName(42), null);
         assert.equal(cleanName(""), null);
         assert.equal(cleanName("  hi  "), "hi", "surrounding whitespace is trimmed");
+    });
+});
+
+// ---- Reordering the bar -----------------------------------------------------------------------------------------------------------------
+// The order of the tabs is registry state, because every window draws the same bar. A drag has to move the
+// session here, or the next broadcast would put it straight back. `index` is the position it ends up at.
+
+describe("reordering the bar", () => {
+    function bar(registry: Registry) {
+        return registry.list().map((entry) => entry.label);
+    }
+
+    test("moves a session to the given position and tells every window", () => {
+        const { events, registry } = setup();
+        const first = start(registry);
+        start(registry);
+        start(registry);
+        events.length = 0;
+
+        assert.equal(registry.reorder(first.id, 2), true);
+
+        assert.deepEqual(bar(registry), ["Agent 2", "Agent 3", "Agent 1"]);
+        assert.equal(events.filter((e) => e.t === "changed").length, 1, "the bar is rebroadcast once");
+    });
+
+    test("moves one to the front too", () => {
+        const { registry } = setup();
+        start(registry);
+        start(registry);
+        const third = start(registry);
+
+        registry.reorder(third.id, 0);
+
+        assert.deepEqual(bar(registry), ["Agent 3", "Agent 1", "Agent 2"]);
+    });
+
+    test("an index past the ends clamps rather than being refused", () => {
+        const { registry } = setup();
+        const first = start(registry);
+        start(registry);
+        const third = start(registry);
+
+        registry.reorder(first.id, 99);
+        assert.deepEqual(bar(registry), ["Agent 2", "Agent 3", "Agent 1"], "past the right edge lands last");
+
+        registry.reorder(third.id, -5);
+        assert.deepEqual(bar(registry), ["Agent 3", "Agent 2", "Agent 1"], "past the left edge lands first");
+    });
+
+    test("a move that changes nothing is not broadcast", () => {
+        const { events, registry } = setup();
+        const first = start(registry);
+        start(registry);
+        events.length = 0;
+
+        assert.equal(registry.reorder(first.id, 0), false);
+        assert.equal(registry.reorder("no-such-sid", 1), false);
+        assert.equal(events.length, 0, "neither is a change, so no window is woken for it");
+    });
+
+    test("position is not identity: labels, colours, names and drivers all come along", () => {
+        const { registry } = setup();
+        const window = new FakeSocket();
+        const first = start(registry);
+        const second = start(registry);
+        registry.rename(first.id, "refactor auth");
+        registry.attach(first.id, window);
+        first.term.say("some output");
+
+        registry.reorder(first.id, 1);
+
+        const moved = entryFor(registry, first.id);
+        assert.equal(moved.label, "Agent 1", "the number is the session's, not the tab position's");
+        assert.equal(moved.name, "refactor auth");
+        assert.equal(moved.colorIndex, 0, "and so is the colour");
+        assert.equal(moved.attached, true, "the window is still driving it");
+        assert.equal(registry.attachedSid(window), first.id);
+        assert.equal(registry.get(first.id)?.buffer, "some output", "the screen it can replay is untouched");
+        assert.equal(second.term.killed, false);
+    });
+
+    test("closing lands you on the neighbour the bar now shows, not the one it used to", () => {
+        const { registry } = setup();
+        const window = new FakeSocket();
+        const first = start(registry);
+        const second = start(registry);
+        const third = start(registry);
+        // Drag the third tab to the front, so "Agent 2" is now the last tab in the bar.
+        registry.reorder(third.id, 0);
+        registry.attach(second.id, window);
+
+        registry.close(second.id);
+
+        assert.equal(registry.attachedSid(window), first.id, "the tab to its left in the reordered bar");
     });
 });
 
@@ -601,15 +724,432 @@ describe("the unread mark", () => {
     });
 });
 
+// ---- Is the agent working, and did it just stop? ----------------------------------------------------------------------------------------
+// A PTY carries bytes, not "thinking" and "waiting", so the state is read off the rhythm of the output: a
+// stretch of it means working, going quiet means it stopped. What makes these tests worth reading is the
+// output that is not work - an idle TUI's odd redraw, and the echo of the user's own typing - because reading
+// either as work is what makes a tab flicker at somebody who is just sitting there. The clock is mocked
+// because the whole feature is about time, and the registry keeps no timers of its own: the server calls
+// tick() several times a second, so the helpers below do too.
+
+describe("the working state", () => {
+    beforeEach(() => {
+        mock.timers.enable({ apis: ["Date"] });
+        // The mocked clock starts at zero, which is also what a fresh session's timestamps hold. Move it on so
+        // "never happened" reads as long ago here, the way it does on any real clock.
+        mock.timers.tick(WORK_QUIET_MS);
+    });
+    afterEach(() => mock.timers.reset());
+
+    // An agent producing output for `worked`, the way one really does: small chunks, close together, with the
+    // server sweeping between them.
+    function streams(registry: Registry, session: Session, worked: number) {
+        session.term.say("thinking...");
+        for (let elapsed = 0; elapsed < worked; elapsed += WORK_TICK_MS) {
+            mock.timers.tick(WORK_TICK_MS);
+            session.term.say("...");
+            registry.tick();
+        }
+    }
+
+    // And then it stops, which is only visible once the quiet has lasted long enough to mean something.
+    function goesQuiet(registry: Registry) {
+        mock.timers.tick(WORK_QUIET_MS);
+        registry.tick();
+    }
+
+    test("sustained output puts a session to work, and the bar hears it once", () => {
+        const { events, registry } = setup();
+        const session = start(registry);
+        // Watched, so the only state left to change is the working one: an unwatched session would also flip
+        // to unread, and this test is about how often work is announced.
+        registry.attach(session.id, new FakeSocket());
+        events.length = 0;
+
+        streams(registry, session, WORK_WARMUP_MS);
+
+        assert.equal(entryFor(registry, session.id).working, true);
+        assert.equal(events.filter((e) => e.t === "changed").length, 1, "a working agent must not broadcast per chunk");
+    });
+
+    test("a lone blip of output is not work", () => {
+        const { events, registry } = setup();
+        const session = start(registry);
+        events.length = 0;
+
+        // What an idle agent looks like: one small redraw, measured minutes into a session nobody is using,
+        // and then nothing. Sweeping past it must never show the tab as busy.
+        session.term.say("\x1b[2K\x1b[36m>\x1b[0m ");
+        for (let elapsed = 0; elapsed < WORK_QUIET_MS * 2; elapsed += WORK_TICK_MS) {
+            mock.timers.tick(WORK_TICK_MS);
+            registry.tick();
+            assert.equal(entryFor(registry, session.id).working, false, "one redraw is not an agent at work");
+        }
+        // The one frame is the unread flip - there is output nobody has seen. The sweeps themselves have
+        // nothing to say, and a sweep that runs several times a second had better stay that way.
+        assert.equal(events.filter((e) => e.t === "changed").length, 1);
+    });
+
+    test("the echo of the user's own typing is not work", () => {
+        const { registry } = setup();
+        const session = start(registry);
+
+        // Typing steadily for long enough that the echo alone would look like a working agent. Each keystroke
+        // comes straight back, and a TUI redraws its whole input box for every one of them.
+        for (let elapsed = 0; elapsed < WORK_WARMUP_MS * 3; elapsed += WORK_TICK_MS) {
+            registry.typed(session.id);
+            session.term.say("\x1b[2K> hello there");
+            mock.timers.tick(WORK_TICK_MS);
+            registry.tick();
+            assert.equal(entryFor(registry, session.id).working, false, "the tab you are typing into is not busy");
+        }
+    });
+
+    test("output that arrives after the typing stopped is the agent", () => {
+        const { registry } = setup();
+        const session = start(registry);
+
+        registry.typed(session.id);
+        session.term.say("> go\r\n");
+        mock.timers.tick(ECHO_MS);
+        streams(registry, session, WORK_WARMUP_MS);
+
+        assert.equal(entryFor(registry, session.id).working, true, "sending a message is what starts real work");
+    });
+
+    test("silence ends it", () => {
+        const { registry } = setup();
+        const session = start(registry);
+        streams(registry, session, WORK_WARMUP_MS);
+
+        mock.timers.tick(WORK_QUIET_MS - 1);
+        registry.tick();
+        assert.equal(entryFor(registry, session.id).working, true, "a gap between chunks is not the end of the work");
+
+        mock.timers.tick(1);
+        registry.tick();
+        assert.equal(entryFor(registry, session.id).working, false);
+    });
+
+    test("a stretch of work that ends with nobody watching asks for attention", () => {
+        const { registry } = setup();
+        const session = start(registry);
+
+        streams(registry, session, MIN_WORK_MS);
+        goesQuiet(registry);
+
+        const entry = entryFor(registry, session.id);
+        assert.equal(entry.working, false);
+        assert.equal(entry.attention, true, "this is the moment the whole feature exists for");
+    });
+
+    test("a short piece of work does not", () => {
+        const { registry } = setup();
+        const study = start(registry);
+
+        // Long enough to show as busy, too short to be a job finishing: a one-line answer, a redraw on resize.
+        streams(registry, study, WORK_WARMUP_MS);
+        goesQuiet(registry);
+
+        assert.equal(entryFor(registry, study.id).attention, false, "lighting up for these teaches the user to ignore the light");
+    });
+
+    test("a session a window is already watching never asks", () => {
+        const { registry } = setup();
+        const session = start(registry);
+        registry.attach(session.id, new FakeSocket());
+
+        streams(registry, session, MIN_WORK_MS);
+        goesQuiet(registry);
+
+        assert.equal(entryFor(registry, session.id).attention, false, "you are looking straight at it");
+    });
+
+    test("a window that is not in front of the user is not watching", () => {
+        const { registry } = setup();
+        const session = start(registry);
+        const window = new FakeSocket();
+        registry.attach(session.id, window);
+        // Behind another browser tab, or another app. The socket is open and this window still drives the
+        // session, which is why an open socket cannot be what decides: the alert is the only thing that would
+        // ever reach a user who is looking somewhere else.
+        registry.away(window, true);
+
+        streams(registry, session, MIN_WORK_MS);
+        goesQuiet(registry);
+
+        assert.equal(entryFor(registry, session.id).attention, true);
+        assert.equal(registry.attachedSid(window), session.id, "being away does not hand the session back");
+    });
+
+    test("coming back to the window spends the alert on what it is driving", () => {
+        const { events, registry } = setup();
+        const session = start(registry);
+        const other = start(registry);
+        const window = new FakeSocket();
+        registry.attach(session.id, window);
+        registry.away(window, true);
+        streams(registry, session, MIN_WORK_MS);
+        goesQuiet(registry);
+        streams(registry, other, MIN_WORK_MS);
+        goesQuiet(registry);
+        events.length = 0;
+
+        registry.away(window, false);
+
+        assert.equal(entryFor(registry, session.id).attention, false, "it is on screen now, which is what the alert asked for");
+        assert.equal(entryFor(registry, other.id).attention, true, "the sessions this window is not on still wait");
+        assert.equal(events.filter((e) => e.t === "changed").length, 1);
+    });
+
+    test("coming back with nothing to spend says nothing", () => {
+        const { events, registry } = setup();
+        const session = start(registry);
+        const window = new FakeSocket();
+        registry.attach(session.id, window);
+        events.length = 0;
+
+        // Every focus and blur reports, so this runs whenever the user clicks between apps.
+        registry.away(window, false);
+        registry.away(window, true);
+        registry.away(window, false);
+
+        assert.equal(events.length, 0);
+    });
+
+    test("a client that never reports is treated as watching", () => {
+        const { registry } = setup();
+        const session = start(registry);
+        registry.attach(session.id, new FakeSocket());
+
+        streams(registry, session, MIN_WORK_MS);
+        goesQuiet(registry);
+
+        // The old behaviour, kept for anything on the socket that is not this page.
+        assert.equal(entryFor(registry, session.id).attention, false);
+    });
+
+    test("visiting the session spends the alert", () => {
+        const { registry } = setup();
+        const session = start(registry);
+        streams(registry, session, MIN_WORK_MS);
+        goesQuiet(registry);
+
+        registry.attach(session.id, new FakeSocket());
+
+        assert.equal(entryFor(registry, session.id).attention, false);
+    });
+
+    test("an agent that starts again drops the alert it had raised", () => {
+        const { registry } = setup();
+        const session = start(registry);
+        streams(registry, session, MIN_WORK_MS);
+        goesQuiet(registry);
+
+        streams(registry, session, WORK_WARMUP_MS);
+
+        const entry = entryFor(registry, session.id);
+        assert.equal(entry.working, true);
+        assert.equal(entry.attention, false, "an alert that says 'it stopped' must not sit on a session that is going");
+    });
+
+    test("a tick that changes nothing says nothing", () => {
+        const { events, registry } = setup();
+        const session = start(registry);
+        streams(registry, session, MIN_WORK_MS);
+        goesQuiet(registry);
+        events.length = 0;
+
+        registry.tick();
+        registry.tick();
+
+        assert.equal(events.length, 0, "this runs several times a second, so a quiet sweep has to stay silent");
+    });
+});
+
 // ---- Cross-file literal sync -------------------------------------------------------------------------------------------------------------
 
 describe("the palette the browser draws matches the indexes the registry hands out", () => {
-    test("app.js defines exactly PALETTE_SIZE colours", () => {
-        const app = readFileSync(join(WEBTERM_DIR, "public", "app.js"), "utf8");
-        const match = /SESSION_COLORS = \[([^\]]*)\]/.exec(app);
-        assert.ok(match, "app.js must define SESSION_COLORS");
+    const app = readFileSync(join(WEBTERM_DIR, "public", "app.js"), "utf8");
+
+    test("app.js defines one colour more than PALETTE_SIZE", () => {
+        const match = /const PALETTE = \[([^\]]*)\]/.exec(app);
+        assert.ok(match, "app.js must define PALETTE");
         const colors = (match?.[1] ?? "").match(/"#[0-9a-f]{3,8}"/gi) ?? [];
-        // colorIndex is (seq - 1) % PALETTE_SIZE, so a shorter list would leave sessions with no colour.
-        assert.equal(colors.length, PALETTE_SIZE, "SESSION_COLORS drifted from PALETTE_SIZE in sessions.js");
+        // The workspace takes one slot from the palette and sessions rotate through the rest, so the list has
+        // to be one longer than the counter the registry rotates: colorIndex is (seq - 1) % PALETTE_SIZE, and
+        // a shorter list would leave sessions doubling up on a colour that is still free.
+        assert.equal(colors.length, PALETTE_SIZE + 1, "PALETTE drifted from PALETTE_SIZE in sessions.js");
+        assert.equal(new Set(colors).size, colors.length, "two slots of the same colour would make two sessions look alike");
+    });
+
+    test("a session can never be handed the workspace's own colour", () => {
+        // The rule is a property of the list the tabs index into, not a check somewhere that could be skipped.
+        assert.match(app, /const SESSION_COLORS = PALETTE\.filter\(\(_, slot\) => slot !== WORKSPACE_SLOT\)/);
+    });
+});
+
+// ---- The browser's own tab ---------------------------------------------------------------------------------------------------------------
+
+// The bar is invisible when the window is behind something else, which is exactly when an agent finishing
+// matters most. Title and favicon are the only two things a hidden window can say, so both have to be driven
+// by the same session state the tabs are. Checked as text: painting the icon needs a DOM and a canvas.
+describe("the browser tab repeats what the bar says", () => {
+    const app = readFileSync(join(WEBTERM_DIR, "public", "app.js"), "utf8");
+
+    test("the title counts the sessions that are waiting", () => {
+        const body = /function refreshBrowserTab\(\) \{([\s\S]*?)\n\}/.exec(app)?.[1] ?? "";
+        assert.ok(body, "app.js must define refreshBrowserTab");
+        assert.match(body, /sessions\.filter\(\(entry\) => entry\.attention\)/, "the same flag the tabs light up from");
+        assert.match(body, /document\.title = waiting\.length > 0/);
+        // The workspace name and nothing else: a tab strip gives you a few characters, and the icon is what
+        // says this is totopo.
+        assert.match(body, /const name = workspaceName \|\| "totopo"/);
+    });
+
+    test("the icon is repainted from that state, dot and all", () => {
+        assert.match(app, /faviconLink\.href = iconCanvas\.toDataURL\("image\/png"\)/);
+        // A drawing call this browser lacks must not take the frame handler down with it.
+        assert.match(app, /try \{\s*drawIcon\(ctx, badgeColor, badgeColor === DONE_COLOR && pulseDim\);\s*\} catch \{/);
+        const body = /function drawIcon\(ctx, badgeColor, dim\) \{([\s\S]*?)\n\}/.exec(app)?.[1] ?? "";
+        assert.ok(body, "app.js must define drawIcon");
+        assert.match(body, /if \(badgeColor\) \{/, "one mark, drawn when there is something to say");
+    });
+
+    test("working and waiting are different shapes in different places", () => {
+        // Colour alone was not enough: a blue dot and a green dot in the same corner are nearly the same dot at
+        // 16px, which is the only size that matters here. Working is a bar down the right edge, waiting is a dot
+        // in the corner - so the two can be told apart without reading the hue at all.
+        const body = /function drawIcon\(ctx, badgeColor, dim\) \{([\s\S]*?)\n\}/.exec(app)?.[1] ?? "";
+        assert.match(body, /if \(badgeColor === BUSY_COLOR\) \{[\s\S]*?ctx\.roundRect\(25, 9\.5, 4, 14, 2\)/);
+        assert.match(body, /ctx\.arc\(24, 8, dim \? \d[\d.]* : \d[\d.]*, 0, Math\.PI \* 2\)/, "and the dot is the waiting one");
+        // One at a time: waiting outranks working, which is what lets both use the same corner of the icon.
+        assert.match(body, /return;\n {4}\}/);
+    });
+
+    test("the dot says which of the three states this window is in", () => {
+        // From another browser tab, "they are on it" and "one of them wants you" are different things to know,
+        // and a 16px icon has room for one mark - so it is one dot in two colours, waiting outranking working.
+        const body = /function dotColor\(\) \{([\s\S]*?)\n\}/.exec(app)?.[1] ?? "";
+        assert.ok(body, "app.js must define dotColor");
+        assert.match(
+            body,
+            /entry\.attention\)\) return DONE_COLOR;\s*\n\s*if \(sessions\.some\(\(entry\) => entry\.working\)\) return BUSY_COLOR/,
+        );
+        // Fixed colours, not the session palette: green only reads at a glance if it means the same everywhere.
+        assert.match(app, /const DONE_COLOR = "#[0-9a-f]{6}";\nconst BUSY_COLOR = "#[0-9a-f]{6}";/);
+    });
+
+    test("the waiting dot keeps pulsing until the session is visited", () => {
+        const body = /function pulseBadge\(\) \{([\s\S]*?)\n\}/.exec(app)?.[1] ?? "";
+        assert.ok(body, "app.js must define pulseBadge");
+        // The pulse reads the state itself, so visiting the session stops it wherever the visit happened.
+        assert.match(body, /if \(!sessions\.some\(\(entry\) => entry\.attention\)\) \{/);
+        assert.match(body, /pulseTimer = setTimeout\(pulseBadge, PULSE_MS\)/, "and otherwise keeps going");
+        // Started only when it is not already running: an alert arriving next to one already up is the same
+        // state, and restarting the cycle on every frame the server sends would make the dot stutter.
+        assert.match(app, /if \(!pulseTimer\) pulseTimer = setTimeout\(pulseBadge, PULSE_MS\)/);
+    });
+
+    test("the pulse never leaves the icon with no mark on it", () => {
+        // A browser slows a hidden tab's timers to a second and then to one a minute - and a hidden tab is the
+        // whole point of the icon. Pulsing between two visible dots means a stalled pulse still says green;
+        // pulsing between a dot and nothing could sit on "nothing" with an alert up.
+        const body = /function drawIcon\(ctx, badgeColor, dim\) \{([\s\S]*?)\n\}/.exec(app)?.[1] ?? "";
+        assert.match(body, /ctx\.globalAlpha = dim \? 0\.\d+ : 1;/);
+        assert.match(body, /ctx\.arc\(24, 8, dim \? \d[\d.]* : \d[\d.]*, 0, Math\.PI \* 2\)/);
+    });
+
+    test("the page tells the server when it is not in front of the user", () => {
+        // Without this an open socket looks like a pair of eyes, and the alert - the whole reason the icon and the
+        // title exist - could never fire for the window it was built for.
+        assert.match(app, /t: "away", on: document\.visibilityState === "hidden" \|\| !document\.hasFocus\(\)/);
+        // Both events, and again on every reconnect: a new socket knows nothing about this window yet.
+        assert.match(app, /window\.addEventListener\("focus", reportPresence\)/);
+        assert.match(app, /window\.addEventListener\("blur", reportPresence\)/);
+        const open = /ws\.onopen = \(\) => \{([\s\S]*?)\n {4}\};/.exec(app)?.[1] ?? "";
+        assert.ok(open, "app.js must open the socket");
+        assert.match(open, /reportPresence\(\)/);
+    });
+
+    test("the dot follows the state it was painted from", () => {
+        // Every paint asks dotColor() again, so work starting or stopping mid-pulse cannot leave the icon holding
+        // a state that has moved on. Arrival times are stamped from the incoming frame rather than while the bar
+        // is drawn, because a bar render is skipped mid-drag.
+        assert.match(app, /const badgeColor = dotColor\(\);/);
+        assert.match(app, /noteArrivals\(\);\n {4}renderBar\(\)/, "stamped before anything draws");
+    });
+});
+
+// ---- A screen with nothing behind it ----------------------------------------------------------------------------------------------------
+
+// A session can end while a window is watching it. Where the server has a free session to move that window to,
+// its replay paints over the dead screen; where every session that is left is driven from another window, nothing
+// does - and a dead screen looks exactly like a live one, so the page has to say it. Checked as text: the page
+// needs a DOM and a terminal.
+describe("a session that goes away takes its screen with it", () => {
+    const app = readFileSync(join(WEBTERM_DIR, "public", "app.js"), "utf8");
+    const body = /function applySessions\(msg\) \{([\s\S]*?)\n\}/.exec(app)?.[1] ?? "";
+
+    test("the terminal is replaced when the session it was showing is not in the bar any more", () => {
+        assert.ok(body, "app.js must define applySessions");
+        assert.match(body, /const gone = shownSid !== null && !sessions\.some\(\(entry\) => entry\.id === shownSid\)/);
+        // Also when this window never had one: a window that connects while every session is driven elsewhere
+        // lands on nothing, and an empty terminal explains nothing.
+        assert.match(body, /if \(gone \|\| shownSid === null\) showMessage\(idleMessage\(\)\)/);
+    });
+
+    test("the message says what to do about it", () => {
+        const message = /function idleMessage\(\) \{([\s\S]*?)\n\}/.exec(app)?.[1] ?? "";
+        assert.ok(message, "app.js must define idleMessage");
+        assert.match(message, /sessions\.length === 0/, "starting one and taking one over are different ways out");
+        assert.match(app, /function showMessage\(line\) \{\n {4}if \(line === shownMessage\) return;/, "repainted only when it changes");
+    });
+
+    test("the last screen of an agent that exited on its own is left alone", () => {
+        // It usually says why it quit, and the note written under it is what makes it readable as history.
+        assert.match(app, /shownMessage = EXITED_SCREEN;/);
+        assert.match(body, /shownMessage !== EXITED_SCREEN/);
+    });
+
+    test("a session this window could still take back keeps its screen", () => {
+        // The takeover card offers it back, so the screen behind the card is the session it is talking about.
+        // That is why the check is "gone from the bar" rather than "not attached here".
+        const taken = /msg\.t === "taken"([\s\S]*?)else if/.exec(app)?.[1] ?? "";
+        assert.ok(taken, "app.js must handle the taken frame");
+        assert.doesNotMatch(taken, /shownSid = null/);
+    });
+});
+
+// ---- Clipboard gate ----------------------------------------------------------------------------------------------------------------------
+
+// A session's replay buffer is its raw output, so it still holds the OSC 52 of any copy made in that
+// session earlier. Writing it into the terminal re-runs that sequence, which put stale text on the
+// clipboard on every attach and made each session tab look like it had a clipboard of its own. The page
+// needs a DOM, so the wiring is checked as text; the parse ordering it relies on is xterm's own.
+describe("replayed output cannot write the clipboard", () => {
+    const app = readFileSync(join(WEBTERM_DIR, "public", "app.js"), "utf8");
+
+    test("the replay frame goes through writeReplay", () => {
+        const branch = /msg\.t === "replay"([\s\S]*?)else if/.exec(app)?.[1] ?? "";
+        assert.ok(branch, "app.js must handle the replay frame");
+        assert.match(branch, /writeReplay\(msg\.data\)/);
+        assert.doesNotMatch(branch, /term\.write\(/, "a replay written straight to the terminal re-runs its OSC 52");
+    });
+
+    test("writeReplay holds the gate until the replay has been parsed", () => {
+        const body = /function writeReplay\(data\) \{([\s\S]*?)\n\}/.exec(app)?.[1] ?? "";
+        assert.ok(body, "app.js must define writeReplay");
+        assert.match(body, /pendingReplays\+\+/);
+        // Released in term.write's callback, which xterm runs once that chunk is parsed and before it
+        // parses anything written after it - so live output during a replay still copies.
+        assert.match(body, /term\.write\(data, \(\) => \{\s*pendingReplays--;/);
+    });
+
+    test("the OSC 52 handler ignores a replay, and any window that is not in front", () => {
+        const handler = /registerOscHandler\(52,([\s\S]*?)\n\}\);/.exec(app)?.[1] ?? "";
+        assert.ok(handler, "app.js must handle OSC 52");
+        assert.match(handler, /if \(pendingReplays > 0\) return true;/);
+        assert.match(handler, /document\.hasFocus\(\)/);
     });
 });

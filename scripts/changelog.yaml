@@ -19,6 +19,27 @@ in_progress:
         - >-
           Stopping containers from the Advanced menu now leaves them in place instead of removing them, so the
           next session resumes fast rather than rebuilding.
+    - rc_version: "3.16.0-rc-2"
+      date: "2026-07-25"
+      added:
+        - >-
+          A browser front-end for your agents - the web interface. Enable it under Settings > Web interface (off by
+          default), then run `webterm claude`, `webterm opencode`, or `webterm codex` inside the container to drive the
+          real agent from your browser. It relays the actual agent TUI over your subscription and stays inside the
+          sandbox; sessions belong to the container and survive a closed tab or a slept laptop; a tab bar runs several
+          at once and shows which agents are working and which finished while you were away; and the composer adds
+          image paste, drop, upload, and dictation the terminal cannot do. Each workspace gets its own sticky,
+          loopback-only host port. Existing containers are offered a rebuild on next session start.
+      changed:
+        - >-
+          Stopping containers from the Advanced menu now leaves them in place instead of removing them, so the next
+          session resumes fast rather than rebuilding; Stop containers and Clear agent memory now always ask which one,
+          instead of acting straight away when only one exists.
+      fixed:
+        - >-
+          A rebuilt container could start with AI CLIs weeks out of date - the "last updated" stamp was written fresh
+          even when the install layer came from Docker's cache, so the session-start update was skipped on the strength
+          of it.
 releases:
   - version: 3.15.1
     date: "2026-07-21"

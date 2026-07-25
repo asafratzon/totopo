@@ -726,28 +726,6 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
         }
     }
 
-    // --- Once-per-container-start hooks (auto-resume marker + webterm auto-start) --------------------------------------------------------
-    // Runs on the created AND resumed (docker start) paths, never on connect to an already-running
-    // container - that is what makes the resume once-per-start. The marker is planted before the user's
-    // shell attaches below, so whichever session launches first (webterm PTY or the .bashrc hook)
-    // consumes a fresh marker and resumes the most recent conversation; later sessions start fresh.
-    if (startResult !== "connected") {
-        const autoStartAgent = readAutoStartAgent();
-        if (autoStartAgent !== AUTO_START.off) {
-            plantResumeMarker(containerName, resumeCommandFor(autoStartAgent, cacheDir));
-            if (webPort !== null) await launchWebInterface(containerName, autoStartAgent, webPort);
-        }
-    } else if (webPort !== null) {
-        // Connecting to a container that is already up: the interface it started with should still be
-        // serving. When it is not (crashed, or stopped by hand) the greeting would advertise a URL that
-        // does not answer, so start it again. No resume marker here - this is not a container start, so
-        // the relaunched interface opens a fresh conversation rather than re-resuming an old one.
-        const autoStartAgent = readAutoStartAgent();
-        if (autoStartAgent !== AUTO_START.off && (await webSessionInfo(webPort)) === null) {
-            await launchWebInterface(containerName, autoStartAgent, webPort);
-        }
-    }
-
     // --- Published ports notice (every session start: created / resumed / connected) -----------------------------------------------------
     // Ports are static config, so the notice derives straight from the mappings - no .lock lookup needed.
     // The web mapping is skipped here: its URL is announced by the container greeting, where it is actionable.
@@ -770,6 +748,34 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
         } else {
             outro("Startup checks failed.");
             process.exit(1);
+        }
+    }
+
+    // --- Once-per-container-start hooks (auto-resume marker + webterm auto-start) --------------------------------------------------------
+    // Deliberately after the startup checks above: those update the AI CLIs inside the container, and the
+    // interface spawns its agent the moment it comes up. Started any earlier, the browser would get a session
+    // running the version the image was built with - a claude too old to know the current models - and the only
+    // way out would be to wait for the update and start another session. The terminal never had this problem:
+    // the login shell attaches below, after the update.
+    //
+    // Runs on the created AND resumed (docker start) paths, never on connect to an already-running container -
+    // that is what makes the resume once-per-start. The marker is planted before the user's shell attaches, so
+    // whichever session launches first (webterm PTY or the .bashrc hook) consumes a fresh marker and resumes
+    // the most recent conversation; later sessions start fresh.
+    if (startResult !== "connected") {
+        const autoStartAgent = readAutoStartAgent();
+        if (autoStartAgent !== AUTO_START.off) {
+            plantResumeMarker(containerName, resumeCommandFor(autoStartAgent, cacheDir));
+            if (webPort !== null) await launchWebInterface(containerName, autoStartAgent, webPort);
+        }
+    } else if (webPort !== null) {
+        // Connecting to a container that is already up: the interface it started with should still be
+        // serving. When it is not (crashed, or stopped by hand) the greeting would advertise a URL that
+        // does not answer, so start it again. No resume marker here - this is not a container start, so
+        // the relaunched interface opens a fresh conversation rather than re-resuming an old one.
+        const autoStartAgent = readAutoStartAgent();
+        if (autoStartAgent !== AUTO_START.off && (await webSessionInfo(webPort)) === null) {
+            await launchWebInterface(containerName, autoStartAgent, webPort);
         }
     }
 

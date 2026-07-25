@@ -46,21 +46,21 @@ async function stopContainers(): Promise<void> {
         return;
     }
 
-    let toStop: string[];
-    if (running.length === 1) {
-        toStop = running;
-        log.info(`Stopping ${running[0] ?? ""}...`);
-    } else {
-        const selected = await multiselect({
-            message: "Select containers to stop: (space to toggle, enter to confirm)",
-            options: running.map((name) => ({ value: name, label: name })),
-            required: false,
-        });
-        if (isCancel(selected)) {
-            cancel();
-            return;
-        }
-        toStop = selected as string[];
+    // Always show the selector, even for a single container, so nothing is stopped without the user picking it.
+    const selected = await multiselect({
+        message: "Select containers to stop: (space to toggle, enter to confirm)",
+        options: running.map((name) => ({ value: name, label: name })),
+        required: false,
+    });
+    if (isCancel(selected)) {
+        cancel();
+        return;
+    }
+
+    const toStop = selected as string[];
+    if (toStop.length === 0) {
+        log.info("Nothing selected - no containers stopped.");
+        return;
     }
 
     for (const name of toStop) {
@@ -79,23 +79,21 @@ async function clearAgentMemory(): Promise<void> {
         return;
     }
 
-    let toClear: string[];
-    if (workspaces.length === 1) {
-        const w = workspaces[0];
-        if (w === undefined) return;
-        toClear = [w.workspaceId];
-        log.info(`Clearing agent memory for ${w.workspaceId}...`);
-    } else {
-        const selected = await multiselect({
-            message: "Select workspaces to clear agent memory for: (space to toggle, enter to confirm)",
-            options: workspaces.map((w) => ({ value: w.workspaceId, label: w.workspaceId, hint: w.workspaceRoot })),
-            required: false,
-        });
-        if (isCancel(selected)) {
-            cancel();
-            return;
-        }
-        toClear = selected as string[];
+    // Always show the selector, even for a single workspace, so memory is never cleared without the user picking it.
+    const selected = await multiselect({
+        message: "Select workspaces to clear agent memory for: (space to toggle, enter to confirm)",
+        options: workspaces.map((w) => ({ value: w.workspaceId, label: w.workspaceId, hint: w.workspaceRoot })),
+        required: false,
+    });
+    if (isCancel(selected)) {
+        cancel();
+        return;
+    }
+
+    const toClear = selected as string[];
+    if (toClear.length === 0) {
+        log.info("Nothing selected - no agent memory cleared.");
+        return;
     }
 
     for (const id of toClear) {

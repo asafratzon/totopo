@@ -1,11 +1,16 @@
 // app.js - xterm.js terminal, the session bar, and the rich composer, all over one WebSocket.
 //
 // The session bar is mission control for this container: every live agent is a tab, this window drives
-// one of them at a time, and none of them ends because a window closed or a laptop slept. The terminal
-// renders the attached session's live TUI and forwards raw keystrokes and resizes. The composer handles
-// typing, image paste/drop/upload, and dictation. Pasted images are uploaded and their container paths
-// are inserted inline, so what you see in the box is what is sent; on Send the whole composer text goes
-// as one {t:"paste"} frame the server wraps as a bracketed paste.
+// one of them at a time, and none of them ends because a window closed or a laptop slept. Tabs are dragged
+// to reorder them, and the order is the registry's, so every window agrees on it. A tab also says what its
+// session is doing without being opened: a light travels round it while the agent works, and it holds lit
+// until visited when an agent finished something nobody was there to see - which the page title and the
+// favicon repeat, for when the whole window is behind something else. The terminal renders the
+// attached session's live TUI and forwards raw keystrokes and resizes. The composer handles typing, image
+// paste/drop/upload, and dictation, and what is in it belongs to the attached session: switching tabs swaps
+// the draft, and ending a session throws its draft away. Pasted images are uploaded and their container
+// paths are inserted inline, so what you see in the box is what is sent; on Send the whole composer text
+// goes as one {t:"paste"} frame the server wraps as a bracketed paste.
 
 // --- Terminal ----------------------------------------------------------------------------------------------------------------------------
 
@@ -48,8 +53,20 @@ let workspaceName = "";
 let editingSid = null;
 let editingValue = "";
 let renameJustStarted = false;
-// True while the terminal shows the "no sessions" hint, so it is painted once and not on every frame.
-let emptyPainted = false;
+// The session tab being dragged along the bar right now, and where it would land: `dropIndex` is the
+// position it would hold in the list once it has been taken out of it, which is what the registry splices
+// at. `barRenderPending` remembers a render that was skipped because a drag was in flight.
+let draggingSid = null;
+let dropIndex = null;
+let barRenderPending = false;
+// What the terminal is holding: either a live session's screen (`shownSid`), or a message where a session used
+// to be (`shownMessage`). At most one of them is set. They are tracked because a session can end while this
+// window is watching it - nothing replays over the dead screen then, and a dead screen looks exactly like a
+// live one. The last screen of an agent that exited on its own is kept rather than replaced (it usually says
+// why), so it counts as a message already delivered and no later bar update paints over it.
+const EXITED_SCREEN = "exited";
+let shownSid = null;
+let shownMessage = null;
 
 let connected = false;
 let everConnected = false;
@@ -92,26 +109,72 @@ function scheduleRefresh() {
     }, 50);
 }
 
-// --- Session bar -------------------------------------------------------------------------------------------------------------------------
+// Hand the keyboard back to the terminal. Clicking in the session bar blurs it - a tab is a plain div, so
+// the click moves focus off the terminal, and "+ New session" is a button that takes focus itself - and
+// while it is blurred both typing and Cmd+V have nowhere to land, which reads as the terminal ignoring the
+// clipboard. Anything the user is deliberately typing in keeps focus: the composer, a rename editor, and
+// the buttons on an open card.
+function focusTerminal() {
+    const active = document.activeElement;
+    if (active === input || active?.classList.contains("rename")) return;
+    if (overlay.classList.contains("show")) return;
+    term.focus();
+}
 
-// Muted retro tones, one per session, assigned by the server as an index and rotated once every colour
-// is in use. Keep the length in step with PALETTE_SIZE in sessions.js (a test pins it).
-const SESSION_COLORS = [
-    "#3fb950", // green - the same one the composer border uses when a session is live (--ok in styles.css)
-    "#e0a458", // harvest gold
-    "#d9764a", // burnt orange
-    "#6fa8b3", // teal
-    "#c98fa6", // dusty rose
-    "#9a8fd8", // muted violet
+// --- Colour ------------------------------------------------------------------------------------------------------------------------------
+//
+// One palette, used for two different jobs.
+//
+// The workspace takes one slot of it and keeps it: the composer border, the terminal's edge, the active tab's
+// edge and the buttons are all that one colour, so a window is recognisable across a screen full of them
+// before a single word is read. The slot comes from the published port, which totopo assigns per workspace,
+// so two containers open side by side are almost never the same colour and nothing has to be configured.
+//
+// The sessions inside that window then rotate through the slots the workspace did not take. That is what
+// makes a tab's own dot mean "this session" rather than "this workspace", and it is why a dot can never come
+// out the same colour as the window it lives in.
+
+// Cyberpunk neons on a near-black bar, spaced around the wheel and deliberately free of yellow and orange -
+// those read as a warning here, and the bar has enough to say without one. Keep the length one longer than
+// PALETTE_SIZE in sessions.js (a test pins it): the workspace eats one slot, sessions rotate the rest.
+const PALETTE = [
+    "#2fe58a", // spring green
+    "#1fe0cf", // turquoise
+    "#f24bff", // magenta
+    "#b45cff", // neon violet
+    "#29b6ff", // azure
+    "#ff2e88", // rose
 ];
 
-// How often the ages on the session tabs are redrawn. Age is what makes a session parked for a week
-// obvious, so it has to keep up without being a per-second timer.
-const AGE_TICK_MS = 60_000;
+// A stable number for this window when there is no port to read (a proxy, or the default 80/443). Not a
+// hash worth defending - it only has to be the same on every reload of the same address.
+function hostSeed() {
+    let seed = 0;
+    for (const ch of location.host) seed = (seed * 31 + ch.codePointAt(0)) % 100_000;
+    return seed;
+}
+
+// The workspace's slot in the palette. Ports are handed out lowest-free-first per workspace, so neighbours
+// land on different colours.
+const WORKSPACE_SLOT = (Number(location.port) || hostSeed()) % PALETTE.length;
+const WORKSPACE_COLOR = PALETTE[WORKSPACE_SLOT];
+// Every slot except the workspace's own, in palette order. A session index maps into this, so "never the
+// workspace colour" is a property of the list rather than a rule someone has to remember.
+const SESSION_COLORS = PALETTE.filter((_, slot) => slot !== WORKSPACE_SLOT);
+
+// Handed to the stylesheet once, before anything is drawn: everything that carries the window's identity
+// reads it from there, so there is one line in the page that decides what colour this workspace is.
+document.documentElement.style.setProperty("--ws", WORKSPACE_COLOR);
 
 function colorFor(entry) {
     return SESSION_COLORS[(entry.colorIndex ?? 0) % SESSION_COLORS.length];
 }
+
+// --- Session bar -------------------------------------------------------------------------------------------------------------------------
+
+// How often the ages on the session tabs are redrawn. Age is what makes a session parked for a week
+// obvious, so it has to keep up without being a per-second timer.
+const AGE_TICK_MS = 60_000;
 
 function ageLabel(createdAt) {
     const minutes = Math.floor((Date.now() - createdAt) / 60_000);
@@ -120,6 +183,54 @@ function ageLabel(createdAt) {
     const hours = Math.floor(minutes / 60);
     if (hours < 24) return `${hours}h`;
     return `${Math.floor(hours / 24)}d`;
+}
+
+// --- Animations that outlive a render ----------------------------------------------------------------------------------------------------
+//
+// The bar is rebuilt from scratch on every frame the server sends, and both of the moving states last longer
+// than the gap between frames. A CSS animation on a brand new element starts from zero, so left alone the
+// travelling light would jump back to the start of its lap and the "it finished" flash would replay - or
+// worse, be cut off half way and never seen. Both are fixed the same way: work out how far in the animation
+// should already be and hand that to the browser as a negative delay, so a fresh element carries on mid-stride.
+
+// One lap of the travelling light, and how long the arrival flash lasts. Both must match styles.css.
+const TRACE_MS = 4_000;
+const ARRIVAL_MS = 1_400;
+
+// The travelling light, in its own clipped layer: the light rides the layer's edge and turns the corners, so
+// the part of it that hangs past a corner has to be cut off rather than drawn over the neighbouring tab.
+// Every light in the bar shares one phase (the wall clock), so several working sessions move as one.
+function traceLayer() {
+    const layer = document.createElement("span");
+    layer.className = "trace";
+    const comet = document.createElement("i");
+    comet.className = "comet";
+    comet.style.animationDelay = `-${Date.now() % TRACE_MS}ms`;
+    layer.append(comet);
+    return layer;
+}
+
+// When each waiting session's alert first appeared, so the tab flash plays once per alert rather than once per
+// frame. Stamped from the incoming frame rather than while the bar is drawn, because a bar render is skipped
+// mid-drag and an alert that arrives then must still be able to flash.
+const arrivedAt = new Map();
+
+function noteArrivals() {
+    for (const entry of sessions) {
+        if (entry.attention && !arrivedAt.has(entry.id)) arrivedAt.set(entry.id, Date.now());
+    }
+    // A session that is no longer waiting (visited, or gone from the bar) may flash again next time it finishes.
+    for (const sid of [...arrivedAt.keys()]) {
+        if (!sessions.some((entry) => entry.id === sid && entry.attention)) arrivedAt.delete(sid);
+    }
+}
+
+function startArrival(tab, sid) {
+    const elapsed = Date.now() - (arrivedAt.get(sid) ?? Date.now());
+    // Long past: the tab just holds its lit state, which is the part that waits for you.
+    if (elapsed >= ARRIVAL_MS) return;
+    tab.classList.add("arriving");
+    tab.style.animationDelay = `-${elapsed}ms`;
 }
 
 // The tab's name is either a static label or, while this tab is being renamed, an inline editor.
@@ -192,14 +303,27 @@ function cancelRename() {
     term.focus();
 }
 
+// What a tab is saying about its session right now, for the tooltip. The colours say it at a glance; this is
+// for the moment someone wonders what the light means.
+function stateNote(entry) {
+    if (entry.working) return " - working";
+    if (entry.attention) return " - finished while you were elsewhere";
+    return "";
+}
+
 function tabFor(entry) {
     const tab = document.createElement("div");
     tab.className = "tab";
     if (entry.id === attachedSid) tab.classList.add("active");
     if (entry.unread) tab.classList.add("unread");
+    if (entry.working) tab.classList.add("working");
+    if (entry.attention) tab.classList.add("attention");
     tab.style.setProperty("--sc", colorFor(entry));
     // The tooltip keeps the default "agent N" even when a custom name is shown, so the number stays findable.
-    tab.title = `${entry.label} - running ${ageLabel(entry.createdAt)} - double-click the name to rename`;
+    tab.title = `${entry.label} - running ${ageLabel(entry.createdAt)}${stateNote(entry)} - double-click the name to rename`;
+
+    if (entry.working) tab.append(traceLayer());
+    if (entry.attention) startArrival(tab, entry.id);
 
     const dot = document.createElement("span");
     dot.className = "dot";
@@ -230,13 +354,126 @@ function tabFor(entry) {
     tab.append(close);
 
     tab.addEventListener("click", () => {
+        // The click itself blurred the terminal, so the keyboard goes back to it either way - switching
+        // sessions and clicking the session you are already in both leave you able to type and paste.
+        focusTerminal();
         if (entry.id === attachedSid) return;
         sendFrame({ t: "attach", sid: entry.id });
     });
+
+    makeDraggable(tab, entry);
     return tab;
 }
 
+// --- Reordering the bar ------------------------------------------------------------------------------------------------------------------
+//
+// The order of the tabs belongs to the registry, so a drag ends as one "reorder" frame and the new order
+// arrives back as an ordinary bar broadcast - every window moves together, and nothing is sorted locally on
+// the way. Dragging is mouse and trackpad only: this is the browser's own drag and drop, which touch does
+// not fire.
+
+// Where the dragged session would land if it were dropped on `entry`. Counted in the list with the dragged
+// session already taken out, so it is the same index the registry splices at. Null over the dragged tab
+// itself, which is not a move.
+function dropIndexFor(entry, after) {
+    const others = sessions.filter((session) => session.id !== draggingSid);
+    const at = others.findIndex((session) => session.id === entry.id);
+    if (at === -1) return null;
+    return after ? at + 1 : at;
+}
+
+function clearDropMarks() {
+    for (const el of tabbar.querySelectorAll(".tab")) el.classList.remove("drop-before", "drop-after");
+}
+
+// The line showing where the tab would go, drawn in the gap on one side of a tab.
+function markDrop(tab, after) {
+    clearDropMarks();
+    tab.classList.add(after ? "drop-after" : "drop-before");
+}
+
+function makeDraggable(tab, entry) {
+    // A tab being renamed is not draggable: it holds a text field, and a draggable ancestor stops the
+    // pointer from selecting the text inside it.
+    tab.draggable = entry.id !== editingSid;
+
+    tab.addEventListener("dragstart", (event) => {
+        draggingSid = entry.id;
+        dropIndex = null;
+        if (event.dataTransfer) {
+            event.dataTransfer.effectAllowed = "move";
+            // Firefox starts no drag at all without a payload. It is never read back: the dragged session
+            // is the one in draggingSid, and only a drag started in this bar is honoured.
+            event.dataTransfer.setData("text/plain", entry.id);
+        }
+        tab.classList.add("dragging");
+    });
+
+    tab.addEventListener("dragover", (event) => {
+        if (!draggingSid) return;
+        event.preventDefault();
+        const box = tab.getBoundingClientRect();
+        const after = event.clientX > box.left + box.width / 2;
+        dropIndex = dropIndexFor(entry, after);
+        if (dropIndex === null) clearDropMarks();
+        else markDrop(tab, after);
+    });
+
+    tab.addEventListener("drop", (event) => {
+        if (!draggingSid) return;
+        event.preventDefault();
+        commitDrag();
+    });
+
+    tab.addEventListener("dragend", endDrag);
+}
+
+// The bar past the last tab - the empty space and the "+ New session" button - means "put it at the end".
+// The bar reads as one row, so a drop anywhere along it should land rather than being thrown away.
+tabbar.addEventListener("dragover", (event) => {
+    if (!draggingSid) return;
+    // A tab does its own half-and-half hit test; this is only the space around them.
+    if (event.target instanceof Element && event.target.closest(".tab")) return;
+    event.preventDefault();
+    const tabs = tabbar.querySelectorAll(".tab");
+    const last = tabs[tabs.length - 1];
+    dropIndex = Math.max(0, sessions.length - 1);
+    if (last) markDrop(last, true);
+});
+
+tabbar.addEventListener("drop", (event) => {
+    // A drop on a tab has already been handled and cleared the drag, so this only catches the space around
+    // them.
+    if (!draggingSid) return;
+    event.preventDefault();
+    commitDrag();
+});
+
+function commitDrag() {
+    if (draggingSid && dropIndex !== null) sendFrame({ t: "reorder", sid: draggingSid, index: dropIndex });
+    endDrag();
+}
+
+// Every drag ends here, dropped or abandoned, so none can leave the bar marked up or frozen mid-render.
+function endDrag() {
+    draggingSid = null;
+    dropIndex = null;
+    clearDropMarks();
+    tabbar.querySelector(".tab.dragging")?.classList.remove("dragging");
+    if (barRenderPending) {
+        barRenderPending = false;
+        renderBar();
+    }
+}
+
 function renderBar() {
+    // A drag is in flight, so the bar holds still: rebuilding it would replace the element being dragged,
+    // which cancels the drag outright. Both the age tick and any incoming frame can land mid-drag. The bar
+    // catches up the moment the drag ends.
+    if (draggingSid) {
+        barRenderPending = true;
+        return;
+    }
     tabbar.textContent = "";
     for (const entry of sessions) {
         tabbar.append(tabFor(entry));
@@ -277,16 +514,196 @@ function renderBar() {
             editor.setSelectionRange(end, end);
         }
     }
-
-    // The terminal carries the attached session's colour too, so it says where you are on its own.
-    const attached = sessions.find((entry) => entry.id === attachedSid);
-    termEl.style.borderLeftColor = attached ? colorFor(attached) : "transparent";
-
-    // Name the workspace in the browser tab, so several open containers are told apart at a glance.
-    document.title = workspaceName ? `totopo@${workspaceName}` : "totopo";
 }
 
 setInterval(renderBar, AGE_TICK_MS);
+
+// --- The browser's own tab ----------------------------------------------------------------------------------------------------------------
+//
+// Everything the session bar does is invisible when the window is behind something else, and that is exactly
+// when an agent finishing matters most - one browser tab per workspace, the user in an editor or in another
+// workspace. So the same two facts are said again in the only two places a hidden window can speak: the title
+// and the icon.
+//
+// The icon is drawn here rather than shipped as a file because it has to carry live state. It keeps the chip
+// (that is the product's mark, and its gold is the chip's own, not the interface's palette) and adds a thin
+// frame in the workspace colour, so a row of pinned tabs is readable at a glance. On top of that it carries the
+// state of the container in one mark - a dot in the top-right:
+//
+//   nothing                        - nothing is happening in here
+//   blue bar down the right edge   - an agent is working
+//   green dot in the top corner    - an agent finished and is waiting for you, pulsing until you go and look
+//
+// One mark at a time, and the two are told apart by where they sit and what shape they are - not by colour. Hue
+// alone was not enough: a blue dot and a green dot in the same corner were nearly the same dot at 16px, which is
+// the only size that really matters here. Green outranks blue, since something that wants you matters more than
+// something still going, and because only one mark is ever drawn the two are free to share the same corner.
+//
+// The colours are fixed rather than taken from the palette: this is a traffic light, and it only reads at a
+// glance if green means the same thing in every workspace. Which session it was is the session bar's job. Blue
+// rather than orange for working, because the chip itself is orange and a mark has to be a different thing from
+// the icon it sits on.
+//
+// Waiting pulses for as long as it is waiting - that is the state you have to come back for, so it keeps asking.
+// It pulses between a bright dot and a dim one, never between a dot and nothing: a hidden tab is exactly the tab
+// this icon exists for, and a browser slows a hidden tab's timers to a second and then to one a minute, so a
+// blink that went dark could sit dark for a minute with the alert up. Two visible states cannot lose it - the
+// worst a throttled tab does is pulse slowly, or stall on the dim dot, which still says green.
+
+const faviconLink = document.querySelector('link[rel="icon"]');
+// Drawn at 2x the nominal 32px so the downscale to 16px stays crisp.
+const ICON_SIZE = 64;
+const ICON_UNITS = 32;
+// One step of the waiting pulse. Slow enough to read as a pulse rather than a flicker in a tab strip.
+const PULSE_MS = 700;
+const DONE_COLOR = "#2fe58a";
+const BUSY_COLOR = "#3b9dff";
+
+let iconCanvas = null;
+let pulseTimer = null;
+let pulseDim = false;
+
+// What the dot should say right now, or null for no dot. Read fresh on every paint rather than passed in, so a
+// paint from anywhere - an incoming bar, or the pulse - draws what is true now.
+function dotColor() {
+    if (sessions.some((entry) => entry.attention)) return DONE_COLOR;
+    if (sessions.some((entry) => entry.working)) return BUSY_COLOR;
+    return null;
+}
+
+// The chip, on the panel dark, with the workspace frame, and the state dot on top of it.
+function paintFavicon() {
+    if (!faviconLink) return;
+    iconCanvas ??= document.createElement("canvas");
+    // Setting the size clears the canvas and resets the transform, so every paint starts from nothing.
+    iconCanvas.width = ICON_SIZE;
+    iconCanvas.height = ICON_SIZE;
+    const ctx = iconCanvas.getContext("2d");
+    if (!ctx) return;
+    const badgeColor = dotColor();
+    // Only the waiting mark pulses. Work is a steady state and a second thing moving would just be noise.
+    try {
+        drawIcon(ctx, badgeColor, badgeColor === DONE_COLOR && pulseDim);
+    } catch {
+        // A drawing call this browser does not have (roundRect is recent) must not reach the frame handler
+        // that got here: the shipped favicon.svg stays, and everything else on the page carries on.
+        return;
+    }
+    faviconLink.type = "image/png";
+    faviconLink.href = iconCanvas.toDataURL("image/png");
+}
+
+function drawIcon(ctx, badgeColor, dim) {
+    ctx.scale(ICON_SIZE / ICON_UNITS, ICON_SIZE / ICON_UNITS);
+
+    // Panel, and the frame that says which workspace this tab belongs to.
+    ctx.fillStyle = "#0d1117";
+    ctx.beginPath();
+    ctx.roundRect(0, 0, 32, 32, 7);
+    ctx.fill();
+    ctx.strokeStyle = WORKSPACE_COLOR;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(1, 1, 30, 30, 6);
+    ctx.stroke();
+
+    // The chip: a rounded triangle, stroked as well as filled so it nearly fills the icon and still reads at
+    // 16px. Same geometry and gradient as favicon.svg, which is what a browser without canvas still gets.
+    const chip = ctx.createLinearGradient(0, 0, 0, 32);
+    chip.addColorStop(0, "#f0c078");
+    chip.addColorStop(1, "#d08a3c");
+    ctx.fillStyle = chip;
+    ctx.strokeStyle = chip;
+    ctx.lineWidth = 4;
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    ctx.moveTo(16, 7);
+    ctx.lineTo(26, 24);
+    ctx.lineTo(6, 24);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Toasted salt, so it reads as a chip rather than a triangle.
+    ctx.fillStyle = "rgba(138, 90, 34, 0.5)";
+    for (const [x, y] of [
+        [13.5, 18],
+        [18.5, 20.4],
+    ]) {
+        ctx.beginPath();
+        ctx.arc(x, y, 1.2, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // Working: a bar down the right edge. Its own length is what makes it a different mark from the dot below,
+    // and the right edge is the one place a long mark does not have to compete with the frame it runs beside.
+    // Static, unlike the dot: a browser slows a hidden tab's timers to a second and then to a minute, so anything
+    // that moves has to still read when frozen - and two marks moving in a 16px icon is noise, not information.
+    // Every mark is punched out of the icon first, so it stays legible over the chip's shoulder and the frame.
+    if (badgeColor === BUSY_COLOR) {
+        ctx.fillStyle = "#0d1117";
+        ctx.beginPath();
+        ctx.roundRect(23.5, 8, 7, 17, 3.5);
+        ctx.fill();
+        ctx.fillStyle = badgeColor;
+        ctx.beginPath();
+        ctx.roundRect(25, 9.5, 4, 14, 2);
+        ctx.fill();
+        return;
+    }
+
+    // Waiting: a dot in the top-right corner, pulsing between bright and dim. The punch-out never changes size,
+    // so the pulse moves the dot and nothing else.
+    if (badgeColor) {
+        ctx.fillStyle = "#0d1117";
+        ctx.beginPath();
+        ctx.arc(24, 8, 6.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = badgeColor;
+        ctx.globalAlpha = dim ? 0.45 : 1;
+        ctx.beginPath();
+        ctx.arc(24, 8, dim ? 3.4 : 4.8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+    }
+}
+
+// The pulse runs only while something is waiting, and stops the moment nothing is. It re-checks the state itself
+// rather than trusting the bar that started it, so a session visited in this window (or in another one) puts the
+// icon back to a steady dot without waiting for anything else to happen.
+function pulseBadge() {
+    pulseTimer = null;
+    if (!sessions.some((entry) => entry.attention)) {
+        pulseDim = false;
+        paintFavicon();
+        return;
+    }
+    pulseDim = !pulseDim;
+    paintFavicon();
+    pulseTimer = setTimeout(pulseBadge, PULSE_MS);
+}
+
+// Title and icon together, from the sessions the server last sent. The count goes in the title because that
+// is what a window list and a taskbar show; the dot does the work in a tab strip too narrow for words.
+function refreshBrowserTab() {
+    // Just the workspace, no product name: a tab strip gives you a few characters, and the icon already says
+    // this is totopo. What the title is for is which workspace, and how many sessions want you.
+    const waiting = sessions.filter((entry) => entry.attention);
+    const name = workspaceName || "totopo";
+    document.title = waiting.length > 0 ? `(${waiting.length}) ${name}` : name;
+
+    // Painted from the state every time, pulse or no pulse. Starting the pulse is guarded by the timer rather
+    // than by which sessions are waiting: an alert arriving next to one already up is the same state, and
+    // restarting the cycle on every frame the server sends would make the dot stutter.
+    paintFavicon();
+    if (waiting.length === 0) {
+        if (pulseTimer) clearTimeout(pulseTimer);
+        pulseTimer = null;
+        pulseDim = false;
+        return;
+    }
+    if (!pulseTimer) pulseTimer = setTimeout(pulseBadge, PULSE_MS);
+}
 
 // --- Overlay cards -----------------------------------------------------------------------------------------------------------------------
 
@@ -413,6 +830,9 @@ function connect() {
         // it back, and picks something sensible when it cannot.
         // The last session this window drove: the server hands it back when no other window is on it.
         sendFrame({ t: "hello", sid: sessionStorage.getItem(LAST_SID_KEY) ?? "" });
+        // Straight after hello, so a window that reconnects while it is behind something else is not mistaken
+        // for one being watched. A reconnect is a new socket, and the server knows nothing about it yet.
+        reportPresence();
         refreshComposer();
     };
 
@@ -475,7 +895,20 @@ function probeConnection() {
 window.addEventListener("online", probeConnection);
 document.addEventListener("visibilitychange", () => {
     if (!document.hidden) probeConnection();
+    reportPresence();
 });
+
+// The server cannot see whether this window is in front of the user, and it has to know: a session that finishes
+// while nobody is looking is the one worth an alert, and until this is reported an open socket looks like a pair
+// of eyes. Hidden and unfocused both count as away - a window behind another browser tab and a window behind an
+// editor are the same thing from here. Coming back is a visit, so the server spends the alert on whatever this
+// window is driving.
+function reportPresence() {
+    sendFrame({ t: "away", on: document.visibilityState === "hidden" || !document.hasFocus() });
+}
+
+window.addEventListener("focus", reportPresence);
+window.addEventListener("blur", reportPresence);
 
 function onFrame(msg) {
     // Any frame at all proves the socket works, which is what a wake probe is waiting to hear.
@@ -486,16 +919,31 @@ function onFrame(msg) {
     if (msg.t === "sessions") {
         applySessions(msg);
     } else if (msg.t === "replay") {
+        // A replay for the session this window is already on is a reconnect or a session taken back, not a
+        // switch, so the composer is left exactly as it is. A real switch parks the outgoing draft, ends
+        // dictation, and loads the incoming session's draft once the screen is up.
+        const switching = attachedSid !== msg.sid;
+        if (switching) {
+            captureDraft(attachedSid);
+            persistDrafts();
+            stopDictation();
+        }
         attachedSid = msg.sid;
         sessionStorage.setItem(LAST_SID_KEY, msg.sid);
-        emptyPainted = false;
+        shownSid = msg.sid;
+        shownMessage = null;
         // Reset first: the buffer is the whole screen, so writing it without a reset would paint it on
         // top of whatever was there (the previous session, or this one before a reconnect).
         term.reset();
-        if (msg.data) term.write(msg.data);
+        // Through writeReplay, not term.write: a replayed screen still carries the OSC 52 of any copy made
+        // in that session, and re-running it would rewrite the clipboard behind the user's back.
+        writeReplay(msg.data);
         scheduleRefresh();
+        // The click that got here (a tab, or "+ New session") left the terminal blurred.
+        focusTerminal();
         // The PTY was last sized for whichever window had it; this one may be a different shape.
         sendResize();
+        if (switching) restoreDraft(msg.sid);
         refreshComposer();
     } else if (msg.t === "out") {
         // Output from a session this window has already left; the window that has it is showing it.
@@ -505,14 +953,24 @@ function onFrame(msg) {
     } else if (msg.t === "busy") {
         takeoverCard(msg.sid);
     } else if (msg.t === "taken") {
+        // The session is alive in the other window and can be taken back, so the draft is parked under it
+        // rather than thrown away, and comes back with it.
+        captureDraft(attachedSid);
+        persistDrafts();
+        clearComposer();
         attachedSid = null;
         takenCard(msg.sid);
         refreshComposer();
     } else if (msg.t === "exit") {
         if (msg.sid === attachedSid) {
             attachedSid = null;
+            // The box was holding an unsent message for a conversation that no longer exists.
+            clearComposer();
             term.write(`\r\n\x1b[90m[webterm] ${agentName} exited, so this session is gone.\x1b[0m\r\n`);
+            shownSid = null;
+            shownMessage = EXITED_SCREEN;
         }
+        dropDraft(msg.sid);
         refreshComposer();
     } else if (msg.t === "error") {
         if (msg.code === "cap") capCard();
@@ -526,22 +984,50 @@ function applySessions(msg) {
     maxSessions = msg.max ?? maxSessions;
     agentName = msg.agent || agentName;
     workspaceName = msg.workspace || "";
+    // Before the bar draws: its flash reads these timestamps, so an alert plays once instead of on every frame.
+    noteArrivals();
     renderBar();
+    // Said again where a window that is behind something else can still be heard.
+    refreshBrowserTab();
+    // Sessions that are no longer in the bar take their unsent messages with them.
+    pruneDrafts();
     refreshComposer();
-    // Nothing is running: say so, rather than leaving the last session's screen up as if it were live.
-    if (sessions.length === 0 && !emptyPainted) {
-        emptyPainted = true;
-        term.reset();
-        term.write(`\r\n  \x1b[90mNo sessions. Use "+ New session" above to start ${agentName}.\x1b[0m\r\n`);
+    // A session can vanish from under this window: closed here, closed from another window, or the agent exited.
+    // Where the server had a free session to move this window to, that session's replay has already painted over
+    // it. Where it did not - every remaining session is being driven elsewhere - this is the only thing that says
+    // the screen in front of the user is dead, and the alternative is a window that looks live and swallows
+    // keystrokes. A screen this window is no longer driving but could take back is left alone: that is the
+    // takeover case, and its card offers it back.
+    if (!attachedSid && shownMessage !== EXITED_SCREEN) {
+        const gone = shownSid !== null && !sessions.some((entry) => entry.id === shownSid);
+        if (gone || shownSid === null) showMessage(idleMessage());
     }
+}
+
+// Why there is nothing to type into, and the way out of it. Neither line names the session that went away: it
+// is gone from the bar, and what the user needs is the next step.
+function idleMessage() {
+    return sessions.length === 0
+        ? `No sessions. Use "+ New session" above to start ${agentName}.`
+        : "Every session is open in another window - click one above to bring it here.";
+}
+
+// Replaces the terminal with that line. Only when it changes, so an ordinary bar update does not clear and
+// redraw the screen underneath the user.
+function showMessage(line) {
+    if (line === shownMessage) return;
+    shownSid = null;
+    shownMessage = line;
+    term.reset();
+    term.write(`\r\n  \x1b[90m${line}\x1b[0m\r\n`);
 }
 
 // --- Composer ----------------------------------------------------------------------------------------------------------------------------
 
 // Connection and attachment state show on the composer's border and in its placeholder rather than a
-// separate status line: green when keystrokes have somewhere to go, amber when they do not, with the
-// reason in the placeholder.
-const INPUT_PLACEHOLDER = "Type a message. Paste or drop an image, or use the buttons. Enter sends, Shift+Enter for a newline.";
+// separate status line: lit in the workspace colour when keystrokes have somewhere to go, grey when they do
+// not, with the reason in the placeholder.
+const INPUT_PLACEHOLDER = "Type a message. Paste or drop an image. Enter sends, Shift+Enter for a newline.";
 
 function refreshComposer() {
     const live = connected && Boolean(attachedSid);
@@ -603,7 +1089,13 @@ function autoGrow() {
     // behind them; grow with content up to a cap.
     input.style.height = `${Math.min(Math.max(input.scrollHeight, 112), 200)}px`;
 }
-input.addEventListener("input", autoGrow);
+input.addEventListener("input", () => {
+    autoGrow();
+    // Kept up to date as you type, so a reload mid-sentence or a session taken away in another window does
+    // not lose it. The write itself is debounced.
+    captureDraft(attachedSid);
+    schedulePersist();
+});
 
 // Insert text into the composer at the current caret position (surrounded by spaces so a path
 // does not fuse with adjacent words), then place the caret right after it.
@@ -627,19 +1119,143 @@ function insertAtCursor(text) {
 const pendingImages = new Map();
 let imageCounter = 0;
 
+// Empty the box, and the image tokens with it: a token whose text is gone points at nothing.
+function clearComposer() {
+    input.value = "";
+    pendingImages.clear();
+    imageCounter = 0;
+    autoGrow();
+}
+
+// --- Per-session drafts ------------------------------------------------------------------------------------------------------------------
+//
+// A half-written message belongs to the conversation it was written for, so the box is swapped when you
+// switch tabs and emptied when the session ends. Three things move together: the text, the image tokens in
+// it, and the counter those tokens come from - a token only means something next to the map that expands it,
+// so one shared map would let [Image #1] in one session resolve to another session's file.
+//
+// The draft is this window's. It survives a switch, a reload and a reconnect after sleep (sessionStorage,
+// where the last attached session is already remembered), but it does not follow the session into another
+// browser window: an unsent message stays where it was typed.
+
+const DRAFTS_KEY = "webterm-drafts";
+// How long after the last keystroke the drafts reach storage. Every switch, send and close writes at once,
+// so this only covers reloading mid-sentence.
+const DRAFT_PERSIST_MS = 500;
+
+// sid -> { text, images: [[token, path], ...], counter }. Images are pairs rather than a Map so a draft is
+// plain JSON.
+const drafts = new Map();
+let draftTimer = null;
+
+function persistDrafts() {
+    if (draftTimer) {
+        clearTimeout(draftTimer);
+        draftTimer = null;
+    }
+    try {
+        sessionStorage.setItem(DRAFTS_KEY, JSON.stringify([...drafts]));
+    } catch {
+        // A disabled or full store must not break typing; the drafts still work for this page's lifetime.
+    }
+}
+
+function schedulePersist() {
+    if (draftTimer) return;
+    draftTimer = setTimeout(() => {
+        draftTimer = null;
+        persistDrafts();
+    }, DRAFT_PERSIST_MS);
+}
+
+// Storage is a convenience: anything unreadable or malformed just means the composer starts empty.
+try {
+    const stored = JSON.parse(sessionStorage.getItem(DRAFTS_KEY) ?? "[]");
+    if (Array.isArray(stored)) {
+        for (const pair of stored) {
+            const [sid, draft] = Array.isArray(pair) ? pair : [];
+            if (typeof sid === "string" && draft && typeof draft.text === "string") drafts.set(sid, draft);
+        }
+    }
+} catch {
+    // Nothing to restore.
+}
+
+// A reload keeps what was typed rather than eating it, including the last few keystrokes.
+window.addEventListener("pagehide", persistDrafts);
+
+// The composer as it stands now, stored under the session it was typed for. An empty box stores nothing, so
+// clicking through sessions does not pile up empty drafts. Callers decide whether the write is urgent.
+function captureDraft(sid) {
+    if (!sid) return;
+    if (input.value) drafts.set(sid, { text: input.value, images: [...pendingImages], counter: imageCounter });
+    else drafts.delete(sid);
+}
+
+function restoreDraft(sid) {
+    const draft = drafts.get(sid);
+    input.value = draft?.text ?? "";
+    pendingImages.clear();
+    for (const [token, path] of draft?.images ?? []) pendingImages.set(token, path);
+    imageCounter = draft?.counter ?? 0;
+    autoGrow();
+}
+
+// The session is gone, so its unsent message goes with it.
+function dropDraft(sid) {
+    if (sid && drafts.delete(sid)) persistDrafts();
+}
+
+// A session that is no longer in the bar took its draft with it. This is what covers a session closed from
+// another window, which arrives as a bar without it rather than as an exit.
+function pruneDrafts() {
+    if (drafts.size === 0) return;
+    const live = new Set(sessions.map((session) => session.id));
+    let removed = false;
+    for (const sid of [...drafts.keys()]) {
+        if (!live.has(sid)) {
+            drafts.delete(sid);
+            removed = true;
+        }
+    }
+    if (removed) persistDrafts();
+}
+
+// The window moved on before an upload finished. The token still belongs to the session the image was
+// attached to, so it goes onto that session's draft, numbered by that draft's own counter.
+function addImageToDraft(sid, path) {
+    const draft = drafts.get(sid) ?? { text: "", images: [], counter: 0 };
+    const counter = draft.counter + 1;
+    const token = `[Image #${counter}]`;
+    const lead = draft.text && !draft.text.endsWith(" ") && !draft.text.endsWith("\n") ? " " : "";
+    drafts.set(sid, { text: `${draft.text}${lead}${token} `, images: [...draft.images, [token, path]], counter });
+    persistDrafts();
+    noteMsg(`image added to ${labelOf(sid, "the session it was attached to")}`);
+}
+
+// --- Images ------------------------------------------------------------------------------------------------------------------------------
+
 // Upload one image blob; on success insert a friendly [Image #N] token inline where the caret was,
 // and remember which container path it maps to.
 async function uploadImage(blob) {
-    // Capture the caret now - the upload is async and the user may click elsewhere meanwhile.
+    // The upload is async: the caret can move and the window can switch sessions before it lands, so both
+    // are read now and the token goes where the image was actually attached.
+    const sid = attachedSid;
     const at = input.selectionStart ?? input.value.length;
     try {
         const res = await fetch("/upload", { method: "POST", headers: { "Content-Type": blob.type }, body: blob });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        if (sid && sid !== attachedSid) {
+            addImageToDraft(sid, data.path);
+            return;
+        }
         const token = `[Image #${++imageCounter}]`;
         pendingImages.set(token, data.path);
         input.setSelectionRange(at, at);
         insertAtCursor(token);
+        captureDraft(attachedSid);
+        persistDrafts();
     } catch (err) {
         noteMsg(`upload failed: ${err.message}`, true);
     }
@@ -659,10 +1275,9 @@ function send() {
 
     sendFrame({ t: "paste", data: text });
 
-    input.value = "";
-    pendingImages.clear();
-    imageCounter = 0;
-    autoGrow();
+    const sid = attachedSid;
+    clearComposer();
+    dropDraft(sid);
     term.focus();
 }
 
@@ -674,10 +1289,8 @@ input.addEventListener("keydown", (e) => {
     if (e.ctrlKey && (e.key === "c" || e.key === "C")) {
         if (input.selectionStart === input.selectionEnd) {
             e.preventDefault();
-            input.value = "";
-            pendingImages.clear();
-            imageCounter = 0;
-            autoGrow();
+            clearComposer();
+            dropDraft(attachedSid);
         }
         return;
     }
@@ -704,6 +1317,9 @@ input.addEventListener("paste", (e) => {
 // Drag and drop images onto the composer.
 ["dragover", "drop"].forEach((type) => {
     input.addEventListener(type, (e) => {
+        // Only a file drag is ours. Without this the composer accepts any drag at all - including a session
+        // tab on its way along the bar, which would end as a drop on the box instead of a reorder.
+        if (!e.dataTransfer?.types?.includes("Files")) return;
         e.preventDefault();
         if (type === "drop") {
             for (const file of e.dataTransfer?.files || []) {
@@ -737,6 +1353,10 @@ fileInput.addEventListener("change", () => {
 // own path through xterm only fires when the terminal has focus and a live selection, and says nothing
 // when it does not fire. Ctrl+C is deliberately left alone - interrupting the agent must never depend on
 // whether something happens to be selected.
+//
+// There is one clipboard - the machine's - and it changes only when the user copies something in the
+// window they are looking at. Nothing else here may write it: not a screen being replayed, not a session
+// running in the background. Anything less stops feeling like a clipboard.
 
 // Shortcut hints follow the platform, so the pill only ever teaches keys that work here.
 const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
@@ -800,10 +1420,32 @@ async function copyText(text) {
     return false;
 }
 
-// Text an agent handed over with OSC 52 that the browser then refused to copy. It arrives just after the
-// drag rather than inside it, and Safari only allows a clipboard write inside the gesture that asked for
-// one, so it is kept here and the copy shortcut - a real gesture - can finish the job.
+// Text an agent handed over with OSC 52 that has not reached the clipboard yet - the browser refused the
+// write, or this window was not the one in front. It arrives just after the drag rather than inside it,
+// and Safari only allows a clipboard write inside the gesture that asked for one, so it is kept here and
+// the copy shortcut - a real gesture, in this window - can finish the job. Nothing is lost either way.
 let pendingOscText = "";
+
+// A replay is the attached session's own past output, so it can still contain the OSC 52 an agent sent
+// when something was copied in that session earlier. Writing it into the terminal re-runs that sequence,
+// which put stale text on the clipboard on every attach - a session switch, a reload, a reconnect after
+// sleep - and that is what made each session tab look like it carried a clipboard of its own. So the
+// clipboard is left alone while a replay is being parsed.
+//
+// A counter rather than a flag because two replays can be in flight (a switch, then an immediate
+// reconnect). xterm runs each write's callback once that chunk is parsed and before it parses anything
+// written after it, so output that arrives while a replay is still parsing copies normally. The gate does
+// cover anything already queued and not yet parsed when the replay lands, which in practice is nothing: a
+// copy and a session switch are both done by hand, and the parser is never that far behind.
+let pendingReplays = 0;
+
+function writeReplay(data) {
+    if (!data) return;
+    pendingReplays++;
+    term.write(data, () => {
+        pendingReplays--;
+    });
+}
 
 function copySelection() {
     const text = term.getSelection();
@@ -811,7 +1453,8 @@ function copySelection() {
         copyText(text);
         return;
     }
-    // A copy the browser turned down when the agent pushed it: this keypress is the gesture it wanted.
+    // A copy that did not land when the agent pushed it - refused, or this window was not in front. This
+    // keypress is the gesture it was waiting for, in the window that asked for it.
     if (pendingOscText) {
         const pending = pendingOscText;
         pendingOscText = "";
@@ -837,6 +1480,9 @@ term.parser.registerOscHandler(52, (payload) => {
     // host, and a process in the container must not be able to read it out through the relay. An empty
     // payload is a clipboard clear, which is also not worth acting on.
     if (!data || data === "?") return true;
+    // Replayed output, not something the user just did. Ignored outright: it is a copy that already
+    // happened, and the clipboard has moved on since.
+    if (pendingReplays > 0) return true;
     let text = "";
     try {
         // Base64 to bytes to UTF-8. Decoding with atob alone yields latin-1, which mangles every
@@ -844,6 +1490,13 @@ term.parser.registerOscHandler(52, (payload) => {
         text = new TextDecoder().decode(Uint8Array.from(atob(data), (char) => char.charCodeAt(0)));
     } catch {
         // A malformed payload is the sending program's problem, not something to report here.
+        return true;
+    }
+    // Only the window in front may write the clipboard. A background window - a second tab, or this one
+    // while the user is in another app - would replace what they copied there, so the text waits for a
+    // copy shortcut here instead of taking a clipboard it was not asked for.
+    if (!document.hasFocus()) {
+        pendingOscText = text;
         return true;
     }
     // Not awaited: the parser reads the rest of the agent's output while the clipboard write settles.
@@ -904,6 +1557,20 @@ const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecogni
 const MIC_HELP = "dictation needs a real browser (Chrome/Edge) with mic access - it cannot work in the editor's embedded browser";
 let recognition = null;
 let recording = false;
+// The session dictation was started in. Recognition results arrive a moment after the speech, so a switch in
+// between would otherwise drop a sentence meant for one agent into another one's box.
+let dictationSid = null;
+
+// Dictation is this window talking, not session state, so switching sessions ends it rather than carrying a
+// half-finished transcript into the next conversation.
+function stopDictation() {
+    if (!recording || !recognition) return;
+    try {
+        recognition.stop();
+    } catch {
+        // Not running after all; onend clears the flag either way.
+    }
+}
 
 if (!SpeechRecognition) {
     micBtn.disabled = true;
@@ -914,9 +1581,14 @@ if (!SpeechRecognition) {
     recognition.continuous = true;
 
     recognition.onresult = (e) => {
+        // A result that outlived the session it was dictated for is dropped rather than misfiled.
+        if (dictationSid && dictationSid !== attachedSid) return;
         let transcript = "";
         for (let i = e.resultIndex; i < e.results.length; i++) transcript += e.results[i][0].transcript;
-        if (transcript) insertAtCursor(transcript.trim());
+        if (!transcript) return;
+        insertAtCursor(transcript.trim());
+        captureDraft(attachedSid);
+        schedulePersist();
     };
     recognition.onerror = (e) => {
         if (e.error === "not-allowed" || e.error === "service-not-allowed") {
@@ -929,6 +1601,7 @@ if (!SpeechRecognition) {
     };
     recognition.onend = () => {
         recording = false;
+        dictationSid = null;
         micBtn.classList.remove("recording");
     };
 
@@ -950,6 +1623,7 @@ if (!SpeechRecognition) {
         try {
             recognition.start();
             recording = true;
+            dictationSid = attachedSid;
             micBtn.classList.add("recording");
             input.focus();
         } catch {
@@ -970,5 +1644,7 @@ if (!SpeechRecognition) {
 
 refreshComposer();
 renderBar();
+// Before the first frame arrives, so the icon carries this workspace's frame from the moment the page loads.
+refreshBrowserTab();
 connect();
 term.focus();

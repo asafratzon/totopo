@@ -37,7 +37,7 @@ import {
     UPLOAD_MAX_AGE_MS,
     WORKSPACE,
 } from "./config.js";
-import { createRegistry } from "./sessions.js";
+import { createRegistry, WORK_TICK_MS } from "./sessions.js";
 
 // node-pty is a native CommonJS addon; load it through createRequire under ESM.
 const require = createRequire(import.meta.url);
@@ -193,7 +193,6 @@ function handleEvent(event) {
 const registry = createRegistry({
     spawn: spawnAgent,
     maxSessions: MAX_SESSIONS,
-    agent: AGENT_CMD,
     maxBuffer: MAX_OUTPUT_BUFFER,
     onEvent: handleEvent,
 });
@@ -293,6 +292,7 @@ function paste(ws, text) {
     if (!session) return;
     const term = session.term;
     // Wrap as one bracketed paste so a multi-line message is not submitted line-by-line.
+    registry.typed(session.id);
     term.write(PASTE_START + text + PASTE_END);
     // Send Enter slightly later so it lands after the agent has ingested any pasted image paths,
     // otherwise the submit can be dropped and the message sits un-sent until a second Enter.
@@ -301,6 +301,7 @@ function paste(ws, text) {
         // lookup is by session, not by window: the Enter belongs to the session that got the paste.
         if (registry.get(session.id)?.term !== term) return;
         try {
+            registry.typed(session.id);
             term.write(SUBMIT);
         } catch {
             // PTY went away; nothing to submit.
@@ -331,6 +332,11 @@ function handleFrame(ws, msg) {
         case "attach":
             if (sid) openSession(ws, sid);
             return;
+        case "away":
+            // Whether this window is in front of the user. It changes nothing about who drives what - only
+            // whether a session finishing here is worth an alert.
+            registry.away(ws, msg.on === true);
+            return;
         case "takeover":
             if (sid) registry.takeover(sid, ws);
             return;
@@ -352,9 +358,21 @@ function handleFrame(ws, msg) {
             }
             return;
         }
-        case "in":
-            if (typeof msg.data === "string") registry.sessionFor(ws)?.term.write(msg.data);
+        case "reorder":
+            // Not logged: unlike a rename, where the session goes in the bar says nothing a later log line
+            // needs. The registry broadcasts the new bar to every window.
+            if (sid) registry.reorder(sid, msg.index);
             return;
+        case "in": {
+            if (typeof msg.data !== "string") return;
+            const session = registry.sessionFor(ws);
+            if (!session) return;
+            // Stamped as the user's own typing first, so the echo that comes straight back is not read as
+            // the agent working.
+            registry.typed(session.id);
+            session.term.write(msg.data);
+            return;
+        }
         case "paste":
             if (typeof msg.data === "string") paste(ws, msg.data);
             return;
@@ -399,6 +417,11 @@ wss.on("connection", (ws) => {
 ensureUploadDir();
 checkUploads();
 setInterval(checkUploads, CHECK_INTERVAL_MS).unref();
+
+// Whether each agent is working is a question about time - how long since its last byte - so something has
+// to ask it. The registry does the deciding; this only sets the pace, and only broadcasts when an answer
+// actually changed.
+setInterval(() => registry.tick(), WORK_TICK_MS).unref();
 
 // Keepalive sweep. A window that stops answering is terminated, which releases the session it was
 // driving so the window that comes back can pick it up without a takeover prompt. Sessions themselves

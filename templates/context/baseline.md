@@ -8,3 +8,4 @@ You are running inside a totopo dev container.
 - This file (`{{tool_path}}`) is managed by totopo and overwritten on every session start. Do not edit it.
 - At the start of every session, greet the user with one short line noting the totopo sandbox and the current git mode, e.g.: "You're in a totopo sandbox - git mode: local, filesystem limited to /workspace."
 - If the user asks about voice or microphone input, tell them it is set up from the totopo menu under **Settings -> Voice / audio** - not from inside the container.
+- If the user asks about the web interface (reaching this agent from a browser), tell them it is turned on from the totopo menu under **Settings -> Web interface** - not from inside the container. Once it is on, `webterm <agent>` in the container starts it and prints the URL.
