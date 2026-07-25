@@ -36,6 +36,7 @@ export const LOCK_KEYS = {
     activeProfile: "profile",
     gitMode: "git_mode",
     audio: "audio",
+    webPort: "web_port",
 } as const;
 
 /** Parsed representation of a workspace .lock file. All fields are strings. */
@@ -91,6 +92,7 @@ function parseLockFile(workspaceId: string): LockFile | null {
             activeProfile: partial.activeProfile ?? DEFAULT_PROFILE,
             gitMode: partial.gitMode ?? GIT_MODE.local,
             audio: partial.audio ?? "false",
+            webPort: partial.webPort ?? "",
         };
     } catch {
         return null;
@@ -110,7 +112,7 @@ export function readLockFile(workspaceId: string): string | null {
     return parseLockFile(workspaceId)?.workspaceRoot ?? null;
 }
 
-/** Write a workspace's lock file with the owning workspace root path. Preserves active profile and git mode. */
+/** Write a workspace's lock file with the owning workspace root path. Preserves all other fields. */
 export function writeLockFile(workspaceId: string, workspaceRoot: string): void {
     const existing = parseLockFile(workspaceId);
     writeLockFileInternal(workspaceId, {
@@ -118,6 +120,7 @@ export function writeLockFile(workspaceId: string, workspaceRoot: string): void 
         activeProfile: existing?.activeProfile ?? DEFAULT_PROFILE,
         gitMode: existing?.gitMode ?? GIT_MODE.local,
         audio: existing?.audio ?? "false",
+        webPort: existing?.webPort ?? "",
     });
 }
 
@@ -160,6 +163,27 @@ export function writeAudio(workspaceId: string, audio: boolean): void {
     writeLockFileInternal(workspaceId, { ...existing, audio: String(audio) });
 }
 
+/** Read the sticky web interface host port. Returns null when the lock is missing, unset, or not a positive integer. */
+export function readWebPort(workspaceId: string): number | null {
+    const value = parseLockFile(workspaceId)?.webPort;
+    if (!value) return null;
+    const port = Number(value);
+    return Number.isInteger(port) && port > 0 ? port : null;
+}
+
+/**
+ * Write the sticky web interface host port, preserving all other fields. Returns false when the lock
+ * file is missing or unreadable, so the port was NOT persisted: callers must not hand out a port they
+ * failed to record, or the next workspace is handed the same one (it stays invisible to the
+ * assigned-port scan) and two workspaces end up on one URL.
+ */
+export function writeWebPort(workspaceId: string, port: number): boolean {
+    const existing = parseLockFile(workspaceId);
+    if (!existing) return false;
+    writeLockFileInternal(workspaceId, { ...existing, webPort: String(port) });
+    return true;
+}
+
 // --- Workspace directory initialization --------------------------------------------------------------------------------------------------
 
 /** Initialize ~/.totopo/workspaces/<workspace_id>/ with lock file and subdirs. */
@@ -173,7 +197,7 @@ export function initWorkspaceDir(
     const dir = getWorkspaceDir(workspaceId);
     mkdirSync(join(dir, AGENTS_DIR), { recursive: true });
     mkdirSync(join(dir, SHADOWS_DIR), { recursive: true });
-    writeLockFileInternal(workspaceId, { workspaceRoot, activeProfile, gitMode, audio: String(audio) });
+    writeLockFileInternal(workspaceId, { workspaceRoot, activeProfile, gitMode, audio: String(audio), webPort: "" });
 }
 
 // --- Listing -----------------------------------------------------------------------------------------------------------------------------

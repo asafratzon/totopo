@@ -16,10 +16,12 @@ import {
     readAudio,
     readGitMode,
     readLockFile,
+    readWebPort,
     writeActiveProfile,
     writeAudio,
     writeGitMode,
     writeLockFile,
+    writeWebPort,
 } from "../src/lib/workspace-identity.js";
 import { cleanTempDir, createTempDir, overrideEnv } from "./helpers.js";
 
@@ -243,6 +245,55 @@ describe("with isolated home", () => {
             initWorkspaceDir("test-ws", tmp, DEFAULT_PROFILE, GIT_MODE.local, true);
             assert.equal(readAudio("test-ws"), true);
             await cleanTempDir(tmp);
+        });
+
+        test("readWebPort returns null on fresh init and for missing lock", async () => {
+            const tmp = createTempDir();
+            initWorkspaceDir("test-ws", tmp);
+            assert.equal(readWebPort("test-ws"), null);
+            assert.equal(readWebPort("nonexistent-ws-id-xyz"), null);
+            await cleanTempDir(tmp);
+        });
+
+        test("writeWebPort round-trips and is a no-op without a lock", async () => {
+            const tmp = createTempDir();
+            initWorkspaceDir("test-ws", tmp);
+            writeWebPort("test-ws", 3900);
+            assert.equal(readWebPort("test-ws"), 3900);
+            writeWebPort("nonexistent-ws-id-xyz", 3901);
+            assert.equal(readWebPort("nonexistent-ws-id-xyz"), null);
+            await cleanTempDir(tmp);
+        });
+
+        test("readWebPort coerces a non-numeric value to null", async () => {
+            const tmp = createTempDir();
+            initWorkspaceDir("test-ws", tmp);
+            const lockPath = join(getWorkspaceDir("test-ws"), LOCK_FILE);
+            writeFileSync(lockPath, `${readFileSync(lockPath, "utf8").replace(/web_port=.*/, "web_port=bogus")}`);
+            assert.equal(readWebPort("test-ws"), null);
+            await cleanTempDir(tmp);
+        });
+
+        test("writeWebPort preserves all other fields and survives their writes", async () => {
+            const tmp1 = createTempDir();
+            const tmp2 = createTempDir();
+            initWorkspaceDir("test-ws", tmp1, "extended", GIT_MODE.unrestricted, true);
+            writeWebPort("test-ws", 3905);
+
+            assert.equal(readActiveProfile("test-ws"), "extended");
+            assert.equal(readGitMode("test-ws"), GIT_MODE.unrestricted);
+            assert.equal(readAudio("test-ws"), true);
+            assert.equal(readLockFile("test-ws"), tmp1);
+
+            // Every other writer must carry the web port along.
+            writeGitMode("test-ws", GIT_MODE.strict);
+            writeActiveProfile("test-ws", "other");
+            writeAudio("test-ws", false);
+            writeLockFile("test-ws", tmp2);
+            assert.equal(readWebPort("test-ws"), 3905);
+
+            await cleanTempDir(tmp1);
+            await cleanTempDir(tmp2);
         });
     });
 

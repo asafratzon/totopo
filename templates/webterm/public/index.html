@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>totopo</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/vendor/xterm/xterm.css" />
+    <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+    <!-- Session bar: one tab per live agent in this container, rendered by app.js. -->
+    <nav id="tabbar"></nav>
+
+    <div id="termwrap">
+        <main id="term"></main>
+        <!-- Take over / end session / limit reached, scoped to the terminal area. -->
+        <div id="overlay"><div id="card" class="card"></div></div>
+        <!-- Transient status ("copied 3 lines", upload and dictation errors), floating so it shifts nothing. -->
+        <span id="note"></span>
+    </div>
+
+    <section id="composer">
+        <div id="input-wrap">
+            <textarea id="input" rows="2" placeholder="Type a message. Paste or drop an image, or use the buttons. Enter sends, Shift+Enter for a newline."></textarea>
+            <div id="composer-actions">
+                <button type="button" id="attach" class="icon-btn" title="Attach an image" aria-label="Attach an image">
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <title>Attach an image</title>
+                        <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+                    </svg>
+                </button>
+                <button type="button" id="mic" class="icon-btn" title="Dictate" aria-label="Dictate">
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <title>Dictate</title>
+                        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                        <line x1="12" y1="19" x2="12" y2="23" />
+                        <line x1="8" y1="23" x2="16" y2="23" />
+                    </svg>
+                </button>
+                <button type="button" id="send" class="icon-btn primary" title="Send (Enter)" aria-label="Send">
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <title>Send</title>
+                        <line x1="22" y1="2" x2="11" y2="13" />
+                        <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                    </svg>
+                </button>
+                <input type="file" id="file-input" accept="image/*" hidden />
+            </div>
+        </div>
+    </section>
+
+    <script src="/vendor/xterm/xterm.js"></script>
+    <script src="/vendor/xterm-fit/addon-fit.js"></script>
+    <script src="/app.js"></script>
+</body>
+</html>

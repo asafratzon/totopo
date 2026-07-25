@@ -2,8 +2,19 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, test } from "node:test";
-import { AUDIO_MODE, AUTO_START, GLOBAL_CONFIG_FILE, GLOBAL_DIR, TOTOPO_DIR } from "../src/lib/constants.js";
-import { globalConfigPath, readAudioMode, readAutoStartAgent, writeAudioMode, writeAutoStartAgent } from "../src/lib/global-config.js";
+import { AUDIO_MODE, AUTO_START, GLOBAL_CONFIG_FILE, GLOBAL_DIR, TOTOPO_DIR, WEB_RANGE_DEFAULT } from "../src/lib/constants.js";
+import {
+    globalConfigPath,
+    readAudioMode,
+    readAutoStartAgent,
+    readWebEnabled,
+    readWebRange,
+    writeAudioMode,
+    writeAutoStartAgent,
+    writeWebEnabled,
+    writeWebRange,
+} from "../src/lib/global-config.js";
+import { formatWebRange } from "../src/lib/ports.js";
 import { cleanTempDir, createTempDir, overrideEnv } from "./helpers.js";
 
 describe("global-config", () => {
@@ -82,6 +93,38 @@ describe("global-config", () => {
         writeAutoStartAgent(AUTO_START.claude);
 
         assert.equal(readAudioMode(), AUDIO_MODE.automatic);
+        assert.equal(readAutoStartAgent(), AUTO_START.claude);
+    });
+
+    test("readWebEnabled defaults to false when the config file is missing", () => {
+        assert.equal(readWebEnabled(), false);
+        assert.ok(!existsSync(globalConfigPath()), "reading should not create the file");
+    });
+
+    test("writeWebEnabled round-trips and coerces junk to false", () => {
+        writeWebEnabled(true);
+        assert.equal(readWebEnabled(), true);
+        writeWebEnabled(false);
+        assert.equal(readWebEnabled(), false);
+
+        mkdirSync(join(fakeHome, TOTOPO_DIR, GLOBAL_DIR), { recursive: true });
+        writeFileSync(globalConfigPath(), "web_enabled=yes\n");
+        assert.equal(readWebEnabled(), false);
+    });
+
+    test("readWebRange falls back to the default when missing or invalid", () => {
+        assert.equal(formatWebRange(readWebRange()), WEB_RANGE_DEFAULT);
+
+        mkdirSync(join(fakeHome, TOTOPO_DIR, GLOBAL_DIR), { recursive: true });
+        writeFileSync(globalConfigPath(), "web_range=9999-100\n");
+        assert.equal(formatWebRange(readWebRange()), WEB_RANGE_DEFAULT);
+    });
+
+    test("writeWebRange round-trips and preserves other keys", () => {
+        writeAutoStartAgent(AUTO_START.claude);
+        writeWebRange({ start: 4000, end: 4099 });
+
+        assert.deepEqual(readWebRange(), { start: 4000, end: 4099 });
         assert.equal(readAutoStartAgent(), AUTO_START.claude);
     });
 });

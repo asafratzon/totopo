@@ -307,6 +307,29 @@ By default a session drops you into a shell where you run `claude`, `opencode`, 
 
 This is a host-global preference (stored in `~/.totopo/global/config`), so it applies to every workspace. Changing it recreates the current workspace's container; other workspaces pick it up on their next session.
 
+When the [web agent interface](#web-agent-interface) is enabled, the same setting auto-starts the web terminal fronting the chosen agent instead of launching it in the shell.
+
+With auto-start on, the first session after a container starts resumes your most recent conversation; later sessions start fresh.
+For claude, totopo picks the newest conversation that actually has messages and resumes it by id; opencode and codex use their own `--continue` / `resume --last` flags.
+
+## Web agent interface
+
+An opt-in browser front-end for the agents, running inside the container.
+It relays the real agent TUI - your subscription, no API key, same sandbox - and adds what a terminal cannot: image paste, drop, and upload, and dictation.
+Turn it on under **Settings → Web interface** (off by default), then run `webterm claude` (or `opencode` / `codex`) in the container to start it and print its URL.
+With [auto-start](#auto-start-agent) on it comes up by itself and the greeting shows the URL.
+
+![totopo web interface](.github/assets/webterm.png)
+
+- **The page is mission control for the container.** The tab bar is every agent session running in it (up to 8, each a full process) - click to switch, `+ New session` to start one, double-click a name to rename.
+Sessions belong to the container, not the browser: a closed tab or a slept laptop ends nothing, and every session shows up wherever you open the URL (one window drives a session at a time, and another can take it over).
+- **Copy and paste behave like a terminal's.** Select and press `Cmd+C` (`Ctrl+Shift+C` on Linux/Windows) - an agent that draws its own selection (claude tracks the mouse) copies as you release the drag, and every copy says so in the status pill.
+`Ctrl+C` is never a copy; it always interrupts the agent.
+The clipboard only goes one way: the container can put text on it, never read it back through the relay.
+- **Its own sticky host port.** Each workspace keeps one loopback-only port from a range (default `3900-3999`), stored host-side and never in `totopo.yaml`, so the URL survives restarts and rebuilds; container port `3899` is reserved for the relay.
+- **Loopback-only and origin-checked**, run as the non-root user inside the same sandbox the agent already has - but the origin check is a browser gate a non-browser client can bypass, so on an untrusted shared machine leave it off.
+- The interface never blocks a session: if no port is free or the server does not come up, totopo says so and opens the session without it.
+
 ## Troubleshooting
 
 **Move or rename the workspace directory** - re-run `npx totopo` in the new location. totopo detects the path mismatch and guides you through realigning the workspace cache.

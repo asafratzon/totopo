@@ -1,0 +1,454 @@
+/* styles.css - Dark layout: session bar on top, the attached session's terminal filling the middle,
+   and a composer below with the action buttons floating in the textbox's bottom-right corner. */
+
+:root {
+    --bg: #0d1117;
+    --panel: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+    --accent: #d29922;
+    --accent-hover: #e3ad33;
+    --ok: #3fb950;
+    --bad: #f85149;
+    /* A touch lighter than pure black so the terminal does not read as a void. */
+    --term-bg: #12161d;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body {
+    margin: 0;
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+body {
+    display: flex;
+    flex-direction: column;
+}
+
+/* ---- Session bar ---- */
+
+#tabbar {
+    display: flex;
+    align-items: stretch;
+    gap: 4px;
+    padding: 6px 12px 0;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+}
+
+/* Each tab carries its session's colour in --sc, set inline when the bar is rendered. */
+.tab {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 9px 7px 11px;
+    border: 1px solid var(--border);
+    border-bottom: none;
+    border-radius: 8px 8px 0 0;
+    background: #10151c;
+    color: var(--muted);
+    font-size: 12.5px;
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+    position: relative;
+    top: 1px;
+}
+
+.tab:hover {
+    color: var(--text);
+}
+
+/* The inset top edge is the session's colour, which also visually joins the tab to the terminal. */
+.tab.active {
+    background: var(--term-bg);
+    color: var(--text);
+    box-shadow: inset 0 2px 0 var(--sc);
+}
+
+/* The colour is the session's identity: always shown, never earned. */
+.tab .dot {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--sc);
+}
+
+/* Output arrived while this window was looking elsewhere: the same dot pulses, the label brightens. */
+.tab.unread {
+    color: var(--text);
+}
+
+.tab.unread .dot {
+    animation: pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%,
+    100% {
+        box-shadow: 0 0 0 0 transparent;
+        opacity: 1;
+    }
+    50% {
+        box-shadow: 0 0 0 4px color-mix(in srgb, var(--sc) 30%, transparent);
+        opacity: 0.85;
+    }
+}
+
+.tab .age {
+    font-size: 11px;
+    opacity: 0.85;
+}
+
+/* Inline name editor: sits where the name span was, borrowing the tab's font and colour so renaming
+   happens in place rather than in a popup. The session colour underlines it to say "this is being edited". */
+.tab .rename {
+    font: inherit;
+    color: var(--text);
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--sc);
+    outline: none;
+    padding: 0;
+    margin: 0;
+    width: 12ch;
+}
+
+/* Another browser window is driving this session. */
+.tab .elsewhere {
+    font-size: 10.5px;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 1px 4px;
+}
+
+.tab .close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.tab .close:hover {
+    background: rgba(248, 81, 73, 0.15);
+    color: var(--bad);
+}
+
+/* Shaped like a session tab, so the bar reads as one row: it is the outline of the next tab. Dashed and
+   empty is what keeps it from looking like a session that is already there. */
+#newtab {
+    display: flex;
+    align-items: center;
+    margin: 0 0 0 6px;
+    padding: 7px 11px;
+    background: transparent;
+    color: var(--muted);
+    border: 1px dashed var(--border);
+    border-bottom: none;
+    border-radius: 8px 8px 0 0;
+    font-size: 12.5px;
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+    position: relative;
+    top: 1px;
+}
+
+#newtab:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+}
+
+#newtab:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+#barright {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 0 6px auto;
+    padding-left: 12px;
+    color: var(--muted);
+    font-size: 11.5px;
+    white-space: nowrap;
+}
+
+/* The workspace name is the only thing on the right now, so it reads as a label rather than muted
+   metadata: full text colour, no dimming. */
+#barright .ws {
+    color: var(--text);
+}
+
+/* ---- Terminal ---- */
+
+#termwrap {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    /* Spacing via margin, not padding: FitAddon measures the wrapper height but does not subtract
+       its padding, so wrapper padding makes it propose one row too many and the last line clips.
+       Margin gives the same visual inset (page and terminal share a background) without breaking fit. */
+    margin: 8px 12px;
+}
+
+#term {
+    height: 100%;
+    background: var(--term-bg);
+    overflow: hidden;
+    /* A thin edge in the attached session's colour (set inline), so the terminal itself says where
+       you are. Borders are outside clientWidth, so this does not disturb the fit calculation. */
+    border-left: 2px solid transparent;
+}
+
+/* ---- Transient status pill ---- */
+
+/* Floats over the bottom of the terminal instead of sitting in the layout: it appears and disappears
+   constantly (every copy says so), and in the flow each one shifted everything under it. Click-through,
+   so it can never swallow a click meant for the terminal underneath. */
+#note {
+    position: absolute;
+    left: 50%;
+    bottom: 12px;
+    transform: translateX(-50%);
+    max-width: 85%;
+    padding: 5px 13px;
+    background: rgba(22, 27, 34, 0.95);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+    color: var(--muted);
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    pointer-events: none;
+}
+
+#note.error {
+    color: var(--bad);
+    border-color: rgba(248, 81, 73, 0.5);
+}
+
+/* No pill at all when there is nothing to say. */
+#note:empty {
+    display: none;
+}
+
+/* ---- Overlay cards (take over / end session / limit reached) ---- */
+
+#overlay {
+    display: none;
+    position: absolute;
+    inset: 0;
+    background: rgba(13, 17, 23, 0.82);
+    align-items: center;
+    justify-content: center;
+}
+
+#overlay.show {
+    display: flex;
+}
+
+.card {
+    max-width: 460px;
+    padding: 18px 20px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+
+.card h2 {
+    margin: 0 0 8px;
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.card p {
+    margin: 0 0 14px;
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--muted);
+}
+
+.card .row {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+.btn {
+    padding: 7px 13px;
+    background: rgba(48, 54, 61, 0.5);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 12.5px;
+    cursor: pointer;
+}
+
+.btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.btn.primary {
+    background: rgba(210, 153, 34, 0.85);
+    color: #1c1400;
+    border-color: rgba(210, 153, 34, 0.9);
+}
+
+.btn.primary:hover {
+    background: var(--accent-hover);
+    color: #1c1400;
+}
+
+.btn.danger {
+    background: rgba(248, 81, 73, 0.15);
+    color: #ff9b95;
+    border-color: rgba(248, 81, 73, 0.5);
+}
+
+.btn.danger:hover {
+    background: rgba(248, 81, 73, 0.28);
+    color: #fff;
+    border-color: var(--bad);
+}
+
+/* ---- Composer ---- */
+
+#composer {
+    background: var(--panel);
+    padding: 6px 12px 12px;
+    display: flex;
+    flex-direction: column;
+}
+
+#input-wrap {
+    position: relative;
+}
+
+#input {
+    display: block;
+    width: 100%;
+    /* Tall enough by default to show the three stacked buttons (3 x 28px + 2 x 6px gap, plus 8px
+       top and bottom insets = 112px), which also gives the box a comfortable typing height. */
+    min-height: 112px;
+    max-height: 200px;
+    resize: none;
+    background: #0d1117;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    /* Right padding reserves the button gutter so typed text wraps to the next line instead of
+       sliding behind the buttons (button column is 28px wide at right: 8px, so ~44px clears it). */
+    padding: 9px 44px 9px 12px;
+    font:
+        14px / 1.5 ui-monospace,
+        "SF Mono",
+        Menlo,
+        Consolas,
+        monospace;
+    outline: none;
+    transition: border-color 0.15s ease;
+}
+
+/* Border carries the state (no separate status dot): green when you can type into the attached
+   session, amber while this window is between sessions or reconnecting. A dropped connection is not a
+   failure here - the session on the other side kept running. */
+#input.online {
+    border-color: var(--ok);
+}
+
+#input.waiting {
+    border-color: var(--accent);
+}
+
+#input:disabled {
+    cursor: not-allowed;
+    color: var(--muted);
+}
+
+/* Fainter than the muted text so the placeholder hint recedes and typed input stands out. */
+#input::placeholder {
+    color: var(--muted);
+    opacity: 0.5;
+}
+
+/* Action cluster floats inside the textbox as a vertical column pinned to the right edge. The
+   textarea's right padding keeps typed text out from behind it. */
+#composer-actions {
+    position: absolute;
+    right: 8px;
+    bottom: 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Semi-transparent so they stay unobtrusive when floating over typed text; solidify on hover. */
+.icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    background: rgba(48, 54, 61, 0.5);
+    color: var(--text);
+    border: 1px solid rgba(48, 54, 61, 0.6);
+    border-radius: 7px;
+    cursor: pointer;
+    backdrop-filter: blur(2px);
+}
+
+.icon-btn:hover {
+    background: rgba(48, 54, 61, 0.9);
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.icon-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.icon-btn.primary {
+    background: rgba(210, 153, 34, 0.75);
+    color: #1c1400;
+    border-color: rgba(210, 153, 34, 0.8);
+}
+
+.icon-btn.primary:hover {
+    background: var(--accent-hover);
+    color: #1c1400;
+}
+
+#mic.recording {
+    background: var(--bad);
+    border-color: var(--bad);
+    color: #fff;
+}

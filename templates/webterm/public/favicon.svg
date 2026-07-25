@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="totopo">
+    <title>totopo</title>
+    <!-- Terminal panel: the same dark the app uses, so the browser-tab icon matches the page. -->
+    <rect width="32" height="32" rx="7" fill="#0d1117" />
+    <!-- A totopo (tortilla chip): rounded triangle in the palette's harvest gold, toasted a touch darker
+         at the bottom. round linejoin is what gives the corners their soft chip shape, and the stroke
+         grows the triangle so the chip nearly fills the icon and still reads at 16px. -->
+    <defs>
+        <linearGradient id="chip" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#f0c078" />
+            <stop offset="1" stop-color="#d08a3c" />
+        </linearGradient>
+    </defs>
+    <path d="M16 7 L26 24 L6 24 Z" fill="url(#chip)" stroke="url(#chip)" stroke-width="4" stroke-linejoin="round" />
+    <!-- Toasted salt: two flecks so it reads as a chip, not just a triangle. -->
+    <circle cx="13.5" cy="18" r="1.2" fill="#8a5a22" opacity="0.5" />
+    <circle cx="18.5" cy="20.4" r="1.2" fill="#8a5a22" opacity="0.5" />
+</svg>

@@ -9,6 +9,7 @@ import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { cancel, confirm, intro, isCancel, log, outro, select, text } from "@clack/prompts";
 import { TOTOPO_YAML } from "../lib/constants.js";
+import { readWebEnabled, readWebRange } from "../lib/global-config.js";
 import { safeRmSync } from "../lib/safe-rm.js";
 import {
     buildDefaultTotopoYaml,
@@ -18,6 +19,7 @@ import {
     validateWorkspaceId,
     writeTotopoYaml,
 } from "../lib/totopo-yaml.js";
+import { ensureWebPort } from "../lib/webterm.js";
 import type { WorkspaceContext } from "../lib/workspace-identity.js";
 import {
     checkCollision,
@@ -242,6 +244,12 @@ async function runSetup(cwd: string, created: { yamlPath: string | null }): Prom
     // --- Initialize workspace dir --------------------------------------------------------------------------------------------------------
     const finalId = yaml.workspace_id;
     initWorkspaceDir(finalId, workspaceRoot);
+
+    // A new workspace takes its sticky web port at creation time (the spec's second calm moment).
+    if (readWebEnabled()) {
+        const assigned = ensureWebPort(finalId, readWebRange());
+        if (assigned.ok) log.info(`Web agent interface port: ${assigned.port} (sticky for this workspace)`);
+    }
 
     log.success(`Config written to ${toTildePath(getWorkspaceDir(finalId))}`);
     outro("Setup complete.");

@@ -23,6 +23,12 @@ export function removeWorkspaceFiles(workspaceRoot: string, workspaceDir: string
     }
 }
 
+// Stop-only (no rm) so the next session resumes fast via the "exited" -> docker start path.
+function stopContainer(name: string) {
+    spawnSync("docker", ["stop", name], { stdio: "pipe" });
+}
+
+// Stop and remove - only for flows that must recreate the container (image removal, uninstall).
 function stopAndRemoveContainer(name: string) {
     spawnSync("docker", ["stop", name], { stdio: "pipe" });
     spawnSync("docker", ["rm", name], { stdio: "pipe" });
@@ -59,7 +65,7 @@ async function stopContainers(): Promise<void> {
 
     for (const name of toStop) {
         log.info(`Stopping ${name}...`);
-        stopAndRemoveContainer(name);
+        stopContainer(name);
     }
     log.success("Done.");
 }
@@ -108,7 +114,7 @@ async function clearAgentMemory(): Promise<void> {
             });
             if (isCancel(confirmed) || !confirmed) continue;
             log.info(`Stopping ${w.containerName}...`);
-            stopAndRemoveContainer(w.containerName);
+            stopContainer(w.containerName);
         }
 
         const agentsDir = join(w.workspaceDir, AGENTS_DIR);

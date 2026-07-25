@@ -134,6 +134,18 @@ COPY context-usage.sh /usr/local/share/totopo/context-usage.sh
 RUN chmod +x /usr/local/share/totopo/context-usage.sh && \
     ln -sf /usr/local/share/totopo/context-usage.sh /usr/local/bin/context-usage
 
+# ---------------------------------------------------------------------------
+# Layer 13 - Bake webterm (web agent interface) with deps preinstalled
+# npm ci builds node-pty against this image's toolchain (Layer 1). The
+# launcher gates on TOTOPO_WEB_URL, so the command is inert until the
+# feature is enabled on the host (Settings > Web interface).
+# ---------------------------------------------------------------------------
+COPY webterm/ /usr/local/share/totopo/webterm/
+RUN cd /usr/local/share/totopo/webterm && npm ci --omit=dev && npm cache clean --force
+COPY webterm.sh /usr/local/share/totopo/webterm.sh
+RUN chmod +x /usr/local/share/totopo/webterm.sh && \
+    ln -sf /usr/local/share/totopo/webterm.sh /usr/local/bin/webterm
+
 WORKDIR /workspace
 
 # ---------------------------------------------------------------------------

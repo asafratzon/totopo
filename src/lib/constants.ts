@@ -123,3 +123,23 @@ export const AUDIO_MODES: readonly AudioMode[] = Object.values(AUDIO_MODE);
 export const AUTO_START = { off: "off", claude: "claude", opencode: "opencode", codex: "codex" } as const;
 export type AutoStartAgent = (typeof AUTO_START)[keyof typeof AUTO_START];
 export const AUTO_START_AGENTS: readonly AutoStartAgent[] = Object.values(AUTO_START);
+
+// Web agent interface (webterm). The server always binds this fixed container port; totopo publishes it
+// loopback-only to a sticky per-workspace host port taken from web_range (host-global setting).
+export const WEB_CONTAINER_PORT = 3899;
+export const WEB_RANGE_DEFAULT = "3900-3999";
+
+// Resume marker: a host-written container file whose content is the full command that resumes the most
+// recent conversation. Planted by dev.ts on every container create/start when auto-start is on; consumed
+// (rename-then-read, atomic) by exactly one of the webterm server or the .bashrc autostart hook, so the
+// first session after a container start resumes and every later one starts fresh. Lives in the devuser
+// home, not /tmp - consumers execute the file's content, so it must not sit in a world-writable dir.
+export const RESUME_MARKER_PATH = `${CONTAINER_HOME}/.totopo-resume-pending`;
+
+// Per-agent command that reopens the most recent conversation. Pinned against the real CLIs by the
+// drift test in tests/webterm.test.ts, which checks each flag/subcommand against the CLI's own help.
+export const AGENT_RESUME_COMMAND: Record<Exclude<AutoStartAgent, "off">, string> = {
+    claude: "claude --continue",
+    opencode: "opencode --continue",
+    codex: "codex resume --last",
+};

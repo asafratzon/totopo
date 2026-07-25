@@ -1,0 +1,3 @@
+# Never send a locally-installed webterm/node_modules to the build context - deps are
+# installed in-image by npm ci, and a host install may carry a wrong-arch node-pty build.
+webterm/node_modules

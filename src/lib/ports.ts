@@ -7,6 +7,7 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createServer } from "node:net";
+import { WEB_CONTAINER_PORT } from "./constants.js";
 
 // --- Constants ---------------------------------------------------------------------------------------------------------------------------
 
@@ -34,7 +35,7 @@ export interface PortMapping {
 // --- Config validation and normalization -------------------------------------------------------------------------------------------------
 
 /** A single port number is a usable, unprivileged host/container port. */
-function inRange(port: number): boolean {
+export function inRange(port: number): boolean {
     return Number.isInteger(port) && port >= PORT_MIN && port <= PORT_MAX;
 }
 
@@ -85,6 +86,17 @@ export function validatePortsConfig(entries: PortEntry[]): PortMapping[] {
             }
         }
 
+        // The web agent interface always binds this port inside the container, so a second publisher would
+        // make whichever bound first win and the web URL could front the user's service. Reserved whether or
+        // not the interface is enabled: web_enabled and web_range are host-global, so gating the rule on them
+        // would make the same totopo.yaml valid on one machine and invalid on another.
+        if (container === WEB_CONTAINER_PORT) {
+            throw new Error(
+                `ports: container port ${WEB_CONTAINER_PORT} is reserved for the totopo web agent interface. ` +
+                    "Publish your service on a different container port.",
+            );
+        }
+
         if (seenHosts.has(host)) {
             throw new Error(`ports: duplicate host port ${host}. Each entry must publish a distinct host port.`);
         }
@@ -111,10 +123,38 @@ export function validatePortsConfig(entries: PortEntry[]): PortMapping[] {
     return mappings;
 }
 
+// --- Web interface port range ------------------------------------------------------------------------------------------------------------
+
+/** An inclusive host-port range for the web interface, e.g. { start: 3900, end: 3999 }. */
+export interface WebRange {
+    start: number;
+    end: number;
+}
+
+/**
+ * Parse a "START-END" range string. Returns null when the shape is wrong, either bound is out of the
+ * usable port range, or start is not strictly below end. The settings menu turns each null into a
+ * specific validation message; readWebRange falls back to the default.
+ */
+export function parseWebRange(value: string): WebRange | null {
+    const match = /^(\d+)-(\d+)$/.exec(value.trim());
+    if (!match) return null;
+    const start = Number(match[1]);
+    const end = Number(match[2]);
+    if (!inRange(start) || !inRange(end)) return null;
+    if (start >= end) return null;
+    return { start, end };
+}
+
+/** Format a range back to its stored "START-END" form. */
+export function formatWebRange(range: WebRange): string {
+    return `${range.start}-${range.end}`;
+}
+
 // --- Availability probing (host I/O) -----------------------------------------------------------------------------------------------------
 
 /** True if nothing on the host holds a loopback socket for this port (docker-proxy / userland-proxy=true, or a plain squatter). */
-function canBind(port: number): Promise<boolean> {
+export function canBind(port: number): Promise<boolean> {
     return new Promise((resolve) => {
         const server = createServer();
         server.once("error", () => resolve(false));
@@ -123,21 +163,40 @@ function canBind(port: number): Promise<boolean> {
     });
 }
 
+/** Host ports in a `docker ps` {{.Ports}} column: "127.0.0.1:4820->4820/tcp", "[::]:5432->5432/tcp". */
+export function parsePublishedPorts(psOutput: string): Set<number> {
+    const ports = new Set<number>();
+    // The host port precedes "->".
+    for (const match of psOutput.matchAll(/:(\d+)->/g)) {
+        const n = Number(match[1]);
+        if (Number.isInteger(n)) ports.add(n);
+    }
+    return ports;
+}
+
 /**
  * Host ports currently published by any running container. On native Linux with userland-proxy=false no host
  * socket exists (DNAT), so canBind alone would wrongly report a published port as free - this covers that case.
  * Returns an empty set when docker is unavailable (the bind probe still applies).
  */
 export function dockerPublishedPorts(): Set<number> {
-    const ports = new Set<number>();
     const result = spawnSync("docker", ["ps", "--format", "{{.Ports}}"], { encoding: "utf8", stdio: "pipe" });
-    if (result.status !== 0 || !result.stdout) return ports;
-    // Published mappings look like "127.0.0.1:4820->4820/tcp" or "[::]:5432->5432/tcp"; the host port precedes "->".
-    for (const match of result.stdout.matchAll(/:(\d+)->/g)) {
-        const n = Number(match[1]);
-        if (Number.isInteger(n)) ports.add(n);
-    }
-    return ports;
+    if (result.status !== 0 || !result.stdout) return new Set<number>();
+    return parsePublishedPorts(result.stdout);
+}
+
+/**
+ * Host ports published by one named container, and only while it is running - a stopped container holds no
+ * port even though its config still declares one. Lets a caller tell "this port is taken by my own live
+ * container" (fine) from "taken by something else" (not fine). Empty when docker is unavailable.
+ */
+export function containerPublishedPorts(containerName: string): Set<number> {
+    const result = spawnSync("docker", ["ps", "--filter", `name=^${containerName}$`, "--format", "{{.Ports}}"], {
+        encoding: "utf8",
+        stdio: "pipe",
+    });
+    if (result.status !== 0 || !result.stdout) return new Set<number>();
+    return parsePublishedPorts(result.stdout);
 }
 
 /**
@@ -146,11 +205,18 @@ export function dockerPublishedPorts(): Set<number> {
  * host port and its entry on the first collision. Doing this here, rather than letting `docker run` fail, buys two
  * things: the error names the offending entry (docker's raw message does not), and no doomed `created` container is
  * left behind on a clash.
+ *
+ * `webPort` names the totopo-assigned web interface mapping, which is skipped: the interface is optional, so the
+ * caller drops its mapping and runs the session without it rather than failing a session over it. Only totopo.yaml
+ * ports - config the user wrote and expects to be honoured - are hard failures here.
  */
-export async function assertHostPortsAvailable(mappings: PortMapping[]): Promise<void> {
+export async function assertHostPortsAvailable(mappings: PortMapping[], webPort?: number): Promise<void> {
     if (mappings.length === 0) return;
     const dockerPorts = dockerPublishedPorts();
     for (const m of mappings) {
+        // Matched on both sides, so only totopo's own mapping is skipped - never a user entry that happens
+        // to sit on the same host port.
+        if (webPort !== undefined && m.host === webPort && m.container === WEB_CONTAINER_PORT) continue;
         const free = !dockerPorts.has(m.host) && (await canBind(m.host));
         if (!free) {
             const via = m.host === m.container ? "" : ` (from the "${m.host}:${m.container}" mapping)`;
