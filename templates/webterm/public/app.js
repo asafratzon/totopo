@@ -530,6 +530,24 @@ function stopButton() {
     return button;
 }
 
+// The directory picker, drawn in the same line style as the power button: a folder says "choose where"
+// far better than a caret, which reads as "more options".
+function folderIcon() {
+    const svg = document.createElementNS(SVG_NS, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("width", "13");
+    svg.setAttribute("height", "13");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "2");
+    svg.setAttribute("stroke-linecap", "round");
+    svg.setAttribute("stroke-linejoin", "round");
+    const folder = document.createElementNS(SVG_NS, "path");
+    folder.setAttribute("d", "M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z");
+    svg.append(folder);
+    return svg;
+}
+
 function renderBar() {
     // A drag is in flight, so the bar holds still: rebuilding it would replace the element being dragged,
     // which cancels the drag outright. Both the age tick and any incoming frame can land mid-drag. The bar
@@ -544,7 +562,7 @@ function renderBar() {
     }
 
     // One control, two ways in: the button starts a session in the default directory (the common case, and
-    // one click, the way it always was), the caret asks which directory first.
+    // one click, the way it always was), the folder asks which directory first.
     const group = document.createElement("div");
     group.id = "newtab-group";
     const atCap = sessions.length >= maxSessions;
@@ -560,7 +578,7 @@ function renderBar() {
     const pick = document.createElement("button");
     pick.id = "newtab-pick";
     pick.type = "button";
-    pick.textContent = "▾"; // Small down-pointing triangle.
+    pick.append(folderIcon());
     pick.title = "Start a session in another directory";
     pick.setAttribute("aria-label", "Start a session in another directory");
     pick.disabled = atCap;

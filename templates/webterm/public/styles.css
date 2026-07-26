@@ -338,7 +338,7 @@ body {
 
 /* Shaped like a session tab, so the bar reads as one row: it is the outline of the next tab. Dashed and
    empty is what keeps it from looking like a session that is already there. Two halves in one outline - the
-   button starts a session where the last totopo session did, the caret asks for a directory first. */
+   button starts a session where the last totopo session did, the folder asks for a directory first. */
 #newtab-group {
     display: flex;
     align-items: stretch;
@@ -369,8 +369,8 @@ body {
 
 #newtab-pick {
     border-radius: 0 8px 0 0;
-    padding: 7px 8px;
-    font-size: 10.5px;
+    padding: 7px 9px;
+    justify-content: center;
 }
 
 #newtab:hover,

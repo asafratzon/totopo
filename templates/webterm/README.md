@@ -36,7 +36,7 @@ The page is mission control for the container: the tab bar at the top is every a
 - **Opening the URL always lands you somewhere:** the session you were last looking at, or - when nothing is running - one freshly started session, which is what resumes the most recent conversation.
   Reconnecting is not the same as opening, and starts nothing: a wifi blip or a slept laptop puts you back on exactly what you left, an empty bar included.
 - **A session starts where you did, and stays there.** `+ New session` opens the agent in the directory `npx totopo` ran in, the same directory a terminal session lands in - so `npx totopo` inside `apps/api` gets you an agent working on `apps/api`.
-  The caret beside the button starts one somewhere else: type a directory relative to the workspace root or pick it from the list, and the tab says where that session is running.
+  The folder button beside it starts one somewhere else: type a directory relative to the workspace root or pick it from the list, and the tab says where that session is running.
   The directory belongs to the session for its whole life, so several sessions can work in different parts of the workspace at once.
   A path has to name a directory that exists inside the workspace, or nothing is started - the container is the sandbox boundary either way, this is what keeps the picker honest.
 - **Up to 8 sessions** (`WEBTERM_MAX_SESSIONS`). The limit is memory: each one is a full agent process.
