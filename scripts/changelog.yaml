@@ -79,6 +79,26 @@ in_progress:
         - >-
           With auto-start on, resume now picks up the conversation from the directory you ran `npx totopo` in, instead
           of always the workspace root.
+    - rc_version: "3.16.0-rc-5"
+      date: "2026-07-26"
+      added:
+        - >-
+          A browser front-end for your agents - the web interface. Turn it on under Settings > Web interface, then run
+          `webterm claude` in the container to drive the real agent TUI from your browser: sessions live in the
+          container, run several at a time, and each starts where you ran `npx totopo`. When an agent finishes in a
+          session you are not watching, its tab lights up and a chime follows twenty seconds later; the bell in the tab
+          bar mutes it. Existing containers are offered a rebuild on next session start.
+      changed:
+        - >-
+          Stopping containers from the Advanced menu now leaves them in place, so the next session resumes fast; Stop
+          containers and Clear agent memory always ask which one.
+      fixed:
+        - >-
+          A rebuilt container could start with AI CLIs weeks out of date - the "last updated" stamp was written even
+          when the install layer came from Docker's cache.
+        - >-
+          With auto-start on, resume now picks up the conversation from the directory you ran `npx totopo` in, instead
+          of always the workspace root.
 releases:
   - version: 3.15.1
     date: "2026-07-21"
