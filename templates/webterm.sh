@@ -108,6 +108,10 @@ export WEBTERM_KEY_FILE="$KEY_FILE"
 export WEBTERM_RESUME_MARKER="${HOME:-/home/devuser}/.totopo-resume-pending"
 # The workspace name (host-injected as TOTOPO_WORKSPACE) labels the session bar and the browser tab.
 export WEBTERM_WORKSPACE="${TOTOPO_WORKSPACE:-}"
+# Where new sessions start. The host passes it (the directory `npx totopo` ran in), so a browser session
+# opens where a terminal session would; a hand-run `webterm <agent>` falls back to this shell's own
+# directory, which is the same promise. The server refuses anything outside the workspace.
+export WEBTERM_CWD="${WEBTERM_CWD:-$PWD}"
 
 # Detached launches (docker exec -d) have no terminal; keep this script's own output reachable too.
 if [ ! -t 1 ]; then

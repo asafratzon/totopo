@@ -12,12 +12,15 @@ import {
     AUTO_START,
     AUTO_START_AGENTS,
     CONTAINER_KEEP_ALIVE,
+    CONTAINER_USER,
+    CONTAINER_WORKSPACE,
     RESUME_MARKER_PATH,
     WEB_CONTAINER_PORT,
     WEB_KEY_FILE_PATH,
 } from "../src/lib/constants.js";
 import {
     assignWebPortsToAllWorkspaces,
+    claudeProjectKey,
     collectAssignedWebPorts,
     ensureWebPort,
     latestClaudeSessionId,
@@ -25,8 +28,10 @@ import {
     reassignOutOfRangeWebPorts,
     resolveWebPort,
     resumeCommandFor,
+    setWebDefaultCwd,
     webPortUsable,
     webSessionInfo,
+    webtermExecArgs,
 } from "../src/lib/webterm.js";
 import { initWorkspaceDir, readWebPort, writeWebPort } from "../src/lib/workspace-identity.js";
 import { cleanTempDir, createTempDir, overrideEnv } from "./helpers.js";
@@ -584,6 +589,26 @@ describe("baked webterm literals stay in sync with constants", () => {
         }
     });
 
+    test("the app scopes sessions to the directory the container mounts the workspace at", () => {
+        const config = readFileSync(join(TEMPLATES_DIR, "webterm", "config.js"), "utf8");
+        const match = /WORKSPACE_ROOT = "([^"]+)"/.exec(config);
+        assert.ok(match, "config.js must declare the workspace root it scopes sessions to");
+        assert.equal(match?.[1], CONTAINER_WORKSPACE, "the app would refuse every real directory if this drifted");
+    });
+
+    test("the launcher passes the session directory on, and falls back to its own", () => {
+        const launcher = readFileSync(join(TEMPLATES_DIR, "webterm.sh"), "utf8");
+        const config = readFileSync(join(TEMPLATES_DIR, "webterm", "config.js"), "utf8");
+        // The host's value has to win (it is the directory totopo ran in), and a hand-run has to still get
+        // the shell's own directory - which is what the fallback shape says.
+        assert.match(
+            launcher,
+            /export WEBTERM_CWD="\$\{WEBTERM_CWD:-\$PWD\}"/,
+            "launcher must pass WEBTERM_CWD, defaulting to its own $PWD",
+        );
+        assert.ok(config.includes("process.env.WEBTERM_CWD"), "config.js must read WEBTERM_CWD");
+    });
+
     test("the session cap has a default and an env override", () => {
         const config = readFileSync(join(TEMPLATES_DIR, "webterm", "config.js"), "utf8");
         const match = /MAX_SESSIONS = Number\(process\.env\.WEBTERM_MAX_SESSIONS\)\s*\|\|\s*(\d+)/.exec(config);
@@ -732,5 +757,230 @@ describe("latestClaudeSessionId / resumeCommandFor", () => {
         assert.equal(resumeCommandFor("claude", cacheDir), "claude --resume 11111111-1111-4111-8111-111111111111");
         // Non-claude agents always use their generic flag; the transcript scan is claude-specific.
         assert.equal(resumeCommandFor("codex", cacheDir), AGENT_RESUME_COMMAND.codex);
+    });
+});
+
+// ---- Where a session starts -------------------------------------------------------------------------------------------------------------
+// A terminal session opens in the directory totopo ran in. The interface has to make the same promise, which
+// takes two things: the directory reaching the launcher at container start, and a way to move it afterwards
+// for a container that was already up.
+
+describe("the directory the interface starts sessions in", () => {
+    test("the launcher is told the directory through the environment, and the agent stays explicit", () => {
+        const args = webtermExecArgs("totopo-demo", "claude", "/workspace/apps/api");
+
+        assert.deepEqual(args, [
+            "exec",
+            "-d",
+            "-u",
+            CONTAINER_USER,
+            "-e",
+            "WEBTERM_CWD=/workspace/apps/api",
+            "totopo-demo",
+            "webterm",
+            "claude",
+        ]);
+        // `docker exec -w` on a path docker cannot use fails the whole exec, which would cost the session its
+        // interface over something the server can just refuse.
+        assert.ok(!args.includes("-w"), "the directory must not be passed as the exec working directory");
+    });
+});
+
+describe("setWebDefaultCwd", () => {
+    // Stand in for the container's webterm server: POST /cwd remembers the key and the body it was asked
+    // with, so the test can check both reached it.
+    function serveCwd(status = 200): Promise<{
+        close: () => Promise<void>;
+        port: number;
+        lastKey: () => string | null;
+        lastBody: () => string;
+    }> {
+        let lastKey: string | null = null;
+        let lastBody = "";
+        return new Promise((resolve) => {
+            const server = createHttpServer((req, res) => {
+                const url = new URL(req.url ?? "", "http://localhost");
+                if (req.method !== "POST" || url.pathname !== "/cwd") {
+                    res.writeHead(404).end();
+                    return;
+                }
+                lastKey = url.searchParams.get("k");
+                let body = "";
+                req.on("data", (chunk) => {
+                    body += chunk;
+                });
+                req.on("end", () => {
+                    lastBody = body;
+                    res.writeHead(status, { "content-type": "application/json" }).end('{"default":"apps/api"}');
+                });
+            });
+            server.listen(0, "127.0.0.1", () => {
+                resolve({
+                    port: (server.address() as AddressInfo).port,
+                    lastKey: () => lastKey,
+                    lastBody: () => lastBody,
+                    close: () => new Promise((done) => server.close(() => done())),
+                });
+            });
+        });
+    }
+
+    test("sends the directory this session started from, carrying the key", async () => {
+        const { close, port, lastKey, lastBody } = await serveCwd();
+        try {
+            assert.equal(await setWebDefaultCwd(port, "abc123", "/workspace/apps/api"), true);
+            assert.equal(lastKey(), "abc123");
+            assert.deepEqual(JSON.parse(lastBody()), { cwd: "/workspace/apps/api" });
+        } finally {
+            await close();
+        }
+    });
+
+    test("false when the interface refuses the key or the path, so nothing reads as moved", async () => {
+        const refused = await serveCwd(403);
+        try {
+            assert.equal(await setWebDefaultCwd(refused.port, "stale", "/workspace"), false);
+        } finally {
+            await refused.close();
+        }
+        const rejected = await serveCwd(400);
+        try {
+            assert.equal(await setWebDefaultCwd(rejected.port, "abc123", "/etc"), false);
+        } finally {
+            await rejected.close();
+        }
+    });
+
+    test("false when nothing is listening - the push is a convenience, never a failure", async () => {
+        const { server, port } = await occupyEphemeralPort();
+        await closeServer(server);
+        assert.equal(await setWebDefaultCwd(port, "abc123", "/workspace"), false);
+    });
+});
+
+// ---- Which directory a session may start in ---------------------------------------------------------------------------------------------
+// The rule is scoping, not security (the container is the boundary): a path has to name a directory that
+// exists inside the workspace, so the picker cannot start an agent somewhere the user did not mean.
+
+describe("the paths the app accepts for a session", () => {
+    const CONFIG_URL = pathToFileURL(join(TEMPLATES_DIR, "webterm", "config.js")).href;
+    let root: string;
+    let helpers: {
+        resolveWorkspacePath: (raw: unknown, root?: string) => string | null;
+        workspaceLabel: (absolute: string, root?: string) => string;
+    };
+
+    beforeEach(async () => {
+        root = createTempDir();
+        mkdirSync(join(root, "apps", "api"), { recursive: true });
+        writeFileSync(join(root, "readme.md"), "not a directory");
+        helpers = (await import(CONFIG_URL)) as typeof helpers;
+    });
+
+    afterEach(async () => {
+        await cleanTempDir(root);
+    });
+
+    test("nothing, a relative path and a full path all name a directory inside the workspace", () => {
+        assert.equal(helpers.resolveWorkspacePath("", root), root, "empty is the workspace root");
+        assert.equal(helpers.resolveWorkspacePath("  apps/api  ", root), join(root, "apps", "api"), "and it is trimmed");
+        assert.equal(helpers.resolveWorkspacePath(join(root, "apps"), root), join(root, "apps"));
+    });
+
+    test("null for anything outside the workspace, or that is not a directory", () => {
+        assert.equal(helpers.resolveWorkspacePath("../..", root), null);
+        assert.equal(helpers.resolveWorkspacePath("apps/../../elsewhere", root), null);
+        assert.equal(helpers.resolveWorkspacePath("/etc", root), null);
+        assert.equal(helpers.resolveWorkspacePath("apps/missing", root), null);
+        assert.equal(helpers.resolveWorkspacePath("readme.md", root), null, "a file is not somewhere an agent can run");
+        assert.equal(helpers.resolveWorkspacePath(undefined, root), root, "no value at all reads as the root");
+    });
+
+    test("a directory reaches the browser relative to the workspace, with the root as an empty string", () => {
+        assert.equal(helpers.workspaceLabel(root, root), "", "the root has no path worth showing on a tab");
+        assert.equal(helpers.workspaceLabel(join(root, "apps", "api"), root), join("apps", "api"));
+    });
+});
+
+// ---- Resuming in a sub-directory --------------------------------------------------------------------------------------------------------
+// claude keeps a separate history per directory, so the resume command has to name a conversation from the
+// directory the session will actually run in. Handing it one from elsewhere either fails outright or drops
+// the user into another directory's history.
+
+describe("resuming a conversation in a sub-directory", () => {
+    const NESTED = "/workspace/apps/api";
+    const OLDER = new Date("2026-07-24T10:00:00Z");
+    const NEWER = new Date("2026-07-24T12:00:00Z");
+    const AT_ROOT = "11111111-1111-4111-8111-111111111111";
+    const AT_NESTED = "22222222-2222-4222-8222-222222222222";
+
+    let cacheDir: string;
+
+    // A transcript's one real user message, with or without the directory claude recorded on it (transcripts
+    // written before claude carried the field are the reason the fallback exists).
+    function userLine(cwd: string | null): string {
+        const record: Record<string, unknown> = { type: "user", isSidechain: false, message: { role: "user", content: "hi" } };
+        if (cwd !== null) record.cwd = cwd;
+        return `${JSON.stringify(record)}\n`;
+    }
+
+    function addTranscript(projectKey: string, sessionId: string, cwd: string | null, mtime: Date): void {
+        const dir = join(cacheDir, "agents", "claude", "projects", projectKey);
+        mkdirSync(dir, { recursive: true });
+        const file = join(dir, `${sessionId}.jsonl`);
+        writeFileSync(file, userLine(cwd));
+        utimesSync(file, mtime, mtime);
+    }
+
+    beforeEach(() => {
+        cacheDir = createTempDir();
+    });
+
+    afterEach(async () => {
+        await cleanTempDir(cacheDir);
+    });
+
+    test("claudeProjectKey names a directory's transcript dir the way claude does", () => {
+        assert.equal(claudeProjectKey(CONTAINER_WORKSPACE), "-workspace");
+        assert.equal(claudeProjectKey(NESTED), "-workspace-apps-api");
+        assert.equal(claudeProjectKey("/workspace/my.app_1"), "-workspace-my-app-1");
+    });
+
+    test("picks the newest conversation from that directory, not the newest overall", () => {
+        addTranscript("-workspace", AT_ROOT, CONTAINER_WORKSPACE, NEWER);
+        addTranscript("-workspace-apps-api", AT_NESTED, NESTED, OLDER);
+
+        assert.equal(latestClaudeSessionId(cacheDir, NESTED), AT_NESTED);
+        assert.equal(latestClaudeSessionId(cacheDir, CONTAINER_WORKSPACE), AT_ROOT);
+    });
+
+    test("finds it wherever claude filed it, because the recorded directory is what decides", () => {
+        // A dir name this code would never derive: if the naming ever changes, what the transcript says
+        // about itself still matches.
+        addTranscript("-workspace-apps-api-2", AT_NESTED, NESTED, OLDER);
+
+        assert.equal(latestClaudeSessionId(cacheDir, NESTED), AT_NESTED);
+    });
+
+    test("transcripts too old to record a directory fall back to the dir name", () => {
+        addTranscript("-workspace-apps-api", AT_NESTED, null, OLDER);
+        addTranscript("-workspace", AT_ROOT, null, NEWER);
+
+        assert.equal(latestClaudeSessionId(cacheDir, NESTED), AT_NESTED, "the root's newer history is not this directory's");
+        assert.equal(latestClaudeSessionId(cacheDir, CONTAINER_WORKSPACE), AT_ROOT);
+    });
+
+    test("resumeCommandFor plants that directory's own conversation", () => {
+        addTranscript("-workspace", AT_ROOT, CONTAINER_WORKSPACE, NEWER);
+        addTranscript("-workspace-apps-api", AT_NESTED, NESTED, OLDER);
+
+        assert.equal(resumeCommandFor("claude", cacheDir, NESTED), `claude --resume ${AT_NESTED}`);
+        assert.equal(resumeCommandFor("claude", cacheDir), `claude --resume ${AT_ROOT}`, "no directory given means the workspace root");
+    });
+
+    test("no history for the directory starts fresh rather than resuming another one's", () => {
+        addTranscript("-workspace", AT_ROOT, CONTAINER_WORKSPACE, NEWER);
+
+        assert.equal(resumeCommandFor("claude", cacheDir, NESTED), AGENT_RESUME_COMMAND.claude);
     });
 });

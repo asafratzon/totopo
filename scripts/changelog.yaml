@@ -44,26 +44,21 @@ in_progress:
       date: "2026-07-26"
       added:
         - >-
-          A browser front-end for your agents - the web interface. Enable it under Settings > Web interface (off by
-          default), then run `webterm claude`, `webterm opencode`, or `webterm codex` inside the container to drive the
-          real agent from your browser. It relays the actual agent TUI over your subscription and stays inside the
-          sandbox; sessions belong to the container and survive a closed tab or a slept laptop; a tab bar runs several
-          at once and shows which agents are working and which finished while you were away; the composer adds image
-          paste, drop, upload, and dictation the terminal cannot do; and a power button calls it a day by stopping the
-          container and every session in it. The URL carries a key that the relay demands and mints fresh on every
-          start, so reaching the port is not the same as getting in - and a window whose key is spent, or whose
-          container is gone, says so across the whole page instead of sitting there looking live. Each workspace gets
-          its own sticky, loopback-only host port. Existing containers are offered a rebuild on next session start.
+          A browser front-end for your agents - the web interface. Turn it on under Settings > Web interface, then run
+          `webterm claude` in the container to drive the real agent TUI from your browser: sessions live in the
+          container, run several at a time, and each starts where you ran `npx totopo`. Existing containers are offered
+          a rebuild on next session start.
       changed:
         - >-
-          Stopping containers from the Advanced menu now leaves them in place instead of removing them, so the next
-          session resumes fast rather than rebuilding; Stop containers and Clear agent memory now always ask which one,
-          instead of acting straight away when only one exists.
+          Stopping containers from the Advanced menu now leaves them in place, so the next session resumes fast; Stop
+          containers and Clear agent memory always ask which one.
       fixed:
         - >-
-          A rebuilt container could start with AI CLIs weeks out of date - the "last updated" stamp was written fresh
-          even when the install layer came from Docker's cache, so the session-start update was skipped on the strength
-          of it.
+          A rebuilt container could start with AI CLIs weeks out of date - the "last updated" stamp was written even
+          when the install layer came from Docker's cache.
+        - >-
+          With auto-start on, resume now picks up the conversation from the directory you ran `npx totopo` in, instead
+          of always the workspace root.
 releases:
   - version: 3.15.1
     date: "2026-07-21"

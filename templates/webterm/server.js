@@ -22,7 +22,9 @@ import {
     agentSpawnArgv,
     CHECK_INTERVAL_MS,
     CLIENT_PING_INTERVAL_MS,
-    CWD,
+    DIR_SCAN_DEPTH,
+    DIR_SCAN_MAX,
+    DIR_SCAN_SKIP,
     isAllowedOrigin,
     isAuthorized,
     KEY,
@@ -34,6 +36,7 @@ import {
     PASTE_START,
     PORT,
     RESUME_MARKER,
+    resolveWorkspacePath,
     STATE_FILE,
     STOP_ANNOUNCE_MS,
     STOP_TIMEOUT_MS,
@@ -41,7 +44,10 @@ import {
     SUBMIT_DELAY_MS,
     UPLOAD_DIR,
     UPLOAD_MAX_AGE_MS,
+    WEBTERM_CWD_RAW,
     WORKSPACE,
+    WORKSPACE_ROOT,
+    workspaceLabel,
 } from "./config.js";
 import { createRegistry, WORK_TICK_MS } from "./sessions.js";
 
@@ -88,6 +94,70 @@ function checkUploads() {
         }
     }
     console.log(`[webterm] upload check: removed ${removed}, kept ${kept} (older-than 7d, ${UPLOAD_ROOT})`);
+}
+
+// --- Where sessions start ----------------------------------------------------------------------------------------------------------------
+//
+// A terminal session opens in the directory `npx totopo` ran in. A browser session cannot copy that: the
+// server is one process per container that outlives every invocation, so "the directory" is not a property
+// of how the interface was reached. It is two things instead - a default every new session takes, which the
+// host keeps pointed at wherever totopo last ran, and a directory the browser can name per session.
+
+// The default. Seeded from what the launcher passed and refused when it is not a directory inside the
+// workspace, so a stray value falls back to the root with a line saying so rather than failing every
+// session that follows.
+let defaultCwd = resolveWorkspacePath(WEBTERM_CWD_RAW) ?? WORKSPACE_ROOT;
+const defaultCwdRefused = WEBTERM_CWD_RAW !== "" && resolveWorkspacePath(WEBTERM_CWD_RAW) === null;
+
+/**
+ * Where a session the browser asked for should run, or null when the path names nothing usable.
+ * No path at all means the default, which is what the plain "+ New session" sends.
+ *
+ * The browser writes paths relative to the workspace root, so that is tried first, and "/" reads there as
+ * the root itself. A full container path ("/workspace/src") is accepted too, because someone reading it off
+ * a terminal prompt will type it and refusing that would be pedantry rather than a rule.
+ */
+function sessionCwd(raw) {
+    if (typeof raw !== "string") return defaultCwd;
+    return resolveWorkspacePath(raw) ?? resolveWorkspacePath(raw.replace(/^\/+/, ""));
+}
+
+/**
+ * The directories the picker offers. Bounded on purpose (see DIR_SCAN_* in config.js): a deep walk of a
+ * real workspace is slow and the list would be unreadable anyway. Dot directories and the skip list are
+ * never descended into, and neither are symlinks - a link out of the workspace would list paths that the
+ * picker then refuses. Breadth-first, so a cap that bites drops the deepest entries rather than a whole
+ * branch, and it reports the cut so the caller can say the list is partial.
+ */
+function scanDirs() {
+    const found = [];
+    let queue = [WORKSPACE_ROOT];
+    let truncated = false;
+    for (let depth = 0; depth < DIR_SCAN_DEPTH && queue.length > 0 && !truncated; depth++) {
+        const next = [];
+        for (const dir of queue) {
+            let entries;
+            try {
+                entries = readdirSync(dir, { withFileTypes: true });
+            } catch {
+                continue; // Unreadable directory: nothing to offer from it.
+            }
+            for (const entry of entries) {
+                if (!entry.isDirectory() || entry.name.startsWith(".") || DIR_SCAN_SKIP.has(entry.name)) continue;
+                if (found.length >= DIR_SCAN_MAX) {
+                    truncated = true;
+                    break;
+                }
+                const full = join(dir, entry.name);
+                found.push(workspaceLabel(full));
+                next.push(full);
+            }
+            if (truncated) break;
+        }
+        queue = next;
+    }
+    if (truncated) console.log(`[webterm] directory list capped at ${DIR_SCAN_MAX} - deeper directories can still be typed in`);
+    return { dirs: found, truncated };
 }
 
 // --- The key gate ------------------------------------------------------------------------------------------------------------------------
@@ -260,6 +330,8 @@ function broadcastSessions() {
             agent: AGENT_CMD,
             workspace: WORKSPACE,
             max: MAX_SESSIONS,
+            // What "+ New session" will use, so the picker opens on it and every window agrees.
+            defaultCwd: workspaceLabel(defaultCwd),
             list,
             attachedSid: registry.attachedSid(client),
         });
@@ -299,6 +371,35 @@ app.get("/status", requireKey, (_req, res) => {
     res.json({ agent: AGENT_CMD, sessions: registry.count(), attached: registry.attachedCount() });
 });
 
+// What the picker fills its suggestions from. Scanned per request rather than cached: the picker is opened
+// now and then, and a list built at startup would miss every directory created since.
+app.get("/dirs", requireKey, (_req, res) => {
+    const { dirs, truncated } = scanDirs();
+    res.json({ default: workspaceLabel(defaultCwd), dirs, truncated });
+});
+
+// The host moves the default here, on every session start that finds this interface already running. The
+// interface is started once per container start with the directory totopo ran in, so without this the
+// default would age: run totopo somewhere else tomorrow and the browser would still open new sessions in
+// yesterday's directory, while the terminal session opened in the new one.
+app.post("/cwd", requireKey, express.json({ limit: 4096 }), (req, res) => {
+    // A body without a path is refused rather than read as the workspace root: this route moves where every
+    // later session starts, so it acts only on a directory that was actually named.
+    const raw = req.body?.cwd;
+    const wanted = typeof raw === "string" ? resolveWorkspacePath(raw) : null;
+    if (wanted === null) {
+        res.status(400).json({ error: "not a directory inside the workspace" });
+        return;
+    }
+    if (wanted !== defaultCwd) {
+        defaultCwd = wanted;
+        console.log(`[webterm] new sessions now start in ${defaultCwd}`);
+        // Every open window shows the default in its picker, so they all have to hear it.
+        broadcastSessions();
+    }
+    res.json({ default: workspaceLabel(defaultCwd) });
+});
+
 // Consume the host-planted resume marker, if any. The rename is the claim: of all racing consumers
 // (this server's sessions, the shell autostart hook) exactly one wins, so only one session resumes.
 // Returns the resume command as [cmd, ...args], or null when there is nothing to resume.
@@ -320,10 +421,11 @@ function consumeResumeMarker() {
     }
 }
 
-// Spawn the agent for a new session. Env is inherited so subscription auth flows through. The first
-// session after a container start finds the host-planted marker and continues the most recent
-// conversation; every later session starts fresh, which is what the user wants once mid-work.
-function spawnAgent() {
+// Spawn the agent for a new session, in the directory the registry was given. Env is inherited so
+// subscription auth flows through. The first session after a container start finds the host-planted marker
+// and continues the most recent conversation; every later session starts fresh, which is what the user
+// wants once mid-work.
+function spawnAgent({ cwd }) {
     const resume = consumeResumeMarker();
     const [spawnCmd, ...baseArgs] = resume ?? [AGENT_CMD, ...AGENT_ARGS];
     if (resume) console.log(`[webterm] resuming most recent conversation: ${resume.join(" ")}`);
@@ -333,7 +435,7 @@ function spawnAgent() {
         name: "xterm-256color",
         cols: 80,
         rows: 24,
-        cwd: CWD,
+        cwd,
         env: process.env,
     });
 }
@@ -348,11 +450,20 @@ function openSession(ws, sid) {
     else if (result === "gone") broadcastSessions();
 }
 
-// Start a session and attach this window to it.
-function newSession(ws) {
+// Start a session and attach this window to it. `rawCwd` is what the browser asked for, if anything: the
+// plain "+ New session" sends nothing and takes the default, the picker sends a path relative to the
+// workspace. A path that names nothing usable is refused rather than quietly swapped for the default -
+// starting an agent somewhere the user did not ask for is worse than saying no.
+function newSession(ws, rawCwd) {
+    const cwd = sessionCwd(rawCwd);
+    if (cwd === null) {
+        console.warn(`[webterm] refused a new session: "${rawCwd}" is not a directory inside the workspace`);
+        send(ws, { t: "error", code: "cwd" });
+        return;
+    }
     let created;
     try {
-        created = registry.create();
+        created = registry.create({ cwd, cwdLabel: workspaceLabel(cwd) });
     } catch (err) {
         console.error(`[webterm] could not start ${AGENT_CMD}: ${err instanceof Error ? err.message : String(err)}`);
         send(ws, { t: "error", code: "spawn" });
@@ -467,7 +578,8 @@ function handleFrame(ws, msg) {
             if (sid) registry.takeover(sid, ws);
             return;
         case "new":
-            newSession(ws);
+            // No cwd on the frame means the default; the picker sends one.
+            newSession(ws, msg.cwd);
             return;
         case "stop":
             // Never implicit: the browser only sends this after the user confirmed a card that names
@@ -585,7 +697,10 @@ server.listen(PORT, "0.0.0.0", () => {
     // watching the port to know when to print it.
     publishKey();
     console.log(`[webterm] listening on container port ${PORT} - open the published host port in your browser`);
-    console.log(`[webterm] relaying: ${[AGENT_CMD, ...AGENT_ARGS].join(" ")} (cwd ${CWD})`);
+    console.log(`[webterm] relaying: ${[AGENT_CMD, ...AGENT_ARGS].join(" ")} (new sessions start in ${defaultCwd})`);
+    if (defaultCwdRefused) {
+        console.warn(`[webterm] ignored WEBTERM_CWD="${WEBTERM_CWD_RAW}": not a directory inside ${WORKSPACE_ROOT}`);
+    }
     // Publish the relayed agent for the `webterm` launcher: a port probe proves something is listening,
     // not what it relays. Written after listen so the file only exists once the port is really bound.
     // Best-effort - without it the launcher just reports "already running" without naming the agent.

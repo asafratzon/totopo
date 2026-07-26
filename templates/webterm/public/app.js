@@ -52,6 +52,9 @@ let attachedSid = null;
 let maxSessions = 8;
 let agentName = "the agent";
 let workspaceName = "";
+// Where "+ New session" starts an agent, relative to the workspace root ("" is the root itself). The server
+// owns it - it follows the directory totopo was last run in - and the picker opens on it.
+let defaultCwd = "";
 // The session tab being renamed right now (its id), and the text in its editor. Kept in module state so a
 // bar re-render (an incoming server frame, or the 60s age tick) rebuilds the editor without losing what
 // was typed. `renameJustStarted` selects the whole default label the first time, so it can be typed over.
@@ -324,6 +327,20 @@ function stateNote(entry) {
     return "";
 }
 
+// How a directory reads in a sentence. The root has no path worth printing, so it gets a name.
+function whereLabel(cwd) {
+    return cwd === "" ? "the workspace root" : cwd;
+}
+
+// Where the session runs, when that is worth saying: sessions in the workspace root (the usual case) show
+// nothing, so the chip means "this one is somewhere else" without every tab carrying a path.
+function dirChip(entry) {
+    const chip = document.createElement("span");
+    chip.className = "dir";
+    chip.textContent = entry.cwd;
+    return chip;
+}
+
 function tabFor(entry) {
     const tab = document.createElement("div");
     tab.className = "tab";
@@ -333,7 +350,8 @@ function tabFor(entry) {
     if (entry.attention) tab.classList.add("attention");
     tab.style.setProperty("--sc", colorFor(entry));
     // The tooltip keeps the default "agent N" even when a custom name is shown, so the number stays findable.
-    tab.title = `${entry.label} - running ${ageLabel(entry.createdAt)}${stateNote(entry)} - double-click the name to rename`;
+    const where = entry.cwd ? ` in ${entry.cwd}` : "";
+    tab.title = `${entry.label}${where} - running ${ageLabel(entry.createdAt)}${stateNote(entry)} - double-click the name to rename`;
 
     if (entry.working) tab.append(traceLayer());
     if (entry.attention) startArrival(tab, entry.id);
@@ -345,6 +363,7 @@ function tabFor(entry) {
     age.className = "age";
     age.textContent = ageLabel(entry.createdAt);
     tab.append(dot, name, age);
+    if (entry.cwd) tab.append(dirChip(entry));
 
     // Another window is driving this one, so a takeover prompt on click is not a surprise.
     if (entry.attached && entry.id !== attachedSid) {
@@ -524,14 +543,31 @@ function renderBar() {
         tabbar.append(tabFor(entry));
     }
 
+    // One control, two ways in: the button starts a session in the default directory (the common case, and
+    // one click, the way it always was), the caret asks which directory first.
+    const group = document.createElement("div");
+    group.id = "newtab-group";
+    const atCap = sessions.length >= maxSessions;
+
     const add = document.createElement("button");
     add.id = "newtab";
     add.type = "button";
     add.textContent = "+ New session";
-    add.title = `Start another ${agentName} in this container`;
-    add.disabled = sessions.length >= maxSessions;
+    add.title = `Start another ${agentName} in this container, in ${whereLabel(defaultCwd)}`;
+    add.disabled = atCap;
     add.addEventListener("click", () => sendFrame({ t: "new" }));
-    tabbar.append(add);
+
+    const pick = document.createElement("button");
+    pick.id = "newtab-pick";
+    pick.type = "button";
+    pick.textContent = "▾"; // Small down-pointing triangle.
+    pick.title = "Start a session in another directory";
+    pick.setAttribute("aria-label", "Start a session in another directory");
+    pick.disabled = atCap;
+    pick.addEventListener("click", newSessionCard);
+
+    group.append(add, pick);
+    tabbar.append(group);
 
     // The far right of the bar: which container this is, and the way to end it. The session count that used
     // to live here was redundant - the tabs show how many there are, and "+ New session" disables at the
@@ -753,9 +789,10 @@ function refreshBrowserTab() {
 
 // --- Overlay cards -----------------------------------------------------------------------------------------------------------------------
 
-// One card shape for every decision: a title, an explanation, and buttons. Each button closes the card
-// and then runs its action, so no card can be left open over a terminal you are typing into.
-function showCard(title, body, buttons) {
+// One card shape for every decision: a title, an explanation, buttons, and - where the decision needs one -
+// a field between the two. Each button closes the card and then runs its action, so no card can be left open
+// over a terminal you are typing into.
+function showCard(title, body, buttons, field) {
     card.textContent = "";
     const heading = document.createElement("h2");
     heading.textContent = title;
@@ -774,7 +811,9 @@ function showCard(title, body, buttons) {
         });
         row.append(button);
     }
-    card.append(heading, text, row);
+    card.append(heading, text);
+    if (field) card.append(field);
+    card.append(row);
     overlay.classList.add("show");
 }
 
@@ -813,6 +852,94 @@ function closeCard(entry) {
         `The ${agentName} process is killed and this conversation stops. Sessions are never closed for you - ` +
             `this one has been running ${ageLabel(entry.createdAt)}.`,
         [{ label: "Cancel" }, { label: "End session", kind: "danger", run: () => sendFrame({ t: "close", sid: entry.id }) }],
+    );
+}
+
+// --- Starting a session somewhere else ---------------------------------------------------------------------------------------------------
+//
+// A session runs in one directory for its whole life, so this is asked once, up front. The field is the
+// authority - anything can be typed into it - and the list beside it is only there so the common case is a
+// click. Neither is trusted: the server resolves whatever arrives and refuses what is not a directory in the
+// workspace.
+
+const DIR_LIST_ID = "dirlist";
+
+// Fill the picker's suggestions from the container. Fetched when the card opens rather than kept around, so
+// a directory created a minute ago is in the list. Failures are silent on purpose: the field still works,
+// and a suggestion list that did not load is not worth a card of its own.
+async function fillDirList(list) {
+    let payload;
+    try {
+        const res = await fetch(`/dirs${KEY_QUERY}`, { cache: "no-store" });
+        if (!res.ok) return;
+        payload = await res.json();
+    } catch {
+        return;
+    }
+    // The card may have been closed while this was in flight.
+    if (!list.isConnected) return;
+    const dirs = Array.isArray(payload?.dirs) ? payload.dirs : [];
+    // "/" is how the root is written here: a path everyone recognises, and the one value the server reads
+    // back as the workspace root itself.
+    for (const dir of ["/", ...dirs]) {
+        const option = document.createElement("option");
+        option.value = dir;
+        if (dir === "/") option.label = "workspace root";
+        list.append(option);
+    }
+    // The scan is capped, so say when the list is partial instead of letting it look complete.
+    if (payload?.truncated) noteMsg("the directory list is partial - deeper paths can still be typed in");
+}
+
+function newSessionCard() {
+    const field = document.createElement("input");
+    field.type = "text";
+    field.className = "path";
+    field.value = defaultCwd;
+    field.placeholder = "workspace root";
+    field.spellcheck = false;
+    field.autocomplete = "off";
+    field.setAttribute("list", DIR_LIST_ID);
+    field.setAttribute("aria-label", "Directory for the new session, relative to the workspace root");
+    const list = document.createElement("datalist");
+    list.id = DIR_LIST_ID;
+    const wrap = document.createElement("div");
+    wrap.className = "field";
+    wrap.append(field, list);
+
+    const start = () => sendFrame({ t: "new", cwd: field.value.trim() });
+    field.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+            event.preventDefault();
+            hideCard();
+            start();
+        } else if (event.key === "Escape") {
+            event.preventDefault();
+            hideCard();
+            focusTerminal();
+        }
+    });
+
+    showCard(
+        "Start a session somewhere else",
+        `New sessions start in ${whereLabel(defaultCwd)}. Pick another directory, or type one relative to the workspace ` +
+            `root - the ${agentName} runs there for the life of the session, and its tab says where.`,
+        [{ label: "Cancel" }, { label: "Start session", kind: "primary", run: start }],
+        wrap,
+    );
+    field.focus();
+    field.select();
+    fillDirList(list);
+}
+
+// The server refused the path, so nothing was started. It does not say which path back: the user just typed
+// it, and the rule is what they need.
+function badDirCard() {
+    showCard(
+        "That directory is not in the workspace",
+        "Nothing was started. The path has to be a directory that already exists inside the workspace - written " +
+            'relative to its root, like "packages/api".',
+        [{ label: "Got it", kind: "primary" }],
     );
 }
 
@@ -1182,6 +1309,7 @@ function onFrame(msg) {
         stoppingCurtain();
     } else if (msg.t === "error") {
         if (msg.code === "cap") capCard();
+        else if (msg.code === "cwd") badDirCard();
         else if (msg.code === "stop") {
             // The container is still here after all, so the page goes back to being usable.
             halted = false;
@@ -1197,6 +1325,7 @@ function applySessions(msg) {
     maxSessions = msg.max ?? maxSessions;
     agentName = msg.agent || agentName;
     workspaceName = msg.workspace || "";
+    defaultCwd = msg.defaultCwd ?? "";
     // Before the bar draws: its flash reads these timestamps, so an alert plays once instead of on every frame.
     noteArrivals();
     renderBar();

@@ -6,7 +6,7 @@
 
 import { spawnSync } from "node:child_process";
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import {
     AGENT_RESUME_COMMAND,
     AGENTS_DIR,
@@ -190,6 +190,30 @@ export async function webSessionInfo(webPort: number, key: string | null): Promi
     }
 }
 
+/**
+ * Point an already-running interface at the directory this session was started from, so its new sessions open
+ * where a terminal session would. The interface takes that directory from the launcher, which only runs once
+ * per container start - so on a container that has been up since yesterday the default is yesterday's
+ * directory, and this is what moves it.
+ * `key` is what the interface demands of every caller (readWebKey); without one it answers 403, which reads
+ * here like any other refusal. Best-effort: a false only means the browser's "+ New session" still opens
+ * where it did, and the picker can be used instead.
+ */
+export async function setWebDefaultCwd(webPort: number, key: string | null, workdir: string): Promise<boolean> {
+    const query = key === null ? "" : `?k=${encodeURIComponent(key)}`;
+    try {
+        const response = await fetch(`http://${PORT_LOOPBACK_HOST}:${webPort}/cwd${query}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ cwd: workdir }),
+            signal: AbortSignal.timeout(WEB_STATUS_TIMEOUT_MS),
+        });
+        return response.ok;
+    } catch {
+        return false; // Not listening, an interface too old to know the route, or too slow to matter.
+    }
+}
+
 // The interface is on loopback in the same machine, so a slow answer means something is wrong, not far.
 const WEB_STATUS_TIMEOUT_MS = 1500;
 
@@ -209,66 +233,117 @@ export async function webInterfaceAnswers(webPort: number): Promise<boolean> {
 
 // --- Resume command selection (host-side, over the mounted agent dirs) -------------------------------------------------------------------
 
-// Claude Code's per-project transcript dir name for the workspace mount: /workspace -> -workspace.
-const CLAUDE_PROJECT_KEY = CONTAINER_WORKSPACE.replace(/\//g, "-");
 const SESSION_FILE_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$/;
 
 /**
- * The resume command planted in the marker for a given agent. For claude the session is picked
- * explicitly: `claude --continue` takes the newest transcript by mtime and silently starts FRESH
- * when that transcript has no real messages (e.g. a session that only ran a slash command), so
- * relying on it makes auto-resume fail quietly whenever such a session happens to be the newest.
- * Resuming by id sidesteps the picker entirely. Falls back to the generic flag when no resumable
- * transcript is found (claude then starts fresh, which is the right outcome for a blank history).
+ * Claude Code files its transcripts per directory, in a dir named after the directory it ran in with every
+ * character that is not a letter or a digit turned into "-": /workspace -> -workspace, /workspace/apps/api ->
+ * -workspace-apps-api. So a session in a sub-directory reads and writes a different dir from one at the root,
+ * and a resume command built from the wrong one names an id that claude cannot find.
+ * Only the fallback below relies on this naming; the main path reads what a transcript says about itself.
  */
-export function resumeCommandFor(agent: Exclude<AutoStartAgent, "off">, workspaceCacheDir: string): string {
+export function claudeProjectKey(containerPath: string): string {
+    return containerPath.replace(/[^a-zA-Z0-9]/g, "-");
+}
+
+/**
+ * The resume command planted in the marker for a given agent, for a session that will run in `workdir`.
+ * For claude the session is picked explicitly: `claude --continue` takes the newest transcript by mtime and
+ * silently starts FRESH when that transcript has no real messages (e.g. a session that only ran a slash
+ * command), so relying on it makes auto-resume fail quietly whenever such a session happens to be the newest.
+ * Resuming by id sidesteps the picker entirely. Falls back to the generic flag when no resumable transcript
+ * is found (claude then starts fresh, which is the right outcome for a blank history).
+ */
+export function resumeCommandFor(
+    agent: Exclude<AutoStartAgent, "off">,
+    workspaceCacheDir: string,
+    workdir: string = CONTAINER_WORKSPACE,
+): string {
     if (agent === "claude") {
-        const sessionId = latestClaudeSessionId(workspaceCacheDir);
+        const sessionId = latestClaudeSessionId(workspaceCacheDir, workdir);
         if (sessionId !== null) return `claude --resume ${sessionId}`;
     }
     return AGENT_RESUME_COMMAND[agent];
 }
 
 /**
- * The most recent Claude Code conversation that can actually be resumed, read from the host-side
- * mounted agent dir: the newest transcript containing a real (non-sidechain) user message.
- * Subagent transcripts share the same dir and are skipped. Returns null when nothing qualifies.
+ * The most recent Claude Code conversation that can be resumed in `workdir`, read from the host-side mounted
+ * agent dir: the newest transcript with a real (non-sidechain) user message that ran in that directory.
+ *
+ * The directory is matched on what the transcript records, not on which dir it sits in, so however claude
+ * names those dirs we never hand back a conversation from somewhere else - resuming it would either fail or
+ * drop the user into another directory's history. Transcripts old enough to record no directory at all are
+ * the fallback, and for those the dir name is the only evidence there is.
+ * Returns null when nothing qualifies.
  */
-export function latestClaudeSessionId(workspaceCacheDir: string): string | null {
-    const projectDir = join(workspaceCacheDir, AGENTS_DIR, "claude", "projects", CLAUDE_PROJECT_KEY);
-    let names: string[];
+export function latestClaudeSessionId(workspaceCacheDir: string, workdir: string = CONTAINER_WORKSPACE): string | null {
+    const projectsDir = join(workspaceCacheDir, AGENTS_DIR, "claude", "projects");
+    const byRecordedDir = newestResumableSessionId(transcriptsNewestFirst(projectsDir, projectDirNames(projectsDir)), workdir);
+    if (byRecordedDir !== null) return byRecordedDir;
+    return newestResumableSessionId(transcriptsNewestFirst(projectsDir, [claudeProjectKey(workdir)]), null);
+}
+
+// Every project dir claude has written under this workspace's cache. Read rather than derived: the point of
+// the walk is to find the transcript that says it ran where we are about to run.
+function projectDirNames(projectsDir: string): string[] {
     try {
-        names = readdirSync(projectDir);
+        return readdirSync(projectsDir, { withFileTypes: true })
+            .filter((entry) => entry.isDirectory())
+            .map((entry) => entry.name);
     } catch {
-        return null;
+        return [];
     }
-    const candidates = names
-        .filter((name) => SESSION_FILE_PATTERN.test(name))
-        .map((name) => {
+}
+
+// Transcript paths from the given project dirs, newest first. Session files only - anything else in there
+// (subagent dirs, stray notes) is not a conversation. A missing or unreadable dir contributes nothing.
+function transcriptsNewestFirst(projectsDir: string, dirNames: string[]): string[] {
+    const found: Array<{ path: string; mtime: number }> = [];
+    for (const dirName of dirNames) {
+        const dir = join(projectsDir, dirName);
+        let names: string[];
+        try {
+            names = readdirSync(dir);
+        } catch {
+            continue;
+        }
+        for (const name of names) {
+            if (!SESSION_FILE_PATTERN.test(name)) continue;
+            const path = join(dir, name);
             try {
-                return { name, mtime: statSync(join(projectDir, name)).mtimeMs };
+                found.push({ path, mtime: statSync(path).mtimeMs });
             } catch {
-                return null;
+                // Vanished between the listing and the stat.
             }
-        })
-        .filter((entry): entry is { name: string; mtime: number } => entry !== null)
-        .sort((a, b) => b.mtime - a.mtime);
-    for (const candidate of candidates) {
-        if (hasRealUserMessage(join(projectDir, candidate.name))) return candidate.name.slice(0, -".jsonl".length);
+        }
+    }
+    return found.sort((a, b) => b.mtime - a.mtime).map((entry) => entry.path);
+}
+
+// The first of these transcripts that can be resumed, in the order given. `requiredCwd` of null asks only
+// that the conversation has messages; a directory asks that it recorded that one too. Transcripts are read
+// in order and the walk stops at the first hit, so the usual case reads a single file.
+function newestResumableSessionId(transcriptPaths: string[], requiredCwd: string | null): string | null {
+    for (const path of transcriptPaths) {
+        const facts = transcriptFacts(path);
+        if (!facts.resumable) continue;
+        if (requiredCwd !== null && facts.cwd !== requiredCwd) continue;
+        return basename(path).slice(0, -".jsonl".length);
     }
     return null;
 }
 
-// True when the transcript holds at least one real user message. Sessions that only recorded UI
-// state (mode changes, slash commands) have nothing to resume; sidechain records belong to subagents.
-// isSidechain is a field we do not own, so only an explicit true excludes a record: a record that
-// stopped carrying the field still counts as resumable, which fails on the safe side.
-function hasRealUserMessage(transcriptPath: string): boolean {
+// What a transcript says about itself, in one pass: whether it holds a real user message, and the directory
+// that message was typed in. Sessions that only recorded UI state (mode changes, slash commands) have
+// nothing to resume; sidechain records belong to subagents. isSidechain is a field we do not own, so only an
+// explicit true excludes a record: a record that stopped carrying the field still counts as resumable, which
+// fails on the safe side. `cwd` is null for transcripts written before claude recorded it.
+function transcriptFacts(transcriptPath: string): { resumable: boolean; cwd: string | null } {
     let content: string;
     try {
         content = readFileSync(transcriptPath, "utf8");
     } catch {
-        return false;
+        return { resumable: false, cwd: null };
     }
     // Walked by index rather than split("\n") so a multi-MB transcript is not copied into an array of lines.
     let start = 0;
@@ -279,13 +354,15 @@ function hasRealUserMessage(transcriptPath: string): boolean {
         // Cheap pre-filter so multi-MB transcripts are not JSON.parsed line by line.
         if (!line.includes('"type":"user"')) continue;
         try {
-            const record = JSON.parse(line) as { type?: string; isSidechain?: boolean };
-            if (record.type === "user" && record.isSidechain !== true) return true;
+            const record = JSON.parse(line) as { type?: string; isSidechain?: boolean; cwd?: string };
+            if (record.type === "user" && record.isSidechain !== true) {
+                return { resumable: true, cwd: typeof record.cwd === "string" ? record.cwd : null };
+            }
         } catch {
             // Skip malformed lines.
         }
     }
-    return false;
+    return { resumable: false, cwd: null };
 }
 
 // --- Container hooks (docker I/O, best-effort) --------------------------------------------------------------------------------------------
@@ -306,13 +383,24 @@ export function plantResumeMarker(containerName: string, resumeCommand: string):
 }
 
 /**
+ * The `docker exec` argv that starts the baked webterm server, relaying the given agent and opening its
+ * sessions in `workdir`. The agent is always passed explicitly - `webterm` on its own only prints usage.
+ *
+ * The directory travels as an env var rather than as `docker exec -w`: `-w` on a path docker cannot use
+ * fails the whole exec, which would cost the user the interface over something the server itself can just
+ * refuse and fall back to the workspace root.
+ */
+export function webtermExecArgs(containerName: string, agent: Exclude<AutoStartAgent, "off">, workdir: string): string[] {
+    return ["exec", "-d", "-u", CONTAINER_USER, "-e", `WEBTERM_CWD=${workdir}`, containerName, "webterm", agent];
+}
+
+/**
  * Start the baked webterm server detached, once per container start, relaying the given agent.
- * The agent is always passed explicitly - `webterm` on its own only prints usage - and the launcher
- * is idempotent (exits quietly when the port is already bound).
+ * The launcher is idempotent (exits quietly when the port is already bound).
  * Best-effort - the user can always run `webterm <agent>` by hand.
  */
-function startWebtermDetached(containerName: string, agent: Exclude<AutoStartAgent, "off">): void {
-    spawnSync("docker", ["exec", "-d", "-u", CONTAINER_USER, containerName, "webterm", agent], { stdio: "pipe" });
+function startWebtermDetached(containerName: string, agent: Exclude<AutoStartAgent, "off">, workdir: string): void {
+    spawnSync("docker", webtermExecArgs(containerName, agent, workdir), { stdio: "pipe" });
 }
 
 // How long to wait for a just-launched interface to answer, and how often to ask. `docker exec -d` returns
@@ -331,8 +419,9 @@ export async function startWebtermAndVerify(
     containerName: string,
     agent: Exclude<AutoStartAgent, "off">,
     webPort: number,
+    workdir: string,
 ): Promise<boolean> {
-    startWebtermDetached(containerName, agent);
+    startWebtermDetached(containerName, agent, workdir);
     const deadline = Date.now() + WEB_START_TIMEOUT_MS;
     while (Date.now() < deadline) {
         if (await webInterfaceAnswers(webPort)) return true;

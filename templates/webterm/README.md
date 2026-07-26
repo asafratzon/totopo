@@ -10,7 +10,7 @@ On top of the terminal it adds a rich composer so you can paste images, drop or 
 - `server.js` serves the page, exposes `POST /upload`, and runs a WebSocket relay at `/ws`.
 - The URL carries a key (`/?k=<key>`) and every route that carries the relay demands it. The server mints a new one at each start, so the key lives exactly as long as the process that issued it.
 - `sessions.js` is the session registry: what a session is, who drives it, and what ends it. The PTY is injected, so the rules are unit-tested without `node-pty`.
-- A session is one `node-pty` process running the agent in `/workspace`. Sessions belong to the container, not to the browser.
+- A session is one `node-pty` process running the agent in a directory inside `/workspace`. Sessions belong to the container, not to the browser.
 - The page (`public/`) lists every live session as a tab, renders the attached one's TUI with xterm.js, and forwards keystrokes.
 - The composer sends its message (text plus any image paths) as one bracketed paste, so a multi-line message is submitted once.
 - Tab order is registry state (`reorder`), so a drag is a frame and the new bar comes back as an ordinary broadcast - a locally sorted bar would be undone by the next one. The bar holds still while a drag is in flight, because rebuilding it would replace the element being dragged and cancel the drag.
@@ -35,12 +35,19 @@ The page is mission control for the container: the tab bar at the top is every a
 - **One window drives a session at a time**, because a PTY has one size and two drivers would fight over it. Opening a session another window is watching offers to switch it to this one; the window that loses it can take it back.
 - **Opening the URL always lands you somewhere:** the session you were last looking at, or - when nothing is running - one freshly started session, which is what resumes the most recent conversation.
   Reconnecting is not the same as opening, and starts nothing: a wifi blip or a slept laptop puts you back on exactly what you left, an empty bar included.
+- **A session starts where you did, and stays there.** `+ New session` opens the agent in the directory `npx totopo` ran in, the same directory a terminal session lands in - so `npx totopo` inside `apps/api` gets you an agent working on `apps/api`.
+  The caret beside the button starts one somewhere else: type a directory relative to the workspace root or pick it from the list, and the tab says where that session is running.
+  The directory belongs to the session for its whole life, so several sessions can work in different parts of the workspace at once.
+  A path has to name a directory that exists inside the workspace, or nothing is started - the container is the sandbox boundary either way, this is what keeps the picker honest.
 - **Up to 8 sessions** (`WEBTERM_MAX_SESSIONS`). The limit is memory: each one is a full agent process.
 - **Call it a day with the power button** at the right of the bar: it stops the container, and with it every session in it - browser and terminal alike. It always asks first, naming what ends. The container stops itself by signalling PID 1, which only works because totopo gives the keep-alive a TERM trap; a container created before that says so instead of hanging, and points at the host.
 
 ## What the tabs are telling you
 
 Whether an agent is working is read off the rhythm of its output - a sustained stretch means working, going quiet means it stopped - so it is the same for every agent and does not depend on reading anyone's TUI.
+Going quiet is not the end of a turn on its own, though: an agent pauses mid-turn (a slow first token, a tool that prints nothing while it runs) and carries straight on.
+So the light goes out with the output, but the stop has to hold for a few seconds before anything says the agent finished - and work that resumes is never reported as finished at all.
+That is why a session showing as working never also shows as waiting for you.
 
 - **A light travels round a tab** while that session's agent is working.
 - **A tab flashes and then stays lit** when its agent finishes something you were not there to see. Visiting the tab is what spends it.
@@ -48,6 +55,13 @@ Whether an agent is working is read off the rhythm of its output - a sustained s
 
 "Not there to see it" means the window is not in front of you: behind another browser tab, or behind another app.
 A session you are looking at never lights up, since that would only tell you what you can already see.
+
+`GET /dirs?k=<key>` answers with the default directory and the ones the picker suggests: `{"default":"apps/api","dirs":["apps","apps/api",...],"truncated":false}`.
+The walk is bounded (3 levels deep, 400 entries, no dot directories and no `node_modules`), and says when the list is partial - anything deeper can still be typed in.
+
+`POST /cwd?k=<key>` with `{"cwd":"/workspace/apps/api"}` moves where new sessions start.
+totopo calls it at every session start that finds the interface already running: the launcher only passes the directory once per container start, so without this the browser would keep opening sessions in the directory of whichever session first started the container.
+Existing sessions are untouched - a session's directory never changes under it.
 
 `GET /status?k=<key>` reports the relayed agent, how many sessions are alive, and how many of them a browser is watching: `{"agent":"claude","sessions":2,"attached":1}`.
 totopo asks it when the last terminal session closes, so `exit` in the terminal warns before it stops a container with live browser sessions in it.
@@ -90,7 +104,8 @@ One server relays **one agent**. Running `webterm <other-agent>` while it is up 
 
 ## Config
 
-`config.js` holds the knobs (port, key and key file, upload dir, size cap, sweep age/interval, paste framing, resume marker, state file, session limit, keepalive interval, stop timings, claude context file).
+`config.js` holds the knobs (port, key and key file, upload dir, size cap, sweep age/interval, paste framing, resume marker, state file, session limit, keepalive interval, stop timings, claude context file, workspace root and directory-scan limits).
 Env overrides: `WEBTERM_PORT`, `WEBTERM_CWD`, `WEBTERM_AGENT`, `WEBTERM_AGENT_ARGS`, `WEBTERM_KEY`, `WEBTERM_KEY_FILE`, `WEBTERM_RESUME_MARKER`, `WEBTERM_STATE_FILE`, `WEBTERM_MAX_SESSIONS`, `WEBTERM_PING_INTERVAL_MS`, `WEBTERM_WORKSPACE`, `WEBTERM_CONTEXT_FILE`.
 `WEBTERM_KEY` pins the key instead of minting one, which is for tests and hand-run debugging - there is no way to turn the gate off.
-The `webterm` launcher on PATH sets these from the container's totopo-injected environment.
+`WEBTERM_CWD` is where new sessions start, not where they must stay: the browser can name another directory per session, and `POST /cwd` moves the default.
+The `webterm` launcher on PATH sets these from the container's totopo-injected environment, and falls back to its own `$PWD` for the session directory - so a hand-run `webterm claude` starts sessions where that shell is.

@@ -300,6 +300,21 @@ body {
     padding: 1px 4px;
 }
 
+/* This session runs somewhere other than the workspace root, and this is where. Only the tabs that are
+   somewhere else carry it, so a bar of ordinary sessions looks exactly as it did. A long path is cut rather
+   than allowed to push the tabs around; the tooltip has all of it. */
+.tab .dir {
+    max-width: 16ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 10.5px;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 1px 4px;
+}
+
 .tab .close {
     display: flex;
     align-items: center;
@@ -322,31 +337,50 @@ body {
 }
 
 /* Shaped like a session tab, so the bar reads as one row: it is the outline of the next tab. Dashed and
-   empty is what keeps it from looking like a session that is already there. */
-#newtab {
+   empty is what keeps it from looking like a session that is already there. Two halves in one outline - the
+   button starts a session where the last totopo session did, the caret asks for a directory first. */
+#newtab-group {
+    display: flex;
+    align-items: stretch;
+    margin: 0 0 0 6px;
+    position: relative;
+    top: 1px;
+}
+
+#newtab,
+#newtab-pick {
     display: flex;
     align-items: center;
-    margin: 0 0 0 6px;
     padding: 7px 11px;
     background: transparent;
     color: var(--muted);
     border: 1px dashed var(--border);
     border-bottom: none;
-    border-radius: 8px 8px 0 0;
     font-size: 12.5px;
     line-height: 1;
     white-space: nowrap;
     cursor: pointer;
-    position: relative;
-    top: 1px;
 }
 
-#newtab:hover {
+#newtab {
+    border-radius: 8px 0 0 0;
+    border-right: none;
+}
+
+#newtab-pick {
+    border-radius: 0 8px 0 0;
+    padding: 7px 8px;
+    font-size: 10.5px;
+}
+
+#newtab:hover,
+#newtab-pick:hover {
     color: var(--accent);
     border-color: var(--accent);
 }
 
-#newtab:disabled {
+#newtab:disabled,
+#newtab-pick:disabled {
     opacity: 0.4;
     cursor: not-allowed;
 }
@@ -464,6 +498,28 @@ body {
     display: flex;
     gap: 8px;
     justify-content: flex-end;
+}
+
+/* A card that asks for something instead of only deciding. The field takes the paragraph's place in the
+   layout, so the buttons stay exactly where every other card puts them. */
+.card .field {
+    margin: 0 0 14px;
+}
+
+.card .path {
+    width: 100%;
+    padding: 7px 9px;
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font: inherit;
+    font-size: 12.5px;
+    outline: none;
+}
+
+.card .path:focus {
+    border-color: var(--ws);
 }
 
 .btn {

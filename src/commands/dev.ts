@@ -60,6 +60,7 @@ import {
     readWebKey,
     resolveWebPort,
     resumeCommandFor,
+    setWebDefaultCwd,
     startWebtermAndVerify,
     webInterfaceAnswers,
     webPortUsable,
@@ -569,9 +570,15 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
  * hook deliberately does not launch an agent (the browser is meant to), so a launch that failed silently
  * would leave the user with an advertised URL that never answers and no agent anywhere. Nothing is started
  * in its place: the message says what to run, and the choice is the user's.
+ * `workdir` is where its sessions open - the same directory the terminal session below lands in.
  */
-async function launchWebInterface(containerName: string, agent: Exclude<AutoStartAgent, "off">, webPort: number): Promise<void> {
-    if (await startWebtermAndVerify(containerName, agent, webPort)) return;
+async function launchWebInterface(
+    containerName: string,
+    agent: Exclude<AutoStartAgent, "off">,
+    webPort: number,
+    workdir: string,
+): Promise<void> {
+    if (await startWebtermAndVerify(containerName, agent, webPort, workdir)) return;
     log.warn(
         `Web interface: the server did not come up on port ${webPort}, so the URL in the greeting will not answer.\n` +
             `  Run \`webterm ${agent}\` in the container to see why, or just run \`${agent}\` in the terminal.`,
@@ -789,8 +796,8 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
     if (startResult.status !== "connected") {
         const autoStartAgent = readAutoStartAgent();
         if (autoStartAgent !== AUTO_START.off) {
-            plantResumeMarker(containerName, resumeCommandFor(autoStartAgent, cacheDir));
-            if (webPort !== null) await launchWebInterface(containerName, autoStartAgent, webPort);
+            plantResumeMarker(containerName, resumeCommandFor(autoStartAgent, cacheDir, workdir));
+            if (webPort !== null) await launchWebInterface(containerName, autoStartAgent, webPort, workdir);
         }
     } else if (webPort !== null) {
         // Connecting to a container that is already up: the interface it started with should still be
@@ -799,7 +806,12 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
         // the relaunched interface opens a fresh conversation rather than re-resuming an old one.
         const autoStartAgent = readAutoStartAgent();
         if (autoStartAgent !== AUTO_START.off && !(await webInterfaceAnswers(webPort))) {
-            await launchWebInterface(containerName, autoStartAgent, webPort);
+            await launchWebInterface(containerName, autoStartAgent, webPort, workdir);
+        } else {
+            // The interface has been serving since an earlier session, so the directory it was started with
+            // is that session's, not this one's. Move it, so the browser opens new sessions where this
+            // session was started from - the same promise the terminal below keeps.
+            await setWebDefaultCwd(webPort, readWebKey(containerName), workdir);
         }
     }
 

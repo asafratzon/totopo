@@ -3,8 +3,8 @@
 // Nothing here is claude-specific: the relayed agent is whichever one `webterm <agent>` was given.
 
 import { randomBytes, timingSafeEqual } from "node:crypto";
-import { existsSync } from "node:fs";
-import { basename, join } from "node:path";
+import { existsSync, statSync } from "node:fs";
+import { basename, join, relative, resolve, sep } from "node:path";
 
 // The server always binds this container port. totopo publishes it to a host port
 // (127.0.0.1:HOST:3899); the host side may differ per workspace, this side never does.
@@ -26,8 +26,53 @@ export const RESUME_MARKER = process.env.WEBTERM_RESUME_MARKER || "";
 // probing the port proves something is listening, never what it relays. Empty disables the write.
 export const STATE_FILE = process.env.WEBTERM_STATE_FILE || "/tmp/webterm.agent";
 
-// Working directory for the spawned CLI - the mounted workspace root.
-export const CWD = process.env.WEBTERM_CWD || "/workspace";
+// The mounted workspace, and the only tree a session may be started in. Every directory the interface
+// deals with is this one or something under it.
+export const WORKSPACE_ROOT = "/workspace";
+
+// Where sessions start unless the browser asks for somewhere else. The host sets it to the directory
+// `npx totopo` ran in, so a browser session opens where the terminal session would; a hand-run
+// `webterm <agent>` passes its own $PWD. Read raw here and checked by the server, which is what turns a
+// value from outside the workspace into a log line rather than a silent oddity.
+export const WEBTERM_CWD_RAW = process.env.WEBTERM_CWD || "";
+
+/**
+ * The absolute directory a raw value names, or null when it names nothing usable. Empty means the
+ * workspace root, a relative value is read against it, and an absolute one has to already be inside it.
+ * `root` is a parameter so this can be unit-tested against a temp dir.
+ *
+ * This is a scoping rule, not a security boundary: the container is the boundary, and an agent can cd
+ * wherever it likes once it is running. What it buys is a picker that cannot quietly start a session
+ * outside the workspace, or in a path that does not exist.
+ */
+export function resolveWorkspacePath(raw, root = WORKSPACE_ROOT) {
+    const wanted = typeof raw === "string" ? raw.trim() : "";
+    // resolve() takes both shapes: an absolute value is kept, a relative one is read against the root.
+    const full = wanted === "" ? root : resolve(root, wanted);
+    if (full !== root && !full.startsWith(root + sep)) return null;
+    try {
+        if (!statSync(full).isDirectory()) return null;
+    } catch {
+        return null; // Gone, or not readable.
+    }
+    return full;
+}
+
+/**
+ * How a directory travels to the browser: relative to the workspace root, with "" for the root itself.
+ * The one place that decides it, so the wire never carries an absolute container path and the client
+ * never has to know where the workspace is mounted.
+ */
+export function workspaceLabel(absolute, root = WORKSPACE_ROOT) {
+    return relative(root, absolute);
+}
+
+// The directory list the picker offers. A workspace can hold tens of thousands of directories, so the
+// walk is bounded on every axis: how deep it goes, how many it returns, and what it never descends into.
+// Depth 3 covers where work actually happens (apps/*/src, packages/*/lib) without listing a whole tree.
+export const DIR_SCAN_DEPTH = 3;
+export const DIR_SCAN_MAX = 400;
+export const DIR_SCAN_SKIP = new Set(["node_modules"]);
 
 // The workspace this container belongs to, shown in the session bar. Several workspaces can have their
 // own interface open at once, each on its own port, so the page says which one you are looking at.

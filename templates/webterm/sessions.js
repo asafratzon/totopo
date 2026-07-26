@@ -39,12 +39,25 @@ export const PALETTE_SIZE = 5;
 // can only ever withhold the ending of a signal already on screen, since anything long enough to alert has
 // been showing as working since the warm-up. Work between the two lengths turned the tab on and then off
 // again with nothing to close it. Whatever is worth showing as work is worth reporting the end of.
+//
+// The length of the stretch, that is. How long the quiet has to last is a separate question, and the two
+// states answer it differently. The tab light is a live reading and can be wrong for a moment - it goes out
+// the instant the output does, and comes back when it comes back. "It finished and is waiting for you" is a
+// claim about the turn being over, so it needs more than a gap: an agent pauses mid-turn (a slow first token,
+// a tool that prints nothing while it runs) and carries straight on. So going quiet only starts a countdown,
+// and the alert is raised at the end of it, if the session is still quiet and did not go back to work. Work
+// that resumes takes the countdown with it and is never reported as finished at all. The cost is that a real
+// ending is announced a few seconds late, which nobody is there to notice: the alert is for a window that is
+// not in front of the user.
 
 /** No output for this long means the agent stopped working. */
 export const WORK_QUIET_MS = 1_500;
 
 /** How long output has to keep coming before the session is shown as working. */
 export const WORK_WARMUP_MS = 1_200;
+
+/** How long a session has to stay stopped before the stop counts as the end of the turn. */
+export const ALERT_SETTLE_MS = 4_000;
 
 /** Output this soon after the user typed is the echo of their own keystroke, not the agent. */
 export const ECHO_MS = 500;
@@ -88,7 +101,7 @@ function isOpen(socket) {
 /**
  * Create the session registry.
  *
- * - `spawn()` returns a PTY-like object: { onData, onExit, write, resize, kill }.
+ * - `spawn({ cwd })` returns a PTY-like object: { onData, onExit, write, resize, kill }.
  * - `maxSessions` caps how many agents may be alive at once. This is about memory, not correctness.
  * - `maxBuffer` caps the replay buffer kept per session (bytes).
  * - `onEvent(event)` is called with { t: "replay" | "out" | "taken" | "exit" | "changed", ... }.
@@ -119,6 +132,8 @@ export function createRegistry({ spawn, maxSessions, maxBuffer, onEvent }) {
             name: session.name,
             colorIndex: session.colorIndex,
             createdAt: session.createdAt,
+            // Relative to the workspace root, so "" reads as "the usual place" and the bar shows nothing.
+            cwd: session.cwdLabel,
             attached: isOpen(session.client),
             unread: session.unread,
             working: session.working,
@@ -306,15 +321,28 @@ export function createRegistry({ spawn, maxSessions, maxBuffer, onEvent }) {
             // is how we noticed it ended, not part of the work.
             const streamed = session.lastOutputAt - session.streamSince;
             const working = now - session.lastOutputAt < WORK_QUIET_MS && streamed >= WORK_WARMUP_MS;
-            if (working === session.working) continue;
-            session.working = working;
-            // Going quiet is the moment worth interrupting the user for. No length test here: reaching this
-            // line at all means the session had been showing as working, so the warm-up has already vouched
-            // for the stretch. Starting up again makes any earlier "it finished" stale, so that alert is
-            // dropped and awaited afresh.
-            if (!working && !watched(session)) session.attention = true;
-            if (working) session.attention = false;
-            changed = true;
+            if (working !== session.working) {
+                session.working = working;
+                // Going quiet is a candidate ending, so it starts the countdown rather than raising the alert.
+                // No length test on the work itself: reaching this line at all means the session had been
+                // showing as working, so the warm-up has already vouched for the stretch. Starting up again
+                // takes the countdown with it, and makes any earlier "it finished" stale.
+                session.stoppedAt = working ? 0 : now;
+                if (working) session.attention = false;
+                changed = true;
+            }
+            // The stop held: the turn really is over, and this is the moment worth interrupting the user for.
+            // Still-quiet is checked again here because a session can be off the light and yet be producing
+            // output - a stretch that has not reached the warm-up - and saying "it finished" over the top of
+            // output arriving is the mistake this whole countdown is here to avoid. A session someone is
+            // looking at spends the countdown on nothing, the same as it always did.
+            if (session.stoppedAt && now - session.stoppedAt >= ALERT_SETTLE_MS && now - session.lastOutputAt >= WORK_QUIET_MS) {
+                session.stoppedAt = 0;
+                if (!watched(session)) {
+                    session.attention = true;
+                    changed = true;
+                }
+            }
         }
         if (changed) emit({ t: "changed" });
     }
@@ -340,8 +368,15 @@ export function createRegistry({ spawn, maxSessions, maxBuffer, onEvent }) {
         emit({ t: "changed" });
     }
 
-    /** { ok: true, session } or { ok: false, error: "cap" } when the limit is reached. */
-    function create() {
+    /**
+     * Start a session in `cwd` (absolute) and show it as `cwdLabel` (relative to the workspace).
+     * Both are handed in rather than worked out here: which directories exist and how one is written for
+     * the browser belongs to the server, and the registry only carries the two values - the path to the
+     * PTY, the label to the bar.
+     *
+     * { ok: true, session } or { ok: false, error: "cap" } when the limit is reached.
+     */
+    function create({ cwd, cwdLabel } = {}) {
         if (sessions.size >= maxSessions) return { ok: false, error: "cap" };
         seq += 1;
         const session = {
@@ -353,20 +388,25 @@ export function createRegistry({ spawn, maxSessions, maxBuffer, onEvent }) {
             name: null,
             colorIndex: (seq - 1) % PALETTE_SIZE,
             createdAt: Date.now(),
+            // Where the agent runs, and how that reads in the bar ("" for the workspace root).
+            cwd,
+            cwdLabel: cwdLabel ?? "",
             term: null,
             buffer: "",
             client: null,
             unread: false,
             // The working rhythm: when the last byte arrived, when this stretch of output started, when the
-            // user last typed (so the echo can be skipped), whether it is still going, and whether the end
-            // of it is still waiting to be seen.
+            // user last typed (so the echo can be skipped), whether it is still going, when it stopped (0
+            // once that stop has been answered, either by the alert or by work starting again), and whether
+            // the end of it is still waiting to be seen.
             lastOutputAt: 0,
             streamSince: 0,
             lastInputAt: 0,
             working: false,
+            stoppedAt: 0,
             attention: false,
         };
-        session.term = spawn();
+        session.term = spawn({ cwd });
         session.term.onData((data) => onData(session, data));
         session.term.onExit(() => onExit(session));
         sessions.set(session.id, session);

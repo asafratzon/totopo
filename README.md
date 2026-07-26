@@ -322,6 +322,7 @@ With [auto-start](#auto-start-agent) on it comes up by itself and the greeting s
 ![totopo web interface](.github/assets/webterm.png)
 
 - **Every agent in one page.** The tab bar is every session running in the container, up to 8. Click to switch, `+ New session` to start one, double-click to rename, drag to reorder.
+- **Sessions start where you did.** Run `npx totopo` inside `apps/api` and the browser's agent works on `apps/api`, the same directory a terminal session lands in. The caret beside `+ New session` starts one in another directory - type it or pick it from the list - and each session keeps its own for as long as it lives.
 - **Sessions outlive the browser.** They belong to the container, so a closed tab, dropped wifi or a slept laptop ends nothing, and opening the URL anywhere shows them all. One window drives a session at a time; another can take it over.
 - **The tabs say what the agents are doing.** A light runs round a tab while its agent works, and the tab lights up when one finishes something you were not there to see. So does the browser tab, for when the window is behind something else: the title counts what is waiting, and the icon shows a blue bar while an agent works, a green dot while one waits.
 - **Images and dictation.** Paste, drop or upload an image and the agent gets its path; dictate instead of typing. Enter sends, Shift+Enter starts a line.
