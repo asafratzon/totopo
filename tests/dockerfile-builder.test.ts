@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { RESUME_MARKER_PATH } from "../src/lib/constants.js";
+import { RESUME_MARKER_PATH, WEB_KEY_FILE_PATH } from "../src/lib/constants.js";
 import { BAKED_TEMPLATE_DIRS, BAKED_TEMPLATE_FILES, buildDockerfile, computeBuildHash } from "../src/lib/dockerfile-builder.js";
 import { cleanTempDir, createTempDir } from "./helpers.js";
 
@@ -60,6 +60,11 @@ describe("buildDockerfile", () => {
         assert.ok(result.includes('[ -n "$TOTOPO_WEB_URL" ] && [ -z "$TOTOPO_AUTOSTART" ]'));
         // The hint must show that webterm takes the agent as an argument - it never picks one itself.
         assert.ok(result.includes("webterm <agent>"));
+        // The announced URL is composed at greeting time, not baked: the interface mints a new key at every
+        // start, so a greeting echoing the bare env var would hand out a URL the relay refuses.
+        assert.ok(result.includes("__totopo_web_url()"), "the greeting needs the helper that reads the live key");
+        assert.ok(result.includes(WEB_KEY_FILE_PATH), "the helper must read the key from the file the server publishes");
+        assert.ok(result.includes("$(__totopo_web_url)"), "the announced URL must come from the helper");
     });
 
     test("the AI CLI freshness stamp is written by the same RUN that installs them", () => {

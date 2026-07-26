@@ -11,6 +11,9 @@
 // the draft, and ending a session throws its draft away. Pasted images are uploaded and their container
 // paths are inserted inline, so what you see in the box is what is sent; on Send the whole composer text
 // goes as one {t:"paste"} frame the server wraps as a bracketed paste.
+//
+// Everything here rides on the key this window was handed in its URL: the socket, the uploads and the
+// status probe all carry it, and without a valid one the page is never served in the first place.
 
 // --- Terminal ----------------------------------------------------------------------------------------------------------------------------
 
@@ -31,6 +34,8 @@ const tabbar = document.getElementById("tabbar");
 const termEl = document.getElementById("term");
 const overlay = document.getElementById("overlay");
 const card = document.getElementById("card");
+const curtain = document.getElementById("curtain");
+const curtainCard = document.getElementById("curtain-card");
 const input = document.getElementById("input");
 const sendBtn = document.getElementById("send");
 const attachBtn = document.getElementById("attach");
@@ -70,6 +75,12 @@ let shownMessage = null;
 
 let connected = false;
 let everConnected = false;
+
+// The key that came with the URL. The server mints a new one every time it starts and refuses everything
+// without it, so this is also what goes stale: a window left open across a restart still holds the old key,
+// which is the case the curtain explains rather than reconnecting forever.
+const WEB_KEY = new URLSearchParams(location.search).get("k") ?? "";
+const KEY_QUERY = `?k=${encodeURIComponent(WEB_KEY)}`;
 
 // Mount the terminal.
 term.open(termEl);
@@ -118,6 +129,8 @@ function focusTerminal() {
     const active = document.activeElement;
     if (active === input || active?.classList.contains("rename")) return;
     if (overlay.classList.contains("show")) return;
+    // Nothing types into a page that cannot answer.
+    if (curtainKind) return;
     term.focus();
 }
 
@@ -466,6 +479,38 @@ function endDrag() {
     }
 }
 
+// Ending the day: one button, and it always asks first. Drawn rather than written, because the bar is
+// tabs and this is not one of them - and drawn here rather than shipped in the page, since the bar is
+// rebuilt from scratch on every frame.
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+function stopButton() {
+    const button = document.createElement("button");
+    button.id = "stopbtn";
+    button.type = "button";
+    button.title = "Stop the container - ends every session in it";
+    button.setAttribute("aria-label", "Stop the container");
+    const svg = document.createElementNS(SVG_NS, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("width", "14");
+    svg.setAttribute("height", "14");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "2");
+    svg.setAttribute("stroke-linecap", "round");
+    const arc = document.createElementNS(SVG_NS, "path");
+    arc.setAttribute("d", "M18.36 6.64a9 9 0 1 1-12.73 0");
+    const stem = document.createElementNS(SVG_NS, "line");
+    stem.setAttribute("x1", "12");
+    stem.setAttribute("y1", "2");
+    stem.setAttribute("x2", "12");
+    stem.setAttribute("y2", "12");
+    svg.append(arc, stem);
+    button.append(svg);
+    button.addEventListener("click", stopCard);
+    return button;
+}
+
 function renderBar() {
     // A drag is in flight, so the bar holds still: rebuilding it would replace the element being dragged,
     // which cancels the drag outright. Both the age tick and any incoming frame can land mid-drag. The bar
@@ -488,18 +533,19 @@ function renderBar() {
     add.addEventListener("click", () => sendFrame({ t: "new" }));
     tabbar.append(add);
 
-    // The workspace name sits at the far right so several open containers are told apart at a glance. The
-    // session count that used to live here was redundant - the tabs show how many there are, and
-    // "+ New session" disables at the limit - so the name gets the space to itself.
+    // The far right of the bar: which container this is, and the way to end it. The session count that used
+    // to live here was redundant - the tabs show how many there are, and "+ New session" disables at the
+    // limit - so the name and the power button get the space.
+    const right = document.createElement("div");
+    right.id = "barright";
     if (workspaceName) {
-        const right = document.createElement("div");
-        right.id = "barright";
         const ws = document.createElement("span");
         ws.className = "ws";
         ws.textContent = workspaceName;
         right.append(ws);
-        tabbar.append(right);
     }
+    right.append(stopButton());
+    tabbar.append(right);
 
     // Keep focus in the rename editor across re-renders. The first render after a double-click selects the
     // whole label so it can be typed over; a later render (an incoming frame) only restores the caret.
@@ -779,6 +825,132 @@ function capCard() {
     );
 }
 
+// Asked before the container goes down, because it takes everything with it - the browser sessions here,
+// and any terminal session open in the same container.
+function stopCard() {
+    const ends =
+        sessions.length === 0
+            ? "No agent sessions are running here. Stopping it also ends any terminal session open in the same container."
+            : `This ends ${sessions.length === 1 ? "the 1 agent session" : `all ${sessions.length} agent sessions`} in it, ` +
+              "and any terminal session open in it too.";
+    showCard("Stop the container?", `${ends} Nothing on disk is touched, and your next totopo session starts the container back up.`, [
+        { label: "Cancel" },
+        { label: "Stop container", kind: "danger", run: () => sendFrame({ t: "stop" }) },
+    ]);
+}
+
+// Shown when the container was asked to stop and did not - a container started before totopo gave its
+// keep-alive a TERM trap cannot be stopped from inside itself.
+function stopFailedCard() {
+    showCard(
+        "The container did not stop",
+        "This container was created before totopo could stop one from the browser. Stop it from the host instead - " +
+            "npx totopo, or docker stop - and the next container it creates will take the button.",
+        [{ label: "Got it", kind: "primary" }],
+    );
+}
+
+// --- The curtain -------------------------------------------------------------------------------------------------------------------------
+//
+// One state for "this window cannot do anything at all", drawn over the whole page - bar, terminal and
+// composer alike. It replaces disabling each control on its own, which is what used to leave a dead page
+// looking alive: tabs that still hovered, and an X that opened an end-session prompt nothing would answer.
+//
+// Three reasons a window ends up here, and they are not the same to the user:
+//   down     - nothing answers. The container is stopped or gone; keeps reconnecting, so it heals itself.
+//   locked   - the relay answered and refused this window's key. The interface restarted and minted a new
+//              one, so this URL is spent; reconnecting is pointless and stops.
+//   stopping - the user just stopped the container from here. Same end state as "down", but it is not a
+//              failure and must not read like one.
+//
+// A dropped socket is routine (a sleeping laptop, a wifi blip), so the curtain waits out a short grace and
+// usually never appears. What does happen immediately is the page going inert, because a click landing on
+// a control whose answer goes nowhere is the actual bug.
+const CURTAIN_DELAY_MS = 3_000;
+
+let curtainKind = null;
+let curtainTimer = null;
+// Set for the two states nothing on this page can recover from: no more reconnecting, no more probing.
+let halted = false;
+
+function showCurtain(kind, title, body, action) {
+    curtainKind = kind;
+    curtainCard.textContent = "";
+    const heading = document.createElement("h2");
+    heading.textContent = title;
+    const text = document.createElement("p");
+    text.textContent = body;
+    curtainCard.append(heading, text);
+    if (action) {
+        const row = document.createElement("div");
+        row.className = "row";
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "btn primary";
+        button.textContent = action.label;
+        button.addEventListener("click", action.run);
+        row.append(button);
+        curtainCard.append(row);
+    }
+    curtain.classList.add("show");
+    // The terminal keeps focus through everything else, so without this the keyboard would still be typing
+    // into a session behind the curtain.
+    term.blur();
+}
+
+function hideCurtain() {
+    curtainKind = null;
+    curtain.classList.remove("show");
+    curtainCard.textContent = "";
+}
+
+// Nothing answers. Held back by the grace delay, since most disconnects are over before it fires.
+function armDownCurtain() {
+    if (curtainTimer || curtainKind || halted) return;
+    curtainTimer = setTimeout(() => {
+        curtainTimer = null;
+        if (connected || halted) return;
+        showCurtain(
+            "down",
+            "Can't reach the container",
+            "It is stopped, or still coming back. Nothing was lost: sessions live in the container, and this window " +
+                "picks them up again the moment it answers.",
+            { label: "Try again", run: reconnectNow },
+        );
+    }, CURTAIN_DELAY_MS);
+}
+
+function clearCurtainTimer() {
+    if (!curtainTimer) return;
+    clearTimeout(curtainTimer);
+    curtainTimer = null;
+}
+
+// The relay is up and refused this window. Shown at once - a spent key does not heal, and the wait would
+// only delay telling the user where the current URL is.
+function lockedCurtain() {
+    halted = true;
+    clearCurtainTimer();
+    showCurtain(
+        "locked",
+        "This link is no longer valid",
+        "The web interface issues a new key every time it starts, and this window is holding the old one. Get the " +
+            "current URL from the session greeting, or by running webterm <agent> in the container.",
+    );
+}
+
+// The user asked for this one, so it says so rather than reporting a failure.
+function stoppingCurtain() {
+    halted = true;
+    clearCurtainTimer();
+    showCurtain(
+        "stopping",
+        "Stopping the container",
+        "Every session in it is ending. Start your next one with npx totopo on the host - it comes back with a fresh " +
+            "URL, since the key goes with the container.",
+    );
+}
+
 // --- Connection --------------------------------------------------------------------------------------------------------------------------
 
 const LAST_SID_KEY = "webterm-last-session";
@@ -788,7 +960,7 @@ const RECONNECT_MAX_MS = 5_000;
 // answers in milliseconds; one the OS has not yet noticed is gone answers never.
 const PROBE_TIMEOUT_MS = 3_000;
 
-const wsUrl = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`;
+const wsUrl = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws${KEY_QUERY}`;
 let ws = null;
 let reconnectDelay = RECONNECT_MIN_MS;
 let reconnectTimer = null;
@@ -823,13 +995,21 @@ function connect() {
     ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
+        // Read before the flag is set: this is the page's first socket, as opposed to a reconnect. It is
+        // what tells the server whether an empty container should get a session - opening the page means
+        // "put me somewhere", coming back from a blip means "give me back what I had", empty bar included.
+        const fresh = !everConnected;
         connected = true;
         everConnected = true;
         reconnectDelay = RECONNECT_MIN_MS;
+        // Whatever was wrong is over: the page comes back to life before anything else is sent.
+        clearCurtainTimer();
+        hideCurtain();
+        document.body.classList.remove("offline");
         // Ask for the session this window was last looking at. The server decides whether it can have
         // it back, and picks something sensible when it cannot.
         // The last session this window drove: the server hands it back when no other window is on it.
-        sendFrame({ t: "hello", sid: sessionStorage.getItem(LAST_SID_KEY) ?? "" });
+        sendFrame({ t: "hello", sid: sessionStorage.getItem(LAST_SID_KEY) ?? "", fresh });
         // Straight after hello, so a window that reconnects while it is behind something else is not mistaken
         // for one being watched. A reconnect is a new socket, and the server knows nothing about it yet.
         reportPresence();
@@ -850,8 +1030,11 @@ function connect() {
     // it is and the window just reconnects. This is what makes closing the lid harmless.
     ws.onclose = () => {
         connected = false;
+        // Immediately, ahead of any curtain: every control on the page is answered over this socket, so
+        // while it is down they must stop taking clicks.
+        document.body.classList.add("offline");
         refreshComposer();
-        scheduleReconnect();
+        diagnose();
     };
 
     ws.onerror = () => {
@@ -859,8 +1042,28 @@ function connect() {
     };
 }
 
+// Why the socket went away, asked of the one route that can answer without one. A refusal means the relay
+// is alive and this window's key is not the live one any more - a different thing from a container that is
+// gone, and the only one reconnecting cannot fix. Anything else (an answer, or nothing at all) goes back
+// through the reconnect loop, so a blip heals silently and a stopped container heals when it comes back.
+// Run on every close, not just the first: it is also what notices a relay that came back with a new key.
+async function diagnose() {
+    if (halted) return;
+    try {
+        const res = await fetch(`/status${KEY_QUERY}`, { cache: "no-store", signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
+        if (res.status === 403) {
+            lockedCurtain();
+            return;
+        }
+    } catch {
+        // Nothing answered, which is the ordinary "container is down" case.
+    }
+    scheduleReconnect();
+    armDownCurtain();
+}
+
 function scheduleReconnect() {
-    if (reconnectTimer) return;
+    if (halted || reconnectTimer) return;
     reconnectTimer = setTimeout(() => {
         reconnectTimer = null;
         connect();
@@ -869,6 +1072,7 @@ function scheduleReconnect() {
 }
 
 function reconnectNow() {
+    if (halted) return;
     if (reconnectTimer) {
         clearTimeout(reconnectTimer);
         reconnectTimer = null;
@@ -880,6 +1084,7 @@ function reconnectNow() {
 // Waking up is the case a plain reconnect loop misses: after a sleep the socket can look OPEN for
 // minutes while the other end is long gone. So the window asks, and reconnects when nothing answers.
 function probeConnection() {
+    if (halted) return; // Nothing to wake up to: this window's way back is a new URL, not a new socket.
     if (!connected) {
         reconnectNow();
         return;
@@ -972,9 +1177,17 @@ function onFrame(msg) {
         }
         dropDraft(msg.sid);
         refreshComposer();
+    } else if (msg.t === "stopping") {
+        // Sent to every window, not just the one that asked: the container is about to take them all.
+        stoppingCurtain();
     } else if (msg.t === "error") {
         if (msg.code === "cap") capCard();
-        else noteMsg(`could not start ${agentName} - check the webterm log in the container`, true);
+        else if (msg.code === "stop") {
+            // The container is still here after all, so the page goes back to being usable.
+            halted = false;
+            hideCurtain();
+            stopFailedCard();
+        } else noteMsg(`could not start ${agentName} - check the webterm log in the container`, true);
     }
 }
 
@@ -1243,7 +1456,7 @@ async function uploadImage(blob) {
     const sid = attachedSid;
     const at = input.selectionStart ?? input.value.length;
     try {
-        const res = await fetch("/upload", { method: "POST", headers: { "Content-Type": blob.type }, body: blob });
+        const res = await fetch(`/upload${KEY_QUERY}`, { method: "POST", headers: { "Content-Type": blob.type }, body: blob });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
         if (sid && sid !== attachedSid) {

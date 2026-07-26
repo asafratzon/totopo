@@ -5,11 +5,12 @@
 // time. The window renders the live TUI (xterm.js) and forwards keystrokes; a rich composer uploads
 // pasted images to /tmp/uploads and injects the composed message as one bracketed paste.
 // Sessions belong to the server, not to the socket: see sessions.js for what that buys.
+// Every route that carries the relay is gated by the key the URL holds (?k=), minted fresh at every start.
 // Auth and sandbox are inherited: the spawned CLI sees the same agent config dirs and the same
 // container isolation it has in the terminal. Nothing here touches credentials.
 
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { join, resolve, sep } from "node:path";
@@ -23,6 +24,9 @@ import {
     CLIENT_PING_INTERVAL_MS,
     CWD,
     isAllowedOrigin,
+    isAuthorized,
+    KEY,
+    KEY_FILE,
     MAX_OUTPUT_BUFFER,
     MAX_SESSIONS,
     MAX_UPLOAD_BYTES,
@@ -31,6 +35,8 @@ import {
     PORT,
     RESUME_MARKER,
     STATE_FILE,
+    STOP_ANNOUNCE_MS,
+    STOP_TIMEOUT_MS,
     SUBMIT,
     SUBMIT_DELAY_MS,
     UPLOAD_DIR,
@@ -84,6 +90,72 @@ function checkUploads() {
     console.log(`[webterm] upload check: removed ${removed}, kept ${kept} (older-than 7d, ${UPLOAD_ROOT})`);
 }
 
+// --- The key gate ------------------------------------------------------------------------------------------------------------------------
+
+// Publish the live key where the things that print the URL can read it: the `webterm` launcher, the
+// container greeting, and totopo on the host before it probes /status. Called once the port is bound and
+// never before - a second server that loses the bind must not leave its key behind as if it had won.
+// Owner-only, and chmod'ed after the write because the mode above applies to a file being created rather
+// than to one that already exists.
+// Best-effort: a key that cannot be published still gates the relay, it only leaves the URL unprintable.
+function publishKey() {
+    try {
+        writeFileSync(KEY_FILE, `${KEY}\n`, { mode: 0o600 });
+        chmodSync(KEY_FILE, 0o600);
+    } catch (err) {
+        console.error(`[webterm] could not publish the key to ${KEY_FILE}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+}
+
+// The key a request presents. Only a plain `?k=` string counts: a repeated parameter parses to an array,
+// which is not a key.
+function presentedKey(value) {
+    return typeof value === "string" ? value : "";
+}
+
+// What a browser gets instead of the page when its URL has no valid key. Deliberately self-contained -
+// the app's stylesheet and script are for a window that got in, and a locked page must stand on its own.
+const LOCKED_PAGE = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>totopo - key required</title>
+<style>
+ body { margin:0; height:100vh; display:flex; align-items:center; justify-content:center; background:#0d1117; color:#e6edf3;
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+ main { max-width:34rem; padding:2rem; }
+ h1 { font-size:1.15rem; margin:0 0 .9rem; }
+ p { margin:0 0 .7rem; color:#8b949e; line-height:1.5; }
+ code { color:#e6edf3; background:#161b22; border:1px solid #30363d; border-radius:5px; padding:.1rem .35rem; }
+</style></head>
+<body><main>
+ <h1>This link needs its key</h1>
+ <p>The web interface issues a new key every time it starts, and only the URL it printed can open it.</p>
+ <p>Get the current URL from the session greeting, or run <code>webterm &lt;agent&gt;</code> inside the container.</p>
+</main></body></html>
+`;
+
+// The gate on every route that carries the relay. Static assets stay open: they hold nothing secret and
+// drive nothing, and gating them would mean a cookie - which on localhost is shared across ports, so any
+// other local port could ride this workspace's. The key stays in the URL, scoped to the window given it.
+// Two gates for one rule, differing only in what a refusal looks like: a person opening a URL gets a page
+// that says what is missing, and the app's own calls get the JSON their callers already read.
+function requirePage(req, res, next) {
+    if (isAuthorized(presentedKey(req.query.k))) {
+        next();
+        return;
+    }
+    console.warn(`[webterm] refused ${req.method} ${req.path}: no valid key`);
+    res.status(403).type("html").send(LOCKED_PAGE);
+}
+
+function requireKey(req, res, next) {
+    if (isAuthorized(presentedKey(req.query.k))) {
+        next();
+        return;
+    }
+    console.warn(`[webterm] refused ${req.method} ${req.path}: no valid key`);
+    res.status(403).json({ error: "missing or invalid key" });
+}
+
 // --- Upload endpoint ---------------------------------------------------------------------------------------------------------------------
 
 // Map a small set of image content-types to file extensions. Anything else is rejected.
@@ -99,6 +171,10 @@ const IMAGE_EXT = {
 
 const app = express();
 
+// The document is the one static file behind the gate, and it is the only one that matters: a window that
+// never got the page opens no socket, so the interface as a whole is unreachable without the key.
+app.get(["/", "/index.html"], requirePage);
+
 // Serve the client and xterm's shipped dist files straight from node_modules (no bundler).
 app.use(express.static(join(import.meta.dirname, "public")));
 app.use("/vendor/xterm", express.static(join(import.meta.dirname, "node_modules", "@xterm", "xterm", "css")));
@@ -107,7 +183,7 @@ app.use("/vendor/xterm-fit", express.static(join(import.meta.dirname, "node_modu
 
 // Accept a raw image body (the client POSTs the pasted/dropped blob with its Content-Type).
 // Reject non-image types up front; cap the size so a bad request cannot fill the disk.
-app.post("/upload", express.raw({ type: () => true, limit: MAX_UPLOAD_BYTES }), (req, res) => {
+app.post("/upload", requireKey, express.raw({ type: () => true, limit: MAX_UPLOAD_BYTES }), (req, res) => {
     const contentType = String(req.headers["content-type"] || "")
         .split(";")[0]
         .trim();
@@ -136,11 +212,27 @@ app.post("/upload", express.raw({ type: () => true, limit: MAX_UPLOAD_BYTES }), 
 
 const server = createServer(app);
 
-// verifyClient runs during the WS handshake: reject any non-loopback Origin before an upgrade.
+// The key a WebSocket handshake presents, read off the upgrade request's own URL (there is no express
+// query parsing here). A malformed URL presents nothing.
+function handshakeKey(url) {
+    try {
+        return new URL(url ?? "", "http://localhost").searchParams.get("k") ?? "";
+    } catch {
+        return "";
+    }
+}
+
+// verifyClient runs during the WS handshake: no key, no relay. The Origin check stays as the second gate -
+// it stops a remote page from scripting a socket even in a world where it somehow learned a key.
 const wss = new WebSocketServer({
     server,
     path: "/ws",
-    verifyClient: ({ origin }, done) => {
+    verifyClient: ({ origin, req }, done) => {
+        if (!isAuthorized(handshakeKey(req.url))) {
+            console.warn("[webterm] rejected WS handshake: no valid key");
+            done(false, 403, "Forbidden");
+            return;
+        }
         if (isAllowedOrigin(origin)) {
             done(true);
             return;
@@ -200,7 +292,10 @@ const registry = createRegistry({
 // What the host asks before it offers to stop the container. `sessions` is how many conversations are
 // alive (they all die with the container), `attached` how many a window is watching right now. Counts
 // and the agent name only - nothing about the conversations themselves.
-app.get("/status", (_req, res) => {
+// A window whose socket dropped asks it too: an answer means the relay is fine, a 403 means this window's
+// key is no longer the live one, and no answer at all means the container is gone. Three different things
+// to tell the user, and this is what tells them apart.
+app.get("/status", requireKey, (_req, res) => {
     res.json({ agent: AGENT_CMD, sessions: registry.count(), attached: registry.attachedCount() });
 });
 
@@ -274,16 +369,47 @@ function newSession(ws) {
 
 // A window connected. Mission control always opens on something: an empty container gets one session
 // (that first session is what consumes the resume marker), otherwise the window lands on the session it
-// was last looking at, or the oldest one nobody is watching. Auto-create happens only here, on connect,
-// so closing the last session leaves the empty bar visible instead of immediately spawning another.
-function greet(ws, wantSid) {
+// was last looking at, or the oldest one nobody is watching.
+//
+// Auto-create is for a page that was just opened, which is why the window says whether this is its first
+// socket. A reconnect is the same page coming back from a blip or a slept laptop, and it must land on
+// exactly what it left: closing the last session on purpose leaves an empty bar, and waking up hours
+// later should still show that empty bar rather than a fresh agent process nobody asked for.
+function greet(ws, wantSid, fresh) {
     if (registry.count() === 0) {
-        newSession(ws);
+        if (fresh) newSession(ws);
+        else broadcastSessions(); // Nothing to attach to; the bar still has to render, empty.
         return;
     }
     const sid = registry.pickForClient(ws, wantSid);
     if (sid) openSession(ws, sid);
     else broadcastSessions(); // Every session is driven elsewhere; the bar still has to render.
+}
+
+// End the day from the browser: stop the container, and with it every session in it. PID 1 is the
+// container's keep-alive, and the container stops when it exits - but the kernel drops a signal sent to
+// PID 1 from inside its own namespace unless PID 1 installed a handler for it. totopo starts containers
+// with a keep-alive that traps TERM for exactly this; one created before that lands here and ignores the
+// signal, which is what the timer reports so the page can point at the host instead of hanging.
+function stopContainer() {
+    console.log("[webterm] stopping the container (asked for from the browser)");
+    // Announced before the signal: the container can go the instant PID 1 does, and a window that heard
+    // nothing would show "cannot reach the container" for something the user just asked for.
+    for (const client of clients) send(client, { t: "stopping" });
+    setTimeout(() => {
+        try {
+            process.kill(1, "SIGTERM");
+        } catch (err) {
+            console.error(`[webterm] could not signal PID 1: ${err instanceof Error ? err.message : String(err)}`);
+            for (const client of clients) send(client, { t: "error", code: "stop" });
+            return;
+        }
+        setTimeout(() => {
+            // Still running, so the signal was dropped rather than acted on.
+            console.warn("[webterm] the container did not stop - its keep-alive does not act on TERM from inside");
+            for (const client of clients) send(client, { t: "error", code: "stop" });
+        }, STOP_TIMEOUT_MS).unref();
+    }, STOP_ANNOUNCE_MS).unref();
 }
 
 // The composed message, delivered to whichever session this window is driving.
@@ -322,7 +448,7 @@ function handleFrame(ws, msg) {
     const sid = typeof msg.sid === "string" ? msg.sid : null;
     switch (msg.t) {
         case "hello":
-            greet(ws, sid);
+            greet(ws, sid, msg.fresh === true);
             return;
         case "ping":
             // Liveness probe from a window that just woke up: an answer proves the socket really works,
@@ -342,6 +468,11 @@ function handleFrame(ws, msg) {
             return;
         case "new":
             newSession(ws);
+            return;
+        case "stop":
+            // Never implicit: the browser only sends this after the user confirmed a card that names
+            // everything it ends.
+            stopContainer();
             return;
         case "close": {
             // Read the display name first: closing removes the session, and this is what the log names it by.
@@ -437,7 +568,22 @@ setInterval(() => {
     }
 }, CLIENT_PING_INTERVAL_MS).unref();
 
+// Nothing here works without the port, so a bind failure ends the process - but with a line saying which
+// port and why, rather than a stack trace in the log. The ordinary cause is two launchers racing: the one
+// that loses lands here, and the interface the winner started is already serving.
+// Both objects, because ws re-emits the HTTP server's error on the WebSocket server: whichever of the two
+// is left without a listener is the one that crashes.
+const onServerError = (err) => {
+    console.error(`[webterm] could not listen on container port ${PORT}: ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+};
+server.on("error", onServerError);
+wss.on("error", onServerError);
+
 server.listen(PORT, "0.0.0.0", () => {
+    // First thing after the bind: the key is what makes the URL printable, and the launcher is already
+    // watching the port to know when to print it.
+    publishKey();
     console.log(`[webterm] listening on container port ${PORT} - open the published host port in your browser`);
     console.log(`[webterm] relaying: ${[AGENT_CMD, ...AGENT_ARGS].join(" ")} (cwd ${CWD})`);
     // Publish the relayed agent for the `webterm` launcher: a port probe proves something is listening,

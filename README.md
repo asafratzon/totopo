@@ -326,8 +326,11 @@ With [auto-start](#auto-start-agent) on it comes up by itself and the greeting s
 - **The tabs say what the agents are doing.** A light runs round a tab while its agent works, and the tab lights up when one finishes something you were not there to see. So does the browser tab, for when the window is behind something else: the title counts what is waiting, and the icon shows a blue bar while an agent works, a green dot while one waits.
 - **Images and dictation.** Paste, drop or upload an image and the agent gets its path; dictate instead of typing. Enter sends, Shift+Enter starts a line.
 - **Drafts wait where you left them.** A half-written message stays with its own session, attachments included, until you send it or end the session.
-- **Its own sticky host port.** One loopback-only port per workspace from a range (default `3900-3999`), kept host-side and never in `totopo.yaml`, so the URL survives restarts and rebuilds. Container port `3899` is reserved for the relay.
-- **Same sandbox as the terminal.** Loopback-only, origin-checked, non-root. The origin check is a browser gate a non-browser client can bypass, so leave the interface off on an untrusted shared machine.
+- **Call it a day from the page.** The power button at the right of the tab bar stops the container - every session in it, browser and terminal alike - after a prompt that names what ends.
+- **Its own sticky host port.** One loopback-only port per workspace from a range (default `3900-3999`), kept host-side and never in `totopo.yaml`, so the port survives restarts and rebuilds. Container port `3899` is reserved for the relay.
+- **A key in the URL.** The printed URL ends in `/?k=<key>`, and the relay refuses anything that does not carry it - the page, the socket, uploads and the status probe alike. The key is minted fresh every time the interface starts and never stored on the host, so it dies with the container. Reaching the port is no longer enough to drive your agent.
+  A window whose key is spent - or whose container is gone - says so across the whole page instead of sitting there looking live.
+- **Same sandbox as the terminal.** Loopback-only, key-gated, origin-checked, non-root.
 - **It never blocks a session.** If no port is free or the server does not come up, totopo says so and opens the session without it.
 
 ## Troubleshooting

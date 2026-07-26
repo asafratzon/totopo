@@ -20,7 +20,7 @@ import {
 import { formatWebRange, PORT_MAX, PORT_MIN, parseWebRange } from "../lib/ports.js";
 import { countPatternHits } from "../lib/shadows.js";
 import { buildDefaultTotopoYaml, readTotopoYaml, writeTotopoYaml } from "../lib/totopo-yaml.js";
-import { assignWebPortsToAllWorkspaces, reassignOutOfRangeWebPorts } from "../lib/webterm.js";
+import { assignWebPortsToAllWorkspaces, readWebKey, reassignOutOfRangeWebPorts } from "../lib/webterm.js";
 import type { WorkspaceContext } from "../lib/workspace-identity.js";
 import { readAudio, readGitMode, readWebPort, writeAudio, writeGitMode } from "../lib/workspace-identity.js";
 
@@ -297,10 +297,21 @@ async function webInterfaceMenu(ctx: WorkspaceContext): Promise<void> {
         const range = readWebRange();
         const webPort = readWebPort(ctx.workspaceId);
 
+        // The URL only opens the interface with the key the running server minted, so the live one is shown
+        // whenever it can be read. With nothing running there is no key to show, and saying where it comes
+        // from beats printing half a URL.
+        const liveKey = webPort === null ? null : readWebKey(ctx.containerName);
+        const url =
+            webPort === null
+                ? "no port assigned yet"
+                : liveKey !== null
+                  ? `http://localhost:${webPort}/?k=${liveKey}`
+                  : `http://localhost:${webPort}  (the key comes with the interface when it starts)`;
+
         note(
             `web interface:  ${enabled ? "enabled" : "disabled"}  (all workspaces)\n` +
                 `port range:     ${formatWebRange(range)}\n` +
-                `this workspace: ${webPort !== null ? `http://localhost:${webPort}` : "no port assigned yet"}`,
+                `this workspace: ${url}`,
             "Web agent interface",
         );
 
@@ -308,6 +319,7 @@ async function webInterfaceMenu(ctx: WorkspaceContext): Promise<void> {
             "A browser front-end for the agents (claude, opencode, codex) running in the container -\n" +
                 "the real TUI plus image paste, file upload, and dictation. Loopback-only, never reachable off this machine.\n" +
                 "Each workspace keeps one sticky port from the range, so its URL never changes.\n" +
+                "The URL also carries a key, minted fresh every time the interface starts and refused once it restarts.\n" +
                 "Run webterm inside the container to start it; with auto-start on it starts by itself.",
         );
 
@@ -336,7 +348,9 @@ async function webInterfaceMenu(ctx: WorkspaceContext): Promise<void> {
                     log.info(`${a.workspaceId}: port ${a.port}`);
                 }
                 const own = readWebPort(ctx.workspaceId);
-                log.success(`Web interface enabled${own !== null ? ` - this workspace: http://localhost:${own}` : ""}.`);
+                // The port, not a URL: the interface is not running yet, and the URL is only complete once
+                // it starts and mints the key it will accept.
+                log.success(`Web interface enabled${own !== null ? ` - this workspace: port ${own}` : ""}.`);
             } else {
                 // Sticky ports stay in every .lock so re-enabling restores the same URLs.
                 log.success("Web interface disabled.");

@@ -17,6 +17,7 @@ import {
     LABEL_BUILD_HASH,
     LABEL_MANAGED,
     RESUME_MARKER_PATH,
+    WEB_KEY_FILE_PATH,
 } from "./constants.js";
 
 // --- User shell config appended after USER instruction -----------------------------------------------------------------------------------
@@ -29,6 +30,10 @@ ENV PATH="${CONTAINER_HOME}/.cargo/bin:${CONTAINER_HOME}/.bun/bin:${CONTAINER_HO
 # Prompt helper: print the working directory relative to the workspace root, so /workspace shows as
 # "/" and /workspace/src shows as "/src". Paths outside the workspace fall back to their full path.
 RUN echo '__totopo_pwd() { local p="\${PWD#/workspace}"; printf "/%s" "\${p#/}"; }' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo '# The web interface URL, key and all. The key is minted by the webterm server at every start and' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo '# published to the key file, so the greeting reads it back instead of holding a URL that goes stale.' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo '__totopo_web_url() { if [ -r ${WEB_KEY_FILE_PATH} ]; then echo "\${TOTOPO_WEB_URL}/?k=$(head -n 1 ${WEB_KEY_FILE_PATH})"; else echo "\${TOTOPO_WEB_URL}"; fi; }' \\
+        >> ${CONTAINER_HOME}/.bashrc && \\
     echo 'export PS1="\\[\\033[01;32m\\][totopo@\${TOTOPO_WORKSPACE}]\\[\\033[00m\\] \\[\\033[01;34m\\]\\$(__totopo_pwd)\\[\\033[00m\\] \\[\\033[01;32m\\]❯\\[\\033[00m\\] "' \\
         >> ${CONTAINER_HOME}/.bashrc && \\
     echo 'echo ""' >> ${CONTAINER_HOME}/.bashrc && \\
@@ -46,7 +51,7 @@ RUN echo '__totopo_pwd() { local p="\${PWD#/workspace}"; printf "/%s" "\${p#/}";
     echo 'if [ -n "$TOTOPO_WEB_URL" ] && [ -n "$TOTOPO_AUTOSTART" ]; then' >> ${CONTAINER_HOME}/.bashrc && \\
     echo '    echo -e "\\033[32m●\\033[0m  \\033[90mAuto-start enabled: \\033[38;5;208m\${TOTOPO_AUTOSTART}\\033[90m is available in the web interface.\\033[0m"' >> ${CONTAINER_HOME}/.bashrc && \\
     echo '    echo ""' >> ${CONTAINER_HOME}/.bashrc && \\
-    echo '    echo -e "   \\033[97m\${TOTOPO_WEB_URL}\\033[0m"' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo '    echo -e "   \\033[97m$(__totopo_web_url)\\033[0m"' >> ${CONTAINER_HOME}/.bashrc && \\
     echo '    echo ""' >> ${CONTAINER_HOME}/.bashrc && \\
     echo 'fi' >> ${CONTAINER_HOME}/.bashrc && \\
     echo 'alias status="node ${CONTAINER_STARTUP}"' >> ${CONTAINER_HOME}/.bashrc && \\

@@ -33,9 +33,12 @@ export const PALETTE_SIZE = 5;
 // answers each keystroke by redrawing its whole input box - plenty of output, none of it work. Output within
 // ECHO_MS of a keystroke on that session is therefore left out of the rhythm entirely.
 //
-// The last threshold is about earning attention rather than showing it. A stretch shorter than MIN_WORK_MS is
-// not a piece of work finishing - it is a redraw on resize, a one-line answer - and lighting a tab up for
-// those is what would teach the user to ignore the light.
+// One threshold decides both halves of this. A stretch that outlasted the warm-up and then stopped is what
+// raises the "it finished" alert, with nothing extra asked of it. An earlier version wanted a longer stretch
+// before a tab could light up, on the theory that short work is not worth interrupting anyone for - but that
+// can only ever withhold the ending of a signal already on screen, since anything long enough to alert has
+// been showing as working since the warm-up. Work between the two lengths turned the tab on and then off
+// again with nothing to close it. Whatever is worth showing as work is worth reporting the end of.
 
 /** No output for this long means the agent stopped working. */
 export const WORK_QUIET_MS = 1_500;
@@ -46,10 +49,7 @@ export const WORK_WARMUP_MS = 1_200;
 /** Output this soon after the user typed is the echo of their own keystroke, not the agent. */
 export const ECHO_MS = 500;
 
-/** A working stretch shorter than this never raises the "it finished" alert. */
-export const MIN_WORK_MS = 3_000;
-
-/** How often tick() should be called. Fine enough that the two thresholds above land where they say. */
+/** How often tick() should be called. Fine enough that the thresholds above land where they say. */
 export const WORK_TICK_MS = 300;
 
 // What an unnamed session is called, with its number after it. Deliberately not the relayed agent's name: one
@@ -308,9 +308,11 @@ export function createRegistry({ spawn, maxSessions, maxBuffer, onEvent }) {
             const working = now - session.lastOutputAt < WORK_QUIET_MS && streamed >= WORK_WARMUP_MS;
             if (working === session.working) continue;
             session.working = working;
-            // Going quiet after real work is the moment worth interrupting the user for. Starting up again
-            // makes any earlier "it finished" stale, so that alert is dropped and awaited afresh.
-            if (!working && streamed >= MIN_WORK_MS && !watched(session)) session.attention = true;
+            // Going quiet is the moment worth interrupting the user for. No length test here: reaching this
+            // line at all means the session had been showing as working, so the warm-up has already vouched
+            // for the stretch. Starting up again makes any earlier "it finished" stale, so that alert is
+            // dropped and awaited afresh.
+            if (!working && !watched(session)) session.attention = true;
             if (working) session.attention = false;
             changed = true;
         }

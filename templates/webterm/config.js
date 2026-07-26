@@ -2,6 +2,7 @@
 // Values fall back to sane defaults so `node server.js` just works inside the container.
 // Nothing here is claude-specific: the relayed agent is whichever one `webterm <agent>` was given.
 
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { existsSync } from "node:fs";
 import { basename, join } from "node:path";
 
@@ -63,12 +64,36 @@ export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 export const UPLOAD_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 export const CHECK_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
 
-// WebSocket Origin gate. A page from any non-loopback origin cannot open the relay
-// (the core defense against a malicious site scripting ws://localhost). We allow any
-// localhost / 127.0.0.1 origin regardless of port, because the published host port can
-// differ from the container port (e.g. 3900:3899) so the browser's Origin varies per
-// workspace. The publish is loopback-only, so "any local port" is the right granularity:
-// it still rejects remote origins like http://evil.com.
+// The key that the URL carries (`/?k=<key>`) and the relay demands. A fresh one is minted every time
+// this server starts, so a key never outlives the process that issued it and nothing has to store it:
+// whoever prints the URL reads it back from KEY_FILE. WEBTERM_KEY pins it (tests, hand-run debugging).
+// There is deliberately no unauthenticated mode - without the gate the relay would drive an agent for
+// any process that can reach the port, which loopback publishing alone does not prevent.
+export const KEY = process.env.WEBTERM_KEY || randomBytes(16).toString("hex");
+
+// Where the live key is published for the things that print the URL: the `webterm` launcher and the
+// container greeting read it, and so does totopo on the host (docker exec cat) before probing /status.
+// Written the moment the port is bound, so a server that never got the port leaves no key behind.
+export const KEY_FILE = process.env.WEBTERM_KEY_FILE || "/tmp/webterm.key";
+
+// Whether a presented key is the live one. Compared in constant time so a caller cannot learn the key
+// one character at a time from how long the answer takes. Lives here, beside KEY and with no server
+// side effects, which is what lets it be unit-tested without starting the server.
+export function isAuthorized(candidate) {
+    if (typeof candidate !== "string") return false;
+    // Byte lengths, not string lengths: timingSafeEqual throws on a length mismatch, and a multi-byte
+    // character makes those two differ.
+    const presented = Buffer.from(candidate);
+    const live = Buffer.from(KEY);
+    if (presented.length !== live.length) return false;
+    return timingSafeEqual(presented, live);
+}
+
+// WebSocket Origin gate, checked alongside the key: a page from a non-loopback origin cannot open the
+// relay even if it somehow holds a key. We allow any localhost / 127.0.0.1 origin regardless of port,
+// because the published host port can differ from the container port (e.g. 3900:3899) so the browser's
+// Origin varies per workspace. The publish is loopback-only, so "any local port" is the right
+// granularity: it still rejects remote origins like http://evil.com.
 export function isAllowedOrigin(origin) {
     if (!origin) return false;
     try {
@@ -89,6 +114,13 @@ export const SUBMIT = "\r";
 // image path, claude ingests the file asynchronously; an immediate Enter can land mid-ingest and
 // be dropped (leaving the text un-submitted until a second Enter). A short gap lets the paste settle.
 export const SUBMIT_DELAY_MS = Number(process.env.WEBTERM_SUBMIT_DELAY_MS) || 150;
+
+// Stopping the container from the browser. The announce delay is how long the "going down" frame gets to
+// reach every window before PID 1 is signalled - the container can die the instant it is, and a window
+// that never heard would blame the network. The timeout is how long to wait before deciding the signal
+// was ignored (a container started with a keep-alive that traps nothing), so the page can say so.
+export const STOP_ANNOUNCE_MS = 150;
+export const STOP_TIMEOUT_MS = 3_000;
 
 // Cap on the replayed session buffer (bytes), per session. A session's PTY outlives every socket, so
 // on attach we replay up to this much recent output and the window lands back in the live conversation.

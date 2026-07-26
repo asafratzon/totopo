@@ -7,7 +7,15 @@ import { createServer } from "node:net";
 import { basename, join } from "node:path";
 import { afterEach, beforeEach, describe, test } from "node:test";
 import { pathToFileURL } from "node:url";
-import { AGENT_RESUME_COMMAND, AUTO_START, AUTO_START_AGENTS, RESUME_MARKER_PATH, WEB_CONTAINER_PORT } from "../src/lib/constants.js";
+import {
+    AGENT_RESUME_COMMAND,
+    AUTO_START,
+    AUTO_START_AGENTS,
+    CONTAINER_KEEP_ALIVE,
+    RESUME_MARKER_PATH,
+    WEB_CONTAINER_PORT,
+    WEB_KEY_FILE_PATH,
+} from "../src/lib/constants.js";
 import {
     assignWebPortsToAllWorkspaces,
     collectAssignedWebPorts,
@@ -24,6 +32,7 @@ import { initWorkspaceDir, readWebPort, writeWebPort } from "../src/lib/workspac
 import { cleanTempDir, createTempDir, overrideEnv } from "./helpers.js";
 
 const TEMPLATES_DIR = join(import.meta.dirname, "..", "templates");
+const SRC_DIR = join(import.meta.dirname, "..", "src");
 const RANGE = { start: 3900, end: 3903 };
 
 // Bind an ephemeral loopback port and return the socket plus its number, so the port is genuinely occupied.
@@ -243,30 +252,58 @@ describe("webPortUsable", () => {
     });
 });
 
+describe("a web port that was taken while the image built", () => {
+    // The create path re-probes the port minutes after run() picked it, and drops the mapping when something
+    // else took it. That drop has to reach the caller: a session that carried on with the port it asked for
+    // would launch the interface into a container that has no mapping, then poll - and believe - whatever
+    // process now holds the port on the host.
+    const DEV = readFileSync(join(SRC_DIR, "commands", "dev.ts"), "utf8");
+
+    test("startContainer reports the port it really published", () => {
+        assert.ok(
+            /interface ContainerStartResult \{[\s\S]*?webPort: number \| null;/.test(DEV),
+            "the result must carry the published port",
+        );
+        assert.ok(/const result = \(status: ContainerStartStatus\)[\s\S]*?webPort: publishedWebPort \?\? null/.test(DEV));
+    });
+
+    test("run stops using the port it asked for", () => {
+        const uses = DEV.match(/webPort = startResult\.webPort;/g) ?? [];
+        // Both calls: the first start, and the restart after a rebuild - which re-probes all over again.
+        assert.equal(uses.length, 2, "every startContainer call must adopt the port it reports");
+    });
+});
+
 describe("webSessionInfo", () => {
-    // Stand in for the container's webterm server: /status answers with whatever body the test wants.
-    function serveStatus(body: string, status = 200): Promise<{ close: () => Promise<void>; port: number }> {
+    // Stand in for the container's webterm server: /status answers with whatever body the test wants, and
+    // remembers the key it was asked with - the real one refuses a probe that presents the wrong one.
+    function serveStatus(body: string, status = 200): Promise<{ close: () => Promise<void>; port: number; lastKey: () => string | null }> {
+        let lastKey: string | null = null;
         return new Promise((resolve) => {
             const server = createHttpServer((req, res) => {
-                if (req.url !== "/status") {
+                const url = new URL(req.url ?? "", "http://localhost");
+                if (url.pathname !== "/status") {
                     res.writeHead(404).end();
                     return;
                 }
+                lastKey = url.searchParams.get("k");
                 res.writeHead(status, { "content-type": "application/json" }).end(body);
             });
             server.listen(0, "127.0.0.1", () => {
                 resolve({
                     port: (server.address() as AddressInfo).port,
+                    lastKey: () => lastKey,
                     close: () => new Promise((done) => server.close(() => done())),
                 });
             });
         });
     }
 
-    test("reports live sessions and how many a browser is watching", async () => {
-        const { close, port } = await serveStatus('{"agent":"claude","sessions":3,"attached":1}');
+    test("reports live sessions and how many a browser is watching, presenting the key", async () => {
+        const { close, port, lastKey } = await serveStatus('{"agent":"claude","sessions":3,"attached":1}');
         try {
-            assert.deepEqual(await webSessionInfo(port), { sessions: 3, attached: 1 });
+            assert.deepEqual(await webSessionInfo(port, "abc123"), { sessions: 3, attached: 1 });
+            assert.equal(lastKey(), "abc123", "the probe must carry the key the interface demands");
         } finally {
             await close();
         }
@@ -275,7 +312,17 @@ describe("webSessionInfo", () => {
     test("reports 0 sessions for an interface that is listening with nothing running", async () => {
         const { close, port } = await serveStatus('{"agent":"claude","sessions":0,"attached":0}');
         try {
-            assert.deepEqual(await webSessionInfo(port), { sessions: 0, attached: 0 });
+            assert.deepEqual(await webSessionInfo(port, "abc123"), { sessions: 0, attached: 0 });
+        } finally {
+            await close();
+        }
+    });
+
+    test("asks without a key when there is none to read, which is what an older container needs", async () => {
+        const { close, port, lastKey } = await serveStatus('{"agent":"claude","sessions":1,"attached":0}');
+        try {
+            assert.deepEqual(await webSessionInfo(port, null), { sessions: 1, attached: 0 });
+            assert.equal(lastKey(), null, "no key read means no key presented, not an empty one");
         } finally {
             await close();
         }
@@ -284,29 +331,187 @@ describe("webSessionInfo", () => {
     test("null when nothing is listening, so a dead interface never changes the stop prompt", async () => {
         const { server, port } = await occupyEphemeralPort();
         await closeServer(server);
-        assert.equal(await webSessionInfo(port), null);
+        assert.equal(await webSessionInfo(port, "abc123"), null);
+    });
+
+    test("null when the interface refuses the key, so a stale key never reads as an empty container", async () => {
+        const refused = await serveStatus('{"error":"missing or invalid key"}', 403);
+        try {
+            assert.equal(await webSessionInfo(refused.port, "stale"), null);
+        } finally {
+            await refused.close();
+        }
     });
 
     test("null for an error status or an unexpected body", async () => {
         const failing = await serveStatus("nope", 500);
         try {
-            assert.equal(await webSessionInfo(failing.port), null);
+            assert.equal(await webSessionInfo(failing.port, "abc123"), null);
         } finally {
             await failing.close();
         }
         const garbage = await serveStatus('{"sessions":"many","attached":0}');
         try {
-            assert.equal(await webSessionInfo(garbage.port), null);
+            assert.equal(await webSessionInfo(garbage.port, "abc123"), null);
         } finally {
             await garbage.close();
         }
         // A body missing half the answer is not usable either - the count drives what the prompt says.
         const partial = await serveStatus('{"agent":"claude","sessions":2}');
         try {
-            assert.equal(await webSessionInfo(partial.port), null);
+            assert.equal(await webSessionInfo(partial.port, "abc123"), null);
         } finally {
             await partial.close();
         }
+    });
+});
+
+// ---- The URL's key ----------------------------------------------------------------------------------------------------------------------
+// The relay refuses anything that does not present the key its server minted at startup. isAuthorized is
+// the whole gate, and it is pure, so it loads the same way the argv builder below does.
+
+describe("the key the URL carries", () => {
+    // A module instance of its own: WEBTERM_KEY has to be set before config.js is first imported, and the
+    // spawn-argv test imports it too. The query suffix is what makes this a separate instance.
+    const KEYED_CONFIG_URL = `${pathToFileURL(join(TEMPLATES_DIR, "webterm", "config.js")).href}?keytest`;
+    const PINNED = "0123456789abcdef0123456789abcdef";
+
+    async function loadKeyed() {
+        process.env.WEBTERM_KEY = PINNED;
+        return (await import(KEYED_CONFIG_URL)) as { KEY: string; KEY_FILE: string; isAuthorized: (candidate: unknown) => boolean };
+    }
+
+    test("only the live key is accepted", async () => {
+        const { KEY, isAuthorized } = await loadKeyed();
+        assert.equal(KEY, PINNED);
+        assert.ok(isAuthorized(PINNED));
+        // Empty, absent, wrong-but-same-length and wrong-length all have to be refused, and none of them
+        // may throw: they arrive straight off a URL anyone can type.
+        assert.equal(isAuthorized(""), false);
+        assert.equal(isAuthorized(undefined), false);
+        assert.equal(isAuthorized(null), false);
+        assert.equal(isAuthorized(PINNED.slice(0, -1)), false);
+        assert.equal(isAuthorized(`${PINNED}x`), false);
+        assert.equal(isAuthorized(PINNED.replace(/.$/, "0")), false);
+        // A repeated ?k= parses to an array upstream; anything that is not a string is not a key.
+        assert.equal(isAuthorized([PINNED] as unknown as string), false);
+        // Same character count, more bytes: the comparison must weigh bytes or it throws.
+        assert.equal(isAuthorized(`${PINNED.slice(0, -1)}é`), false);
+    });
+
+    test("a key nobody pinned is 128 bits of hex", () => {
+        const config = readFileSync(join(TEMPLATES_DIR, "webterm", "config.js"), "utf8");
+        const match = /KEY = process\.env\.WEBTERM_KEY \|\| randomBytes\((\d+)\)\.toString\("hex"\)/.exec(config);
+        assert.ok(match, "config.js must mint the key from randomBytes when WEBTERM_KEY is unset");
+        assert.ok(Number(match?.[1]) >= 16, "a guessable key is worse than no gate at all");
+    });
+
+    test("the launcher, the server and the greeting agree on where the key is published", async () => {
+        const { KEY_FILE } = await loadKeyed();
+        assert.equal(KEY_FILE, WEB_KEY_FILE_PATH, "config.js and constants.ts must name the same key file");
+        const launcher = readFileSync(join(TEMPLATES_DIR, "webterm.sh"), "utf8");
+        assert.ok(new RegExp(`^KEY_FILE=${WEB_KEY_FILE_PATH}$`, "m").test(launcher), "the launcher must read the same key file");
+        assert.ok(launcher.includes("export WEBTERM_KEY_FILE="), "the launcher must pass the key file to the server");
+        // Every URL the launcher prints is built from the file, so none of them can hand out a bare URL.
+        assert.ok(launcher.includes('/?k=$(head -n 1 "$KEY_FILE")'), "the launcher must print the key with the URL");
+    });
+
+    test("every route that carries the relay is gated", () => {
+        const server = readFileSync(join(TEMPLATES_DIR, "webterm", "server.js"), "utf8");
+        assert.ok(/app\.get\(\["\/", "\/index\.html"\], requirePage\)/.test(server), "the page itself must need the key");
+        assert.ok(/app\.post\("\/upload", requireKey/.test(server), "uploads must need the key");
+        assert.ok(/app\.get\("\/status", requireKey/.test(server), "the status probe must need the key");
+        // The handshake gate is the one that matters most: it is what drives an agent.
+        assert.ok(/verifyClient[\s\S]*?isAuthorized\(handshakeKey\(req\.url\)\)/.test(server), "the WS handshake must need the key");
+        // The Origin check stays as the second gate rather than being replaced by the key.
+        assert.ok(server.includes("isAllowedOrigin(origin)"), "the origin check must survive alongside the key");
+    });
+
+    test("the client sends its key on everything the server gates", () => {
+        const app = readFileSync(join(TEMPLATES_DIR, "webterm", "public", "app.js"), "utf8");
+        assert.ok(app.includes('new URLSearchParams(location.search).get("k")'), "the window takes its key from its URL");
+        assert.ok(/const wsUrl = .*\/ws\$\{KEY_QUERY\}/.test(app), "the socket must carry the key");
+        assert.ok(/fetch\(`\/upload\$\{KEY_QUERY\}`/.test(app), "uploads must carry the key");
+        assert.ok(/fetch\(`\/status\$\{KEY_QUERY\}`/.test(app), "the probe that tells a stale key from a dead container must carry it");
+    });
+
+    test("a launcher that loses the race leaves the winner's key alone", () => {
+        const launcher = readFileSync(join(TEMPLATES_DIR, "webterm.sh"), "utf8");
+        // Two launchers can both find the port free. Deleting the key file would let the loser wipe the key
+        // the winner just published, leaving an interface up that nobody can build a URL for.
+        assert.ok(!/rm -f "\$KEY_FILE"/.test(launcher), "the launcher must never delete the key file");
+        // Waiting for the value to change is what replaces the delete: a dead server's key is never printed,
+        // and a live one's always is, whichever process published it.
+        assert.ok(/PREV_KEY="\$\(head -n 1 "\$KEY_FILE"\)"/.test(launcher), "the launcher must remember the key it found");
+        assert.ok(/!= "\$PREV_KEY"/.test(launcher), "the launcher must wait for a key that is not the old one");
+        // The loser's server still tries to bind and cannot. That belongs in the log as a sentence.
+        const server = readFileSync(join(TEMPLATES_DIR, "webterm", "server.js"), "utf8");
+        assert.ok(/server\.on\("error"/.test(server), "a server that cannot bind must report it rather than throw a stack trace");
+    });
+});
+
+// ---- A page that cannot do anything says so ---------------------------------------------------------------------------------------------
+
+describe("the curtain", () => {
+    const APP = readFileSync(join(TEMPLATES_DIR, "webterm", "public", "app.js"), "utf8");
+
+    test("the page goes inert the moment the socket does", () => {
+        const html = readFileSync(join(TEMPLATES_DIR, "webterm", "public", "index.html"), "utf8");
+        const css = readFileSync(join(TEMPLATES_DIR, "webterm", "public", "styles.css"), "utf8");
+        assert.ok(html.includes('id="curtain"'), "the page needs the curtain element");
+        // Fixed and over everything: a curtain inside the terminal area would leave the tab bar and the
+        // composer live, which is the bug it exists to fix.
+        assert.ok(/#curtain\s*\{[^}]*position:\s*fixed/.test(css), "the curtain must cover the whole page");
+        assert.ok(/body\.offline #tabbar\s*\{[^}]*pointer-events:\s*none/.test(css), "the bar must stop taking clicks when offline");
+        assert.ok(APP.includes('document.body.classList.add("offline")'), "a closed socket must mark the page offline at once");
+    });
+
+    test("a blip is waited out, a spent key is not", () => {
+        // The grace is what keeps a sleeping laptop from flashing a curtain on every wake.
+        const grace = /const CURTAIN_DELAY_MS = ([\d_]+)/.exec(APP);
+        assert.ok(grace, "the down curtain must be delayed");
+        assert.ok(Number((grace?.[1] ?? "0").replaceAll("_", "")) >= 1000, "a curtain that appears instantly would flash on every blip");
+        // 403 is the relay saying "I am here and your key is not mine", which reconnecting cannot fix.
+        assert.ok(/res\.status === 403[\s\S]{0,80}lockedCurtain\(\)/.test(APP), "a refused key must show the locked curtain");
+        assert.ok(/function scheduleReconnect\(\)\s*\{\s*if \(halted/.test(APP), "the locked and stopping states must stop reconnecting");
+    });
+
+    test("coming back from a blip starts nothing", () => {
+        const server = readFileSync(join(TEMPLATES_DIR, "webterm", "server.js"), "utf8");
+        // Opening the page means "put me somewhere"; reconnecting means "give me back what I had". Without
+        // the distinction, a laptop waking up on an empty bar spawns an agent nobody asked for.
+        assert.ok(/sendFrame\(\{ t: "hello", sid: [^}]*fresh \}\)/.test(APP), "the window must say whether this is its first socket");
+        assert.ok(/const fresh = !everConnected;/.test(APP), "only the page's first socket is fresh");
+        assert.ok(/greet\(ws, sid, msg\.fresh === true\)/.test(server), "the server must take the flag from the frame");
+        assert.ok(/registry\.count\(\) === 0\)\s*\{\s*if \(fresh\) newSession\(ws\);/.test(server), "only a fresh window auto-creates");
+    });
+});
+
+// ---- Stopping the container from the page -----------------------------------------------------------------------------------------------
+
+describe("stop the container", () => {
+    test("the keep-alive can be stopped from inside the container", () => {
+        // PID 1 only receives a signal from inside its own namespace when it has a handler for it, so the
+        // trap is the whole reason the button can work at all.
+        const command = CONTAINER_KEEP_ALIVE.join(" ");
+        assert.ok(command.includes("trap"), "the keep-alive must trap TERM or nothing in the container can stop it");
+        assert.ok(/\bTERM\b/.test(command), "the trap must cover the signal docker and the server both send");
+    });
+
+    test("the container is only stopped after a card that names what it ends", () => {
+        const app = readFileSync(join(TEMPLATES_DIR, "webterm", "public", "app.js"), "utf8");
+        // The click opens the card; only the card's own button sends the frame.
+        assert.ok(app.includes('button.addEventListener("click", stopCard)'), "the power button must ask first");
+        assert.ok(/stopCard[\s\S]*?run: \(\) => sendFrame\(\{ t: "stop" \}\)/.test(app), "only the confirmed card may send the stop frame");
+    });
+
+    test("the server announces the stop before it signals, and reports one that did not take", () => {
+        const server = readFileSync(join(TEMPLATES_DIR, "webterm", "server.js"), "utf8");
+        const stop = /function stopContainer\(\)[\s\S]*?\n}/.exec(server)?.[0] ?? "";
+        assert.ok(stop.includes('send(client, { t: "stopping" })'), "every window has to hear it before the container goes");
+        // The announce has to be sent before the signal, or a window learns nothing and blames the network.
+        assert.ok(stop.indexOf('t: "stopping"') < stop.indexOf("process.kill(1"), "announce first, signal second");
+        assert.ok(stop.includes('{ t: "error", code: "stop" }'), "a signal that changed nothing must be reported");
     });
 });
 

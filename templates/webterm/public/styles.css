@@ -507,6 +507,53 @@ body {
     border-color: var(--bad);
 }
 
+/* ---- The curtain ---- */
+
+/* One state for "this window cannot do anything at all", over the whole page rather than over the terminal
+   like a card: while it is up, the tab bar and the composer are as dead as the terminal is, and covering
+   them says so. Half-transparent on purpose - the conversation underneath is still there, and seeing it
+   is what makes "nothing was lost" believable. */
+#curtain {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    background: rgba(13, 17, 23, 0.78);
+    backdrop-filter: blur(2px);
+    align-items: center;
+    justify-content: center;
+}
+
+#curtain.show {
+    display: flex;
+}
+
+/* The moment the socket drops, before any curtain: a control whose answer goes nowhere must stop taking
+   clicks. The composer disables itself, so this is about the bar - its tabs, its X, its + New session. */
+body.offline #tabbar {
+    pointer-events: none;
+}
+
+/* ---- Stop the container ---- */
+
+/* Sits at the far right of the bar, away from the tabs: it does not end a session, it ends all of them. */
+#stopbtn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid transparent;
+    border-radius: 7px;
+    cursor: pointer;
+}
+
+#stopbtn:hover {
+    color: var(--bad);
+    border-color: rgba(248, 81, 73, 0.5);
+}
+
 /* ---- Composer ---- */
 
 #composer {

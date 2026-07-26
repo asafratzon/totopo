@@ -14,6 +14,7 @@ import {
     CONTAINER_USER,
     CONTAINER_WORKSPACE,
     RESUME_MARKER_PATH,
+    WEB_KEY_FILE_PATH,
 } from "./constants.js";
 import { canBind, containerPublishedPorts, dockerPublishedPorts, PORT_LOOPBACK_HOST, type WebRange } from "./ports.js";
 import { listWorkspaceIds, readWebPort, writeWebPort } from "./workspace-identity.js";
@@ -150,16 +151,34 @@ export async function webPortUsable(webPort: number, containerName: string): Pro
 export type WebSessionInfo = { sessions: number; attached: number };
 
 /**
+ * The key this container's web interface is currently demanding, read from the file its server publishes
+ * before binding the port. A new key is minted at every server start and nothing on the host stores one,
+ * so it is always read fresh, right before it is used.
+ * Returns null when there is nothing to read: no container, no interface running, or a container built
+ * before the key existed. Callers then probe without a key, which is exactly what such an older server
+ * (which ignores the query parameter) expects.
+ */
+export function readWebKey(containerName: string): string | null {
+    const result = spawnSync("docker", ["exec", "-u", CONTAINER_USER, containerName, "cat", WEB_KEY_FILE_PATH], { stdio: "pipe" });
+    if (result.status !== 0) return null;
+    const key = result.stdout?.toString().trim();
+    return key ? key : null;
+}
+
+/**
  * Ask this workspace's web interface what it is running, over the published loopback port. `sessions` is
  * how many agents are alive in the container - they outlive every browser connection and only end with
  * the container - and `attached` how many of them a browser window is watching right now.
+ * `key` is what the interface demands of every caller (readWebKey); a wrong or missing one is answered
+ * with 403, which reads here like any other non-answer.
  * Returns null when the interface did not answer at all, so callers can tell "running, nothing open"
  * from "not running": the connect path relaunches the server on null, and the stop prompt warns only
  * when sessions would be lost.
  */
-export async function webSessionInfo(webPort: number): Promise<WebSessionInfo | null> {
+export async function webSessionInfo(webPort: number, key: string | null): Promise<WebSessionInfo | null> {
+    const query = key === null ? "" : `?k=${encodeURIComponent(key)}`;
     try {
-        const response = await fetch(`http://${PORT_LOOPBACK_HOST}:${webPort}/status`, {
+        const response = await fetch(`http://${PORT_LOOPBACK_HOST}:${webPort}/status${query}`, {
             signal: AbortSignal.timeout(WEB_STATUS_TIMEOUT_MS),
         });
         if (!response.ok) return null;
@@ -173,6 +192,20 @@ export async function webSessionInfo(webPort: number): Promise<WebSessionInfo | 
 
 // The interface is on loopback in the same machine, so a slow answer means something is wrong, not far.
 const WEB_STATUS_TIMEOUT_MS = 1500;
+
+/**
+ * Whether the interface is serving at all. Any HTTP answer counts, including the 403 a keyless probe gets:
+ * refusing a caller without a key is still proof that the server is up. Used where only liveness matters
+ * (did the launch work, is the interface still there), so those paths need no key and no docker exec.
+ */
+export async function webInterfaceAnswers(webPort: number): Promise<boolean> {
+    try {
+        await fetch(`http://${PORT_LOOPBACK_HOST}:${webPort}/status`, { signal: AbortSignal.timeout(WEB_STATUS_TIMEOUT_MS) });
+        return true;
+    } catch {
+        return false; // Not listening, or too slow to matter.
+    }
+}
 
 // --- Resume command selection (host-side, over the mounted agent dirs) -------------------------------------------------------------------
 
@@ -302,7 +335,7 @@ export async function startWebtermAndVerify(
     startWebtermDetached(containerName, agent);
     const deadline = Date.now() + WEB_START_TIMEOUT_MS;
     while (Date.now() < deadline) {
-        if ((await webSessionInfo(webPort)) !== null) return true;
+        if (await webInterfaceAnswers(webPort)) return true;
         await new Promise((r) => setTimeout(r, WEB_START_POLL_MS));
     }
     return false;

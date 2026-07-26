@@ -8,6 +8,7 @@ On top of the terminal it adds a rich composer so you can paste images, drop or 
 ## How it works
 
 - `server.js` serves the page, exposes `POST /upload`, and runs a WebSocket relay at `/ws`.
+- The URL carries a key (`/?k=<key>`) and every route that carries the relay demands it. The server mints a new one at each start, so the key lives exactly as long as the process that issued it.
 - `sessions.js` is the session registry: what a session is, who drives it, and what ends it. The PTY is injected, so the rules are unit-tested without `node-pty`.
 - A session is one `node-pty` process running the agent in `/workspace`. Sessions belong to the container, not to the browser.
 - The page (`public/`) lists every live session as a tab, renders the attached one's TUI with xterm.js, and forwards keystrokes.
@@ -18,6 +19,7 @@ On top of the terminal it adds a rich composer so you can paste images, drop or 
 - When the relayed agent is `claude`, a short note (`context/claude.md`) is appended to its system prompt via `--append-system-prompt-file`, so it knows it is reached through the browser rather than a terminal. Only claude has this per-launch hook; the shared managed `CLAUDE.md` (which the terminal reads too) is untouched. `WEBTERM_CONTEXT_FILE` overrides the file.
 - The page owns the clipboard, because a TUI can own the mouse. claude turns on mouse tracking, so xterm hands drags to the agent and has no selection of its own; the agent then pushes the selected text out with **OSC 52**, which the page decodes (base64 to UTF-8, not bare `atob`) and writes to the clipboard. A clipboard *read* request (`OSC 52` with `?`) is never answered, so nothing in the container can pull the host clipboard out through the relay. Where the terminal does own the selection, `Cmd+C` / `Ctrl+Shift+C` and the terminal's right-click menu copy it; `Ctrl+C` is always an interrupt.
 - There is one clipboard - the machine's - and only a copy made in the window in front may write it. A replayed screen is the session's own past output, so it still contains the OSC 52 of any copy made in that session earlier: replays go through `writeReplay`, which makes the OSC 52 handler ignore them. Without that, every attach (a session switch, a reload, a reconnect after sleep) put that session's stale text back on the clipboard, so each session tab looked like it carried a clipboard of its own. An unfocused window does not write either - its text waits for the copy shortcut rather than replacing what was copied in another app.
+- When this window cannot do anything at all, one curtain covers the whole page and says why - the container is gone, this URL's key is spent, or the container is being stopped. It replaces disabling each control on its own, which is what used to leave a dead page looking alive: tabs that still hovered, and an X that opened an end-session prompt nothing would answer. A dropped socket makes the page inert at once but waits 3s before drawing the curtain, so a sleeping laptop or a wifi blip heals without one appearing.
 - Clicking in the session bar blurs the terminal (a tab is a plain div; `+ New session` is a button), and a blurred terminal receives neither keystrokes nor `Cmd+V`, so a tab click and every attach hand focus back to it. The composer, a rename editor and an open card keep focus.
 
 ## Sessions
@@ -32,7 +34,9 @@ The page is mission control for the container: the tab bar at the top is every a
 - **The composer belongs to the session you are in.** A half-written message stays with its conversation: switch tabs and the box holds the next session's draft, switch back and yours is as you left it, image attachments included. Ending a session throws its draft away with it. Drafts are per browser window - they survive a switch, a reload and a sleep, but they do not follow a session into another window, and nothing is saved to disk.
 - **One window drives a session at a time**, because a PTY has one size and two drivers would fight over it. Opening a session another window is watching offers to switch it to this one; the window that loses it can take it back.
 - **Opening the URL always lands you somewhere:** the session you were last looking at, or - when nothing is running - one freshly started session, which is what resumes the most recent conversation.
+  Reconnecting is not the same as opening, and starts nothing: a wifi blip or a slept laptop puts you back on exactly what you left, an empty bar included.
 - **Up to 8 sessions** (`WEBTERM_MAX_SESSIONS`). The limit is memory: each one is a full agent process.
+- **Call it a day with the power button** at the right of the bar: it stops the container, and with it every session in it - browser and terminal alike. It always asks first, naming what ends. The container stops itself by signalling PID 1, which only works because totopo gives the keep-alive a TERM trap; a container created before that says so instead of hanging, and points at the host.
 
 ## What the tabs are telling you
 
@@ -45,8 +49,9 @@ Whether an agent is working is read off the rhythm of its output - a sustained s
 "Not there to see it" means the window is not in front of you: behind another browser tab, or behind another app.
 A session you are looking at never lights up, since that would only tell you what you can already see.
 
-`GET /status` reports the relayed agent, how many sessions are alive, and how many of them a browser is watching: `{"agent":"claude","sessions":2,"attached":1}`.
+`GET /status?k=<key>` reports the relayed agent, how many sessions are alive, and how many of them a browser is watching: `{"agent":"claude","sessions":2,"attached":1}`.
 totopo asks it when the last terminal session closes, so `exit` in the terminal warns before it stops a container with live browser sessions in it.
+A window whose socket dropped asks it too: an answer means the relay is fine, a `403` means this window's key is spent, and no answer at all means the container is gone - three different things to say, and this is what tells them apart.
 
 ## Run
 
@@ -56,9 +61,10 @@ webterm is baked into the totopo image with its dependencies preinstalled, and i
    Every workspace gets its own sticky host port from the configured range (default `3900-3999`), stored host-side and never in `totopo.yaml`.
    A port that cannot be used moves the workspace to the next free one in the range, and it stays there.
 2. Open a session. The greeting shows either the live URL (when auto-start is on) or a hint to run `webterm <agent>`.
-3. In the container, run `webterm <agent>` (`claude`, `opencode`, or `codex`) to start the server and print the URL, e.g. `http://localhost:3900`.
+3. In the container, run `webterm <agent>` (`claude`, `opencode`, or `codex`) to start the server and print the URL, e.g. `http://localhost:3900/?k=9f2c41ae8b...`.
    The agent is always explicit; `webterm` on its own prints usage and the URL, and never picks an agent for you.
    The server starts in the background: you get the prompt back, and it keeps running after that shell closes.
+   Open that URL as printed - the key on the end is what the relay checks, and it changes every time the server starts.
 
 When the auto-start setting is on and the web interface is enabled, totopo starts the server automatically on every container start, fronting the chosen agent.
 The first session after a container start resumes the most recent conversation; later sessions start fresh.
@@ -69,8 +75,12 @@ One server relays **one agent**. Running `webterm <other-agent>` while it is up 
 
 - The server binds container port **3899**; totopo publishes it loopback-only (`127.0.0.1:<port>:3899`), so nothing on the LAN can reach it.
   That container port is reserved: a `totopo.yaml` entry publishing it is rejected, so nothing else can front the web URL.
-- Inside the container it listens on all interfaces - required for a published port to reach it. So any process on the host, and any container on the same Docker network, can open the port.
-- The WebSocket handshake rejects any non-loopback `Origin`. That stops a remote page from scripting the relay, but it is a browser-behavior gate: a non-browser client sets any Origin it likes. There is no token yet (see the repo BACKLOG), so the relay trusts whatever can reach the port.
+- Inside the container it listens on all interfaces - required for a published port to reach it. So any process on the host, and any container on the same Docker network, can open the port. Reaching the port is not the same as getting in: the key is.
+- **The URL carries a key, and the relay refuses anything without it.** A new one (16 random bytes, hex) is minted at every server start and published to `/tmp/webterm.key` the moment the port is bound; the launcher and the container greeting read it back, which is how the printed URL is always the live one. Gated: the page itself, `POST /upload`, `GET /status`, and the WebSocket handshake. Not gated: `app.js`, the stylesheet, the icon and the xterm files under `/vendor` - they hold nothing secret and drive nothing, and a window that never got the page opens no socket.
+- The key stays in the URL rather than in a cookie on purpose. Cookies on `localhost` are shared across ports, so a page served by any other local port could ride this workspace's; a key in the URL is scoped to the window that was handed it.
+- Comparison is constant time, so a caller cannot learn the key one character at a time from how long a refusal takes.
+- The WebSocket handshake also rejects any non-loopback `Origin`, checked alongside the key. On its own that is a browser-behavior gate - a non-browser client sets any Origin it likes - so it is the second lock, not the first.
+- A key dies with the server that issued it. Restarting the interface (or the container) invalidates every open window, which is why a spent URL gets a page that says where the current one is rather than a silent refusal.
 - Uploads are images only, size-capped, and written only under `/tmp/uploads/`.
 - Runs as the non-root `devuser`; the agent inherits the same sandbox and auth it has in the terminal.
 
@@ -80,6 +90,7 @@ One server relays **one agent**. Running `webterm <other-agent>` while it is up 
 
 ## Config
 
-`config.js` holds the knobs (port, upload dir, size cap, sweep age/interval, paste framing, resume marker, state file, session limit, keepalive interval, claude context file).
-Env overrides: `WEBTERM_PORT`, `WEBTERM_CWD`, `WEBTERM_AGENT`, `WEBTERM_AGENT_ARGS`, `WEBTERM_RESUME_MARKER`, `WEBTERM_STATE_FILE`, `WEBTERM_MAX_SESSIONS`, `WEBTERM_PING_INTERVAL_MS`, `WEBTERM_WORKSPACE`, `WEBTERM_CONTEXT_FILE`.
+`config.js` holds the knobs (port, key and key file, upload dir, size cap, sweep age/interval, paste framing, resume marker, state file, session limit, keepalive interval, stop timings, claude context file).
+Env overrides: `WEBTERM_PORT`, `WEBTERM_CWD`, `WEBTERM_AGENT`, `WEBTERM_AGENT_ARGS`, `WEBTERM_KEY`, `WEBTERM_KEY_FILE`, `WEBTERM_RESUME_MARKER`, `WEBTERM_STATE_FILE`, `WEBTERM_MAX_SESSIONS`, `WEBTERM_PING_INTERVAL_MS`, `WEBTERM_WORKSPACE`, `WEBTERM_CONTEXT_FILE`.
+`WEBTERM_KEY` pins the key instead of minting one, which is for tests and hand-run debugging - there is no way to turn the gate off.
 The `webterm` launcher on PATH sets these from the container's totopo-injected environment.

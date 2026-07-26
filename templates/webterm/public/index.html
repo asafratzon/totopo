@@ -51,6 +51,11 @@
         </div>
     </section>
 
+    <!-- Page-level curtain: the one state for "this window cannot do anything at all" - the container is
+         gone, its key is no longer the live one, or it is being stopped. It covers the bar, the terminal
+         and the composer on purpose, so nothing on a dead page still takes clicks. -->
+    <div id="curtain"><div id="curtain-card" class="card"></div></div>
+
     <script src="/vendor/xterm/xterm.js"></script>
     <script src="/vendor/xterm-fit/addon-fit.js"></script>
     <script src="/app.js"></script>

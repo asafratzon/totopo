@@ -42,23 +42,23 @@ type WireEntry = {
 };
 type Event = { t: string; sid?: string; client?: FakeSocket; data?: string; label?: string };
 
-const { createRegistry, PALETTE_SIZE, MAX_NAME_LENGTH, cleanName, WORK_QUIET_MS, WORK_WARMUP_MS, WORK_TICK_MS, ECHO_MS, MIN_WORK_MS } =
-    (await import(pathToFileURL(join(WEBTERM_DIR, "sessions.js")).href)) as {
-        createRegistry: (options: {
-            spawn: () => FakeTerm;
-            maxSessions: number;
-            maxBuffer: number;
-            onEvent: (event: Event) => void;
-        }) => Registry;
-        PALETTE_SIZE: number;
-        MAX_NAME_LENGTH: number;
-        cleanName: (raw: unknown) => string | null;
-        WORK_QUIET_MS: number;
-        WORK_WARMUP_MS: number;
-        WORK_TICK_MS: number;
-        ECHO_MS: number;
-        MIN_WORK_MS: number;
-    };
+const { createRegistry, PALETTE_SIZE, MAX_NAME_LENGTH, cleanName, WORK_QUIET_MS, WORK_WARMUP_MS, WORK_TICK_MS, ECHO_MS } = (await import(
+    pathToFileURL(join(WEBTERM_DIR, "sessions.js")).href
+)) as {
+    createRegistry: (options: {
+        spawn: () => FakeTerm;
+        maxSessions: number;
+        maxBuffer: number;
+        onEvent: (event: Event) => void;
+    }) => Registry;
+    PALETTE_SIZE: number;
+    MAX_NAME_LENGTH: number;
+    cleanName: (raw: unknown) => string | null;
+    WORK_QUIET_MS: number;
+    WORK_WARMUP_MS: number;
+    WORK_TICK_MS: number;
+    ECHO_MS: number;
+};
 
 // A browser window: the registry only ever asks whether its socket is still open (1 = WebSocket.OPEN).
 class FakeSocket {
@@ -835,7 +835,7 @@ describe("the working state", () => {
         const { registry } = setup();
         const session = start(registry);
 
-        streams(registry, session, MIN_WORK_MS);
+        streams(registry, session, WORK_WARMUP_MS);
         goesQuiet(registry);
 
         const entry = entryFor(registry, session.id);
@@ -843,15 +843,31 @@ describe("the working state", () => {
         assert.equal(entry.attention, true, "this is the moment the whole feature exists for");
     });
 
-    test("a short piece of work does not", () => {
+    test("a short piece of work asks too, because it showed as busy", () => {
         const { registry } = setup();
         const study = start(registry);
 
-        // Long enough to show as busy, too short to be a job finishing: a one-line answer, a redraw on resize.
+        // Just past the warm-up and then done - a one-line answer. There used to be a longer bar for the alert
+        // than for the light, which meant work of this length turned the tab on and then off with nothing to
+        // close it: the user saw the working mark appear and vanish, and never the one that says it finished.
         streams(registry, study, WORK_WARMUP_MS);
         goesQuiet(registry);
 
-        assert.equal(entryFor(registry, study.id).attention, false, "lighting up for these teaches the user to ignore the light");
+        assert.equal(entryFor(registry, study.id).attention, true, "whatever is worth showing as work is worth reporting the end of");
+    });
+
+    test("output too short to show as busy asks for nothing", () => {
+        const { registry } = setup();
+        const session = start(registry);
+
+        // The lone redraw an idle TUI emits. It never turned the light on, so there is no ending to report -
+        // the warm-up is the one bar, and it is on the near side of it.
+        session.term.say("\x1b[2K");
+        goesQuiet(registry);
+
+        const entry = entryFor(registry, session.id);
+        assert.equal(entry.working, false);
+        assert.equal(entry.attention, false, "lighting up for these teaches the user to ignore the light");
     });
 
     test("a session a window is already watching never asks", () => {
@@ -859,7 +875,7 @@ describe("the working state", () => {
         const session = start(registry);
         registry.attach(session.id, new FakeSocket());
 
-        streams(registry, session, MIN_WORK_MS);
+        streams(registry, session, WORK_WARMUP_MS);
         goesQuiet(registry);
 
         assert.equal(entryFor(registry, session.id).attention, false, "you are looking straight at it");
@@ -875,7 +891,7 @@ describe("the working state", () => {
         // ever reach a user who is looking somewhere else.
         registry.away(window, true);
 
-        streams(registry, session, MIN_WORK_MS);
+        streams(registry, session, WORK_WARMUP_MS);
         goesQuiet(registry);
 
         assert.equal(entryFor(registry, session.id).attention, true);
@@ -889,9 +905,9 @@ describe("the working state", () => {
         const window = new FakeSocket();
         registry.attach(session.id, window);
         registry.away(window, true);
-        streams(registry, session, MIN_WORK_MS);
+        streams(registry, session, WORK_WARMUP_MS);
         goesQuiet(registry);
-        streams(registry, other, MIN_WORK_MS);
+        streams(registry, other, WORK_WARMUP_MS);
         goesQuiet(registry);
         events.length = 0;
 
@@ -922,7 +938,7 @@ describe("the working state", () => {
         const session = start(registry);
         registry.attach(session.id, new FakeSocket());
 
-        streams(registry, session, MIN_WORK_MS);
+        streams(registry, session, WORK_WARMUP_MS);
         goesQuiet(registry);
 
         // The old behaviour, kept for anything on the socket that is not this page.
@@ -932,7 +948,7 @@ describe("the working state", () => {
     test("visiting the session spends the alert", () => {
         const { registry } = setup();
         const session = start(registry);
-        streams(registry, session, MIN_WORK_MS);
+        streams(registry, session, WORK_WARMUP_MS);
         goesQuiet(registry);
 
         registry.attach(session.id, new FakeSocket());
@@ -943,7 +959,7 @@ describe("the working state", () => {
     test("an agent that starts again drops the alert it had raised", () => {
         const { registry } = setup();
         const session = start(registry);
-        streams(registry, session, MIN_WORK_MS);
+        streams(registry, session, WORK_WARMUP_MS);
         goesQuiet(registry);
 
         streams(registry, session, WORK_WARMUP_MS);
@@ -956,7 +972,7 @@ describe("the working state", () => {
     test("a tick that changes nothing says nothing", () => {
         const { events, registry } = setup();
         const session = start(registry);
-        streams(registry, session, MIN_WORK_MS);
+        streams(registry, session, WORK_WARMUP_MS);
         goesQuiet(registry);
         events.length = 0;
 
