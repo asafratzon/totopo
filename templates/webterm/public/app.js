@@ -237,7 +237,10 @@ function noteArrivals() {
     }
     // A session that is no longer waiting (visited, or gone from the bar) may flash again next time it finishes.
     for (const sid of [...arrivedAt.keys()]) {
-        if (!sessions.some((entry) => entry.id === sid && entry.attention)) arrivedAt.delete(sid);
+        if (sessions.some((entry) => entry.id === sid && entry.attention)) continue;
+        arrivedAt.delete(sid);
+        // And sound again: the next finish is a new alert, not the one that was just spent.
+        chimed.delete(sid);
     }
 }
 
@@ -598,7 +601,7 @@ function renderBar() {
         ws.textContent = workspaceName;
         right.append(ws);
     }
-    right.append(stopButton());
+    right.append(bellButton(), stopButton());
     tabbar.append(right);
 
     // Keep focus in the rename editor across re-renders. The first render after a double-click selects the
@@ -778,6 +781,9 @@ function pulseBadge() {
         paintFavicon();
         return;
     }
+    // Riding the one timer that is already running for exactly as long as something is waiting. A hidden tab's own
+    // timers are throttled hard, so the chime is better off not depending on any single one of them.
+    maybeChime();
     pulseDim = !pulseDim;
     paintFavicon();
     pulseTimer = setTimeout(pulseBadge, PULSE_MS);
@@ -803,6 +809,270 @@ function refreshBrowserTab() {
         return;
     }
     if (!pulseTimer) pulseTimer = setTimeout(pulseBadge, PULSE_MS);
+}
+
+// --- A sound, for the session that is not in front of you ---------------------------------------------------------------------------------
+//
+// The fourth thing the "an agent finished and nobody saw it" alert does, and the only one that reaches a window behind an
+// editor. Everything above this - the tab, the title, the icon - has to be looked at to be read.
+//
+// The one alert it stays quiet for is the session already on screen in a window someone is looking at, which is the only
+// place a sound would be telling you what you can see. A session finishing in another tab of this bar is not that, even
+// with the window right in front of you: its tab lights up somewhere off to the side, and that is exactly the kind of
+// thing a screen full of work hides.
+//
+// It waits, twice. The registry already holds a stop for a few seconds before it will call it the end of a turn, which
+// is the right amount for a light: being wrong for a moment there costs nothing, since the light goes out again and
+// nobody was interrupted. A sound that is wrong costs attention and cannot be taken back, so it gets its own, longer
+// hold on top - and anything that spends the alert in the meantime, work resuming or the user coming back, leaves it
+// never heard at all. Two thresholds, one signal.
+//
+// It is synthesised rather than played from a file, for the same reason the favicon above is drawn rather than shipped:
+// nothing to fetch, nothing to license, and the whole sound is legible right here as three numbers times three.
+
+// How long an alert has to keep standing before it is worth a sound. On top of the registry's own settle, so a chime
+// always means "this finished twenty seconds ago and is still waiting", never "it went quiet for a moment".
+const CHIME_HOLD_MS = 20_000;
+// A floor between chimes, for alerts that come due a moment apart rather than together.
+const CHIME_GAP_MS = 2_000;
+// How long one window's chime speaks for every window of this workspace. Two of them left open on the same container
+// both see the same alert, and one sound is the entire point.
+const CHIME_CLAIM_MS = 3_000;
+const SOUND_KEY = "webterm-sound";
+const CHIME_CLAIM_KEY = "webterm-chime-claim";
+
+// A glass tap. A struck object is a handful of sine partials, each fading at its own rate, and the inharmonic ones
+// (2.7 and 5.2 rather than 2 and 3) are what stop it sounding like an organ note. [ratio of the base note, how loud
+// against the fundamental, how long it takes to fade].
+const CHIME_PARTIALS = [
+    [1, 1, 0.7],
+    [2.7, 0.25, 0.35],
+    [5.2, 0.08, 0.2],
+];
+const CHIME_FREQ = 1568;
+const CHIME_ATTACK = 0.002;
+// How hard it is struck, and how loud the room plays it back. Kept apart because the first is the instrument and the
+// second is the volume knob.
+const CHIME_PEAK = 0.4;
+const CHIME_VOLUME = 0.35;
+
+// Muting is remembered for this browser and this workspace - one container, one port, one origin - so it survives a
+// reload and covers every window of the same container without touching any other workspace. On by default: a
+// notification nobody discovers is not a notification, and the bell is right there to turn off.
+let soundOn = readSoundPref();
+
+function readSoundPref() {
+    try {
+        return localStorage.getItem(SOUND_KEY) !== "off";
+    } catch {
+        // A browser with storage turned off still gets the sound; it just cannot remember being told not to.
+        return true;
+    }
+}
+
+let audioCtx = null;
+let chimeDry = null;
+let chimeWet = null;
+
+// A small room, made of noise that fades out. A convolver needs an impulse and this is the cheapest honest one; it is
+// what makes the tap sound like it happened somewhere rather than inside your head.
+function buildRoom(ctx) {
+    const length = Math.floor(ctx.sampleRate * 1.8);
+    const impulse = ctx.createBuffer(2, length, ctx.sampleRate);
+    for (let channel = 0; channel < 2; channel++) {
+        const data = impulse.getChannelData(channel);
+        for (let i = 0; i < length; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / length) ** 3.2;
+    }
+    const convolver = ctx.createConvolver();
+    convolver.buffer = impulse;
+    return convolver;
+}
+
+// Built on first use and kept. A browser will not let a page make a sound before the page has been interacted with, so
+// this can be called at any moment and simply not be running yet.
+function audio() {
+    if (!audioCtx) {
+        const Ctor = window.AudioContext ?? window.webkitAudioContext;
+        if (!Ctor) return null;
+        audioCtx = new Ctor();
+        const master = audioCtx.createGain();
+        master.gain.value = CHIME_VOLUME;
+        // Takes the edge off the top partial. Something you might hear all day should not be bright.
+        const soften = audioCtx.createBiquadFilter();
+        soften.type = "lowpass";
+        soften.frequency.value = 9000;
+        soften.Q.value = 0.4;
+        chimeDry = audioCtx.createGain();
+        chimeDry.gain.value = 0.78;
+        chimeWet = audioCtx.createGain();
+        chimeWet.gain.value = 0.42;
+        chimeDry.connect(soften);
+        chimeWet.connect(buildRoom(audioCtx)).connect(soften);
+        soften.connect(master).connect(audioCtx.destination);
+    }
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    return audioCtx;
+}
+
+// One tap. Breaks nothing when it cannot play: a sound is never the only thing carrying the alert.
+function playChime() {
+    const ctx = audio();
+    // Blocked until this page has been clicked or typed into. Nearly never true here - you click the terminal to type -
+    // and the tab, the title and the icon are all still saying it either way.
+    if (!ctx || ctx.state !== "running") return;
+    const at = ctx.currentTime + 0.02;
+    for (const [ratio, level, decay] of CHIME_PARTIALS) {
+        const osc = ctx.createOscillator();
+        osc.frequency.value = CHIME_FREQ * ratio;
+        const env = ctx.createGain();
+        // Exponential, and never to zero, which is the one value an exponential ramp cannot reach.
+        env.gain.setValueAtTime(0.0001, at);
+        env.gain.exponentialRampToValueAtTime(Math.max(0.0002, level * CHIME_PEAK), at + CHIME_ATTACK);
+        env.gain.exponentialRampToValueAtTime(0.0001, at + CHIME_ATTACK + decay);
+        osc.connect(env);
+        env.connect(chimeDry);
+        env.connect(chimeWet);
+        osc.start(at);
+        osc.stop(at + CHIME_ATTACK + decay + 0.05);
+    }
+}
+
+// The earliest honest moment to open the audio context. The interface is interacted with immediately - the terminal is
+// clicked or typed into before anything interesting happens - so by the time an agent has finished a turn this has run.
+function unlockAudio() {
+    audio();
+}
+
+document.addEventListener("pointerdown", unlockAudio, { once: true });
+document.addEventListener("keydown", unlockAudio, { once: true });
+
+// Alerts that have already been sounded, so one finish makes one sound however many frames the server sends. Pruned
+// alongside arrivedAt, which is what lets a session that finishes, is visited, and finishes again sound both times.
+const chimed = new Set();
+let chimeTimer = null;
+let lastChimeAt = 0;
+
+// Alerts that have now stood long enough to be worth hearing about.
+function dueAlerts() {
+    const now = Date.now();
+    return sessions.filter((entry) => entry.attention && !chimed.has(entry.id) && now - (arrivedAt.get(entry.id) ?? now) >= CHIME_HOLD_MS);
+}
+
+// Is anyone looking at this window right now? Both halves count: a window behind another browser tab and a window
+// behind an editor are the same thing to someone who is looking at neither.
+function watching() {
+    return document.visibilityState === "visible" && document.hasFocus();
+}
+
+// The one session a chime would have nothing to add to: the one this window has open, with someone in front of it. Every
+// other alert is worth a sound, including one on another tab of a bar the user is sitting right in front of.
+function onScreen(sid) {
+    return sid === attachedSid && watching();
+}
+
+// One window speaks for the workspace. Best effort - two windows racing on the same millisecond both chime, which is
+// exactly what would have happened without this.
+function claimChime() {
+    try {
+        const previous = Number(localStorage.getItem(CHIME_CLAIM_KEY) ?? 0);
+        if (Date.now() - previous < CHIME_CLAIM_MS) return false;
+        localStorage.setItem(CHIME_CLAIM_KEY, String(Date.now()));
+    } catch {
+        // Nowhere to share the claim, so this window speaks for itself. One window chiming is still right.
+    }
+    return true;
+}
+
+// Called from the two clocks already running: an incoming frame schedules the exact moment, and the favicon pulse -
+// which ticks for as long as anything is waiting and no longer - catches it when a hidden tab's timers are being
+// throttled. Whichever arrives first plays; the other finds the alert already spent.
+function maybeChime() {
+    const due = dueAlerts();
+    if (due.length === 0) return;
+    // Spent whether or not it is heard. A session on screen has already said this where the user is looking, and an
+    // alert that stayed quiet for that reason must not go off later when the window is put away - nothing new happened.
+    for (const entry of due) chimed.add(entry.id);
+    if (!soundOn) return;
+    if (due.every((entry) => onScreen(entry.id))) return;
+    const now = Date.now();
+    if (now - lastChimeAt < CHIME_GAP_MS) return;
+    if (!claimChime()) return;
+    lastChimeAt = now;
+    // Several alerts coming due together are one sound. The message is "come back", not "come back twice".
+    playChime();
+}
+
+// One timer for the whole bar, set to the next alert that comes due, and re-armed on every frame - so an alert spent
+// in the meantime takes its timer with it rather than firing on nothing.
+function scheduleChime() {
+    if (chimeTimer) {
+        clearTimeout(chimeTimer);
+        chimeTimer = null;
+    }
+    const now = Date.now();
+    let soonest = Number.POSITIVE_INFINITY;
+    for (const entry of sessions) {
+        if (!entry.attention || chimed.has(entry.id)) continue;
+        soonest = Math.min(soonest, (arrivedAt.get(entry.id) ?? now) + CHIME_HOLD_MS);
+    }
+    if (soonest === Number.POSITIVE_INFINITY) return;
+    chimeTimer = setTimeout(maybeChime, Math.max(0, soonest - now));
+}
+
+// Sound off, and back on. It lives beside the power button because both are about this window and this container
+// rather than any one session - with a little distance between them, since a harmless toggle should not share an edge
+// with the one control that ends everything.
+function bellButton() {
+    const button = document.createElement("button");
+    button.id = "bellbtn";
+    button.type = "button";
+    button.classList.toggle("muted", !soundOn);
+    button.title = soundOn
+        ? "Sound on - a chime when an agent finishes somewhere you are not looking. Click to mute."
+        : "Sound muted - click for a chime when an agent finishes somewhere you are not looking.";
+    button.setAttribute("aria-label", soundOn ? "Mute the finish sound" : "Unmute the finish sound");
+    button.setAttribute("aria-pressed", String(soundOn));
+    const svg = document.createElementNS(SVG_NS, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("width", "14");
+    svg.setAttribute("height", "14");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "2");
+    svg.setAttribute("stroke-linecap", "round");
+    svg.setAttribute("stroke-linejoin", "round");
+    const bell = document.createElementNS(SVG_NS, "path");
+    bell.setAttribute("d", "M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9");
+    const clapper = document.createElementNS(SVG_NS, "path");
+    clapper.setAttribute("d", "M13.73 21a2 2 0 0 1-3.46 0");
+    svg.append(bell, clapper);
+    // Struck through when muted, so the state is a shape and not only a shade.
+    if (!soundOn) {
+        const slash = document.createElementNS(SVG_NS, "line");
+        slash.setAttribute("x1", "3");
+        slash.setAttribute("y1", "3");
+        slash.setAttribute("x2", "21");
+        slash.setAttribute("y2", "21");
+        svg.append(slash);
+    }
+    button.append(svg);
+    button.addEventListener("click", toggleSound);
+    return button;
+}
+
+function toggleSound() {
+    soundOn = !soundOn;
+    try {
+        localStorage.setItem(SOUND_KEY, soundOn ? "on" : "off");
+    } catch {
+        // Not remembered past this page, but the toggle still works for as long as it is open.
+    }
+    renderBar();
+    // The click landed on a button, which took the keyboard off the terminal.
+    focusTerminal();
+    // Turning it on plays it once, so the first time it happens behind your editor it is a sound you have already
+    // agreed to. Turning it off says nothing, which is the whole point of turning it off.
+    if (soundOn) playChime();
 }
 
 // --- Overlay cards -----------------------------------------------------------------------------------------------------------------------
@@ -1001,12 +1271,14 @@ function stopFailedCard() {
 // composer alike. It replaces disabling each control on its own, which is what used to leave a dead page
 // looking alive: tabs that still hovered, and an X that opened an end-session prompt nothing would answer.
 //
-// Three reasons a window ends up here, and they are not the same to the user:
+// Four reasons a window ends up here, and they are not the same to the user:
 //   down     - nothing answers. The container is stopped or gone; keeps reconnecting, so it heals itself.
 //   locked   - the relay answered and refused this window's key. The interface restarted and minted a new
 //              one, so this URL is spent; reconnecting is pointless and stops.
 //   stopping - the user just stopped the container from here. Same end state as "down", but it is not a
 //              failure and must not read like one.
+//   stopped  - it has gone. The one curtain that replaces another rather than appearing on its own: stopping
+//              is a wait, and a wait that never resolves is indistinguishable from a page that hung.
 //
 // A dropped socket is routine (a sleeping laptop, a wifi blip), so the curtain waits out a short grace and
 // usually never appears. What does happen immediately is the page going inert, because a click landing on
@@ -1018,11 +1290,27 @@ let curtainTimer = null;
 // Set for the two states nothing on this page can recover from: no more reconnecting, no more probing.
 let halted = false;
 
+// Three dots that say a curtain is waiting for something rather than reporting a state that has settled. Three
+// elements with staggered fades rather than an animated `content`, which not every engine interpolates.
+function pendingDots() {
+    const dots = document.createElement("span");
+    dots.className = "dots";
+    for (let i = 0; i < 3; i++) {
+        const dot = document.createElement("i");
+        dot.style.animationDelay = `${i * 180}ms`;
+        dots.append(dot);
+    }
+    return dots;
+}
+
 function showCurtain(kind, title, body, action) {
     curtainKind = kind;
     curtainCard.textContent = "";
     const heading = document.createElement("h2");
     heading.textContent = title;
+    // One of these states is a wait rather than a report: the container is on its way down and this page is
+    // watching for it to land. The dots say so, and they are gone the moment it has.
+    if (kind === "stopping") heading.append(pendingDots());
     const text = document.createElement("p");
     text.textContent = body;
     curtainCard.append(heading, text);
@@ -1084,15 +1372,28 @@ function lockedCurtain() {
     );
 }
 
-// The user asked for this one, so it says so rather than reporting a failure.
+// The user asked for this one, so it says so rather than reporting a failure. It is also the only curtain that is
+// still waiting on something: the container takes a moment to go, and a page cannot see that from inside itself.
+// So this is the first half of a pair, and it deliberately says nothing yet about what to do next - the container
+// has not gone, and a container that turns out not to stop at all recovers this page instead.
 function stoppingCurtain() {
     halted = true;
     clearCurtainTimer();
+    showCurtain("stopping", "Stopping the container", "Every session in it is ending.");
+}
+
+// The relay went while the container was on its way down, which is the container going: nothing else takes the
+// server with it at that moment. This is the half that says it is over and what to do next - "Stopping the
+// container" left up for good reads as a page that got stuck halfway through, which is exactly what it looks like
+// when the thing it was waiting for happened seconds ago.
+function stoppedCurtain() {
+    halted = true;
+    clearCurtainTimer();
     showCurtain(
-        "stopping",
-        "Stopping the container",
-        "Every session in it is ending. Start your next one with npx totopo on the host - it comes back with a fresh " +
-            "URL, since the key goes with the container.",
+        "stopped",
+        "The container is stopped",
+        "Every session in it has ended, and nothing on disk was touched. Start your next one with npx totopo on the " +
+            "host - it comes back with a fresh URL, since the key goes with the container.",
     );
 }
 
@@ -1179,6 +1480,12 @@ function connect() {
         // while it is down they must stop taking clicks.
         document.body.classList.add("offline");
         refreshComposer();
+        // The container was on its way down and the relay has now gone with it. That is the confirmation the
+        // stopping curtain is waiting for, and there is nothing to diagnose: this close was the point.
+        if (curtainKind === "stopping") {
+            stoppedCurtain();
+            return;
+        }
         diagnose();
     };
 
@@ -1321,6 +1628,7 @@ function onFrame(msg) {
             shownMessage = EXITED_SCREEN;
         }
         dropDraft(msg.sid);
+        dropHistory(msg.sid);
         refreshComposer();
     } else if (msg.t === "stopping") {
         // Sent to every window, not just the one that asked: the container is about to take them all.
@@ -1349,8 +1657,11 @@ function applySessions(msg) {
     renderBar();
     // Said again where a window that is behind something else can still be heard.
     refreshBrowserTab();
-    // Sessions that are no longer in the bar take their unsent messages with them.
+    // And, twenty seconds from now, said out loud - if it is still true and nobody has come back by then.
+    scheduleChime();
+    // Sessions that are no longer in the bar take their unsent messages and their history with them.
     pruneDrafts();
+    pruneHistory();
     refreshComposer();
     // A session can vanish from under this window: closed here, closed from another window, or the agent exited.
     // Where the server had a free session to move this window to, that session's replay has already painted over
@@ -1387,7 +1698,7 @@ function showMessage(line) {
 // Connection and attachment state show on the composer's border and in its placeholder rather than a
 // separate status line: lit in the workspace colour when keystrokes have somewhere to go, grey when they do
 // not, with the reason in the placeholder.
-const INPUT_PLACEHOLDER = "Type a message. Paste or drop an image. Enter sends, Shift+Enter for a newline.";
+const INPUT_PLACEHOLDER = "Type a message. Paste or drop an image. Enter sends, Shift+Enter for a newline, Up recalls the last one.";
 
 function refreshComposer() {
     const live = connected && Boolean(attachedSid);
@@ -1451,6 +1762,8 @@ function autoGrow() {
 }
 input.addEventListener("input", () => {
     autoGrow();
+    // A recalled message that has been edited is a new message, so the arrows stop stepping through history.
+    endHistoryWalk();
     // Kept up to date as you type, so a reload mid-sentence or a session taken away in another window does
     // not lose it. The write itself is debounced.
     captureDraft(attachedSid);
@@ -1467,6 +1780,8 @@ function insertAtCursor(text) {
     const lead = before && !before.endsWith(" ") && !before.endsWith("\n") ? " " : "";
     const trail = after && !after.startsWith(" ") && !after.startsWith("\n") ? " " : " ";
     const piece = lead + text + trail;
+    // Attaching an image to a recalled message makes it a new message.
+    endHistoryWalk();
     input.value = before + piece + after;
     const caret = before.length + piece.length;
     input.setSelectionRange(caret, caret);
@@ -1484,6 +1799,7 @@ function clearComposer() {
     input.value = "";
     pendingImages.clear();
     imageCounter = 0;
+    endHistoryWalk();
     autoGrow();
 }
 
@@ -1558,6 +1874,8 @@ function restoreDraft(sid) {
     pendingImages.clear();
     for (const [token, path] of draft?.images ?? []) pendingImages.set(token, path);
     imageCounter = draft?.counter ?? 0;
+    // Each session has its own history, so a walk never carries across a switch.
+    endHistoryWalk();
     autoGrow();
 }
 
@@ -1566,19 +1884,24 @@ function dropDraft(sid) {
     if (sid && drafts.delete(sid)) persistDrafts();
 }
 
-// A session that is no longer in the bar took its draft with it. This is what covers a session closed from
-// another window, which arrives as a bar without it rather than as an exit.
-function pruneDrafts() {
-    if (drafts.size === 0) return;
+// Drop everything this window is holding for a session that is no longer in the bar, and say whether anything went.
+// Shared by the two stores kept per session - the unsent message and the history below - because both end the same
+// way at the same moment. This is what covers a session closed from another window, which arrives as a bar without
+// it rather than as an exit.
+function pruneBySession(store) {
+    if (store.size === 0) return false;
     const live = new Set(sessions.map((session) => session.id));
     let removed = false;
-    for (const sid of [...drafts.keys()]) {
-        if (!live.has(sid)) {
-            drafts.delete(sid);
-            removed = true;
-        }
+    for (const sid of [...store.keys()]) {
+        if (live.has(sid)) continue;
+        store.delete(sid);
+        removed = true;
     }
-    if (removed) persistDrafts();
+    return removed;
+}
+
+function pruneDrafts() {
+    if (pruneBySession(drafts)) persistDrafts();
 }
 
 // The window moved on before an upload finished. The token still belongs to the session the image was
@@ -1591,6 +1914,128 @@ function addImageToDraft(sid, path) {
     drafts.set(sid, { text: `${draft.text}${lead}${token} `, images: [...draft.images, [token, path]], counter });
     persistDrafts();
     noteMsg(`image added to ${labelOf(sid, "the session it was attached to")}`);
+}
+
+// --- What you already sent ---------------------------------------------------------------------------------------------------------------
+//
+// Up in an empty box brings back the last message, the way a shell does. The composer exists so a long message can be
+// written properly, and the messages worth having back are exactly the long ones: a prompt that needed one more
+// sentence, a path that was almost right, a question worth asking again of a different session.
+//
+// Two rules keep it out of the way of ordinary typing. It only starts from an empty box, so Up can never snatch away
+// something half-written. And once it has started, Up and Down only step on from the first and last line of what is
+// showing, so the arrows still walk around a recalled message the way they walk around any other text - a shell with
+// a multi-line buffer behaves the same, and anything else is a trap. Typing ends the walk: what is in the box is
+// yours again, and the arrows go back to being arrows.
+//
+// What is stored is what was actually sent, image tokens already expanded. A recalled message has to mean the same
+// thing the second time, and [Image #1] means nothing once the box that numbered it has been emptied.
+//
+// The history is this window's, like the drafts above, and it holds what went through this box - not what was typed
+// straight into the terminal, which the agent's own history already has.
+
+const HISTORY_KEY = "webterm-history";
+// Long enough to cover a working session, short enough that this never becomes somewhere data quietly accumulates.
+const HISTORY_MAX = 50;
+
+// sid -> [oldest, ..., newest].
+const histories = new Map();
+// How far back the walk has got in the attached session's history, or null when the box holds the user's own text.
+let historyAt = null;
+
+function persistHistory() {
+    try {
+        sessionStorage.setItem(HISTORY_KEY, JSON.stringify([...histories]));
+    } catch {
+        // Storage that will not take it costs the recall after a reload and nothing else.
+    }
+}
+
+try {
+    const stored = JSON.parse(sessionStorage.getItem(HISTORY_KEY) ?? "[]");
+    if (Array.isArray(stored)) {
+        for (const pair of stored) {
+            const [sid, list] = Array.isArray(pair) ? pair : [];
+            if (typeof sid !== "string" || !Array.isArray(list)) continue;
+            histories.set(
+                sid,
+                list.filter((line) => typeof line === "string"),
+            );
+        }
+    }
+} catch {
+    // Nothing to recall.
+}
+
+window.addEventListener("pagehide", persistHistory);
+
+// The same message twice running is one entry: sending something again is normal, and a history filled with it is
+// not worth walking through.
+function rememberSent(sid, text) {
+    if (!sid || !text) return;
+    const list = histories.get(sid) ?? [];
+    if (list[list.length - 1] !== text) list.push(text);
+    while (list.length > HISTORY_MAX) list.shift();
+    histories.set(sid, list);
+    persistHistory();
+}
+
+// The session is gone, and everything said to it goes too.
+function dropHistory(sid) {
+    if (sid && histories.delete(sid)) persistHistory();
+}
+
+function pruneHistory() {
+    if (pruneBySession(histories)) persistHistory();
+}
+
+// Where the caret is, in lines. The arrows only reach for history from the edges of what is in the box.
+function atFirstLine() {
+    return !input.value.slice(0, input.selectionStart ?? 0).includes("\n");
+}
+
+function atLastLine() {
+    return !input.value.slice(input.selectionEnd ?? input.value.length).includes("\n");
+}
+
+// Put an entry in the box, caret at the end of it - which is where you carry on typing from. It becomes the session's
+// draft like anything else in the box, so switching away and back does not lose a message you went and fetched.
+function showRecalled(text) {
+    input.value = text;
+    autoGrow();
+    const end = input.value.length;
+    input.setSelectionRange(end, end);
+    captureDraft(attachedSid);
+    schedulePersist();
+}
+
+// Typing makes the box yours again.
+function endHistoryWalk() {
+    historyAt = null;
+}
+
+// One step through the attached session's history; `back` is Up. Says whether it moved, so a step that had nowhere
+// to go leaves the keypress to the browser instead of swallowing it.
+function walkHistory(back) {
+    const list = histories.get(attachedSid) ?? [];
+    if (list.length === 0) return false;
+    if (back) {
+        // The oldest entry is the end of the road rather than a wrap back to the newest: a list that loops has no
+        // end, and you would never know you had seen all of it.
+        historyAt = historyAt === null ? list.length - 1 : Math.max(0, historyAt - 1);
+        showRecalled(list[historyAt]);
+        return true;
+    }
+    if (historyAt === null) return false;
+    // Forward past the newest is the empty box the walk started from, not the newest all over again.
+    if (historyAt >= list.length - 1) {
+        endHistoryWalk();
+        showRecalled("");
+        return true;
+    }
+    historyAt += 1;
+    showRecalled(list[historyAt]);
+    return true;
 }
 
 // --- Images ------------------------------------------------------------------------------------------------------------------------------
@@ -1636,6 +2081,8 @@ function send() {
     sendFrame({ t: "paste", data: text });
 
     const sid = attachedSid;
+    // Stored expanded, exactly as the agent received it, so recalling and sending again says the same thing.
+    rememberSent(sid, text);
     clearComposer();
     dropDraft(sid);
     term.focus();
@@ -1645,6 +2092,8 @@ sendBtn.addEventListener("click", send);
 
 // Enter sends; Shift+Enter inserts a newline. Ctrl+C clears the composer (when nothing is selected,
 // so a real copy still works), mirroring claude's "Ctrl+C clears the input line" behavior.
+// Up and Down walk back through what this session was already sent - see the history section above for when they
+// are a recall and when they are just the caret moving.
 input.addEventListener("keydown", (e) => {
     if (e.ctrlKey && (e.key === "c" || e.key === "C")) {
         if (input.selectionStart === input.selectionEnd) {
@@ -1652,6 +2101,26 @@ input.addEventListener("keydown", (e) => {
             clearComposer();
             dropDraft(attachedSid);
         }
+        return;
+    }
+    const plain = !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey;
+    if (e.key === "ArrowUp" && plain) {
+        // Only from the top of the box, and only into an empty one unless a walk is already under way.
+        if (!atFirstLine()) return;
+        if (historyAt === null && input.value !== "") return;
+        if (walkHistory(true)) e.preventDefault();
+        return;
+    }
+    if (e.key === "ArrowDown" && plain) {
+        if (historyAt === null || !atLastLine()) return;
+        if (walkHistory(false)) e.preventDefault();
+        return;
+    }
+    // Escape puts the box back the way the walk found it: empty, and typing into it again.
+    if (e.key === "Escape" && historyAt !== null) {
+        e.preventDefault();
+        endHistoryWalk();
+        showRecalled("");
         return;
     }
     if (e.key === "Enter" && !e.shiftKey) {
@@ -1892,6 +2361,18 @@ async function pasteIntoTerminal() {
 // paste event, which carries the clipboard with it and needs no permission.
 term.attachCustomKeyEventHandler((event) => {
     if (event.type !== "keydown") return true;
+
+    // Shift+Enter is a newline here too, so one habit works in both boxes on this page. A terminal has no such key
+    // of its own - Enter is a carriage return whatever else is held down, which is why an agent's own answer to
+    // "give me a newline" is Alt+Enter, ESC followed by CR. That is exactly what this sends, so this is a second
+    // key onto a sequence the agent already understands rather than anything new for it to support. Alt+Enter is
+    // untouched and still works, for the fingers that already know it.
+    if (event.key === "Enter" && event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        event.preventDefault();
+        if (connected && attachedSid) sendFrame({ t: "in", data: "\x1b\r" });
+        return false;
+    }
+
     const cmd = event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey;
     const ctrlShift = event.ctrlKey && event.shiftKey && !event.metaKey && !event.altKey;
     const key = event.key.toLowerCase();

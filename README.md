@@ -243,7 +243,7 @@ codex       # Codex (OpenAI)
 opencode    # OpenCode
 ```
 
-Agents are self-aware - sandbox constraints, git remote block, and any active shadow path overlays are injected into agent context at every session start.
+At every session start, totopo injects the sandbox constraints, the git remote block, and any active shadow paths into the agent's context, so each agent knows what it can and cannot do.
 
 totopo keeps all three CLIs on their latest published versions, checking for updates automatically.
 
@@ -255,7 +255,7 @@ For convenience, every Claude session opens with a status line at the bottom of 
 🤖 Opus 4.8 xhigh · 🧠 174k / 1M (17%) · ⚡ ▓▓▓▓▓▓▓▓░░ 83% (🔌 2h 15m) · Claude Code v2.1.132
 ```
 
-Four segments: the model display name (any parenthetical such as "(1M context)" trimmed) followed by reasoning effort in purple, current context usage as used tokens over the window size with a percentage, an energy gauge of the 5-hour rate-limit window showing the share remaining - green while plenty is left, yellow then red as it drains - with a countdown to recharge (subscriber accounts only), and the installed Claude Code CLI version with a freshness hint that escalates as the install ages. Ask Claude `/totopo-statusline` to customize or restore the default.
+Four segments: the model name with its reasoning effort in purple (any parenthetical such as "(1M context)" is trimmed); context usage, as used tokens over the window size with a percentage; how much of the 5-hour rate-limit window is left - green while plenty is, then yellow and red as it drains - with a countdown to recharge on subscriber accounts; and the installed Claude Code CLI version, with a hint that gets more insistent as the install ages. Ask Claude `/totopo-statusline` to customize or restore the default.
 
 The same data is snapshotted to `~/.claude/context-usage/` on every prompt render, so you can ask Claude itself how much context or quota is left - it reads the snapshot via the bundled `context-usage` helper.
 
@@ -321,16 +321,17 @@ With [auto-start](#auto-start-agent) on it comes up by itself and the greeting s
 
 ![totopo web interface](.github/assets/webterm.png)
 
-- **Every agent in one page.** The tab bar is every session running in the container, up to 8. Click to switch, `+ New session` to start one, double-click to rename, drag to reorder.
-- **Sessions start where you did.** Run `npx totopo` inside `apps/api` and the browser's agent works on `apps/api`, the same directory a terminal session lands in. The caret beside `+ New session` starts one in another directory - type it or pick it from the list - and each session keeps its own for as long as it lives.
+- **Every session in one page.** The tab bar lists every session running in the container, up to 8. Click to switch, `+ New session` to start one, double-click to rename, drag to reorder.
+- **Sessions start where you did.** Run `npx totopo` inside `apps/api` and the browser's agent works on `apps/api`, the same directory a terminal session lands in. The caret beside `+ New session` opens one in another directory, and each session keeps its own.
 - **Sessions outlive the browser.** They belong to the container, so a closed tab, dropped wifi or a slept laptop ends nothing, and opening the URL anywhere shows them all. One window drives a session at a time; another can take it over.
-- **The tabs say what the agents are doing.** A light runs round a tab while its agent works, and the tab lights up when one finishes something you were not there to see. So does the browser tab, for when the window is behind something else: the title counts what is waiting, and the icon shows a blue bar while an agent works, a green dot while one waits.
-- **Images and dictation.** Paste, drop or upload an image and the agent gets its path; dictate instead of typing. Enter sends, Shift+Enter starts a line.
-- **Drafts wait where you left them.** A half-written message stays with its own session, attachments included, until you send it or end the session.
-- **Call it a day from the page.** The power button at the right of the tab bar stops the container - every session in it, browser and terminal alike - after a prompt that names what ends.
+- **Tabs show what each agent is doing.** A light runs round a tab while its agent works, and the tab stays lit when one finishes while you were not watching. The browser tab shows the same from behind another window: the title counts the sessions waiting, and the icon carries a blue bar while an agent works and a green dot while one waits.
+- **A chime when an agent finishes.** It plays twenty seconds after a session you are not watching finishes - including another tab of the bar, with the window in front of you. The delay keeps a mid-turn pause from making a sound. The bell in the tab bar mutes it, and the choice is remembered.
+- **Images and dictation.** Paste, drop or upload an image and the agent gets its path; dictate instead of typing.
+- **Drafts stay with their session.** A half-written message, attachments included, waits until you send it or the session ends.
+- **Stop the container from the page.** The power button at the right of the tab bar stops it - every session in it, browser and terminal alike - after a prompt that names what ends.
 - **Its own sticky host port.** One loopback-only port per workspace from a range (default `3900-3999`), kept host-side and never in `totopo.yaml`, so the port survives restarts and rebuilds. Container port `3899` is reserved for the relay.
-- **A key in the URL.** The printed URL ends in `/?k=<key>`, and the relay refuses anything that does not carry it - the page, the socket, uploads and the status probe alike. The key is minted fresh every time the interface starts and never stored on the host, so it dies with the container. Reaching the port is no longer enough to drive your agent.
-  A window whose key is spent - or whose container is gone - says so across the whole page instead of sitting there looking live.
+- **A key in the URL.** The printed URL ends in `/?k=<key>`, and the relay rejects anything without it - the page, the socket, uploads and the status probe alike. The key is created when the interface starts and never stored on the host, so it dies with the container. Reaching the port is not enough to drive your agent.
+  If the key is no longer the live one, or the container is gone, the page says so instead of looking usable.
 - **Same sandbox as the terminal.** Loopback-only, key-gated, origin-checked, non-root.
 - **It never blocks a session.** If no port is free or the server does not come up, totopo says so and opens the session without it.
 

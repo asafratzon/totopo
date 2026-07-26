@@ -584,15 +584,43 @@ body {
     display: flex;
 }
 
+/* The dots on the one curtain that is waiting for something rather than reporting a state that has settled. They
+   go with the state: the curtain that replaces it has none, which is half of how it reads as finished. */
+#curtain-card .dots {
+    display: inline-flex;
+    gap: 3px;
+    margin-left: 6px;
+}
+
+#curtain-card .dots i {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--muted);
+    animation: curtainDot 1.2s ease-in-out infinite;
+}
+
+@keyframes curtainDot {
+    0%,
+    60%,
+    100% {
+        opacity: 0.25;
+    }
+    30% {
+        opacity: 1;
+    }
+}
+
 /* The moment the socket drops, before any curtain: a control whose answer goes nowhere must stop taking
    clicks. The composer disables itself, so this is about the bar - its tabs, its X, its + New session. */
 body.offline #tabbar {
     pointer-events: none;
 }
 
-/* ---- Stop the container ---- */
+/* ---- Sound, and stopping the container ---- */
 
-/* Sits at the far right of the bar, away from the tabs: it does not end a session, it ends all of them. */
+/* Both sit at the far right of the bar, away from the tabs: neither one is about a single session. */
+#bellbtn,
 #stopbtn {
     display: flex;
     align-items: center;
@@ -608,6 +636,22 @@ body.offline #tabbar {
 #stopbtn:hover {
     color: var(--bad);
     border-color: rgba(248, 81, 73, 0.5);
+}
+
+/* The bell is harmless, so it lights up like an ordinary control rather than a warning - and it keeps a little
+   distance from the button that ends everything, which is the one thing it must never be mistaken for. */
+#bellbtn {
+    margin-right: 3px;
+}
+
+#bellbtn:hover {
+    color: var(--text);
+    border-color: var(--border);
+}
+
+/* Muted reads as off at a glance, so the slash through the bell is not the only thing carrying it. */
+#bellbtn.muted {
+    opacity: 0.55;
 }
 
 /* ---- Composer ---- */

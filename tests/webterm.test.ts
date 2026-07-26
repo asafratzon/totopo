@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { createServer as createHttpServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { createServer } from "node:net";
@@ -481,6 +481,15 @@ describe("the curtain", () => {
         assert.ok(/function scheduleReconnect\(\)\s*\{\s*if \(halted/.test(APP), "the locked and stopping states must stop reconnecting");
     });
 
+    test("a stop that has landed says so, instead of saying it is still stopping", () => {
+        // Nothing else takes the relay down while the container is on its way out, so the closing socket is the
+        // confirmation. Without this the page sits on "Stopping the container" for good, seconds after it stopped.
+        assert.ok(/if \(curtainKind === "stopping"\) \{\s*stoppedCurtain\(\);/.test(APP), "a closed socket must end the stopping wait");
+        assert.ok(/showCurtain\(\s*"stopped",/.test(APP), "there has to be a curtain for a container that has gone");
+        // The wait looks like a wait, and only the wait does.
+        assert.ok(/if \(kind === "stopping"\) heading\.append\(pendingDots\(\)\)/.test(APP), "only the stopping curtain shows dots");
+    });
+
     test("coming back from a blip starts nothing", () => {
         const server = readFileSync(join(TEMPLATES_DIR, "webterm", "server.js"), "utf8");
         // Opening the page means "put me somewhere"; reconnecting means "give me back what I had". Without
@@ -517,6 +526,81 @@ describe("stop the container", () => {
         // The announce has to be sent before the signal, or a window learns nothing and blames the network.
         assert.ok(stop.indexOf('t: "stopping"') < stop.indexOf("process.kill(1"), "announce first, signal second");
         assert.ok(stop.includes('{ t: "error", code: "stop" }'), "a signal that changed nothing must be reported");
+    });
+});
+
+// ---- The two boxes on the page agree about the keyboard ---------------------------------------------------------------------------------
+
+describe("composing a message", () => {
+    const APP = readFileSync(join(TEMPLATES_DIR, "webterm", "public", "app.js"), "utf8");
+
+    test("Shift+Enter is a newline in the terminal as well as in the composer", () => {
+        // A terminal has no Shift+Enter: Enter is a carriage return whatever else is held. ESC then CR is what the
+        // agents read as a newline (it is what Alt+Enter sends), so the shortcut has to be mapped onto that byte
+        // pair rather than passed through, or it just submits the message.
+        assert.ok(
+            /event\.key === "Enter" && event\.shiftKey[\s\S]{0,220}sendFrame\(\{ t: "in", data: "\\x1b\\r" \}\)/.test(APP),
+            "Shift+Enter in the terminal must send ESC then CR",
+        );
+        // The composer's own Enter must stay a send, and its Shift+Enter the textarea's own newline.
+        assert.ok(/if \(e\.key === "Enter" && !e\.shiftKey\) \{\s*e\.preventDefault\(\);\s*send\(\);/.test(APP), "Enter alone still sends");
+    });
+
+    test("Up recalls a sent message without ever taking a written one away", () => {
+        // The two rules that keep the arrows out of ordinary typing: never start from a box with something in it,
+        // and never step on from the middle of a message that is already showing.
+        assert.ok(/if \(historyAt === null && input\.value !== ""\) return;/.test(APP), "Up must not disturb a half-written message");
+        assert.ok(/if \(!atFirstLine\(\)\) return;/.test(APP), "Up inside a multi-line message must move the caret");
+        assert.ok(/endHistoryWalk\(\)/.test(APP), "typing has to end the walk");
+        // Stored after the image tokens are expanded, or a recalled message means something different the second time.
+        assert.ok(
+            /sendFrame\(\{ t: "paste", data: text \}\)[\s\S]{0,200}rememberSent\(sid, text\)/.test(APP),
+            "history stores what was sent",
+        );
+        assert.ok(APP.includes("dropHistory(msg.sid)"), "a session that ends takes its history with it");
+    });
+});
+
+// ---- The sound an alert makes -----------------------------------------------------------------------------------------------------------
+
+describe("the finish chime", () => {
+    const APP = readFileSync(join(TEMPLATES_DIR, "webterm", "public", "app.js"), "utf8");
+
+    test("it waits long past the alert, and stays quiet only for the session on screen", () => {
+        // The registry's own settle is a few seconds, which is right for a light and far too eager for a sound: a
+        // chime cannot be taken back. This is the second hold, and shortening it to nothing is the regression.
+        const hold = /const CHIME_HOLD_MS = ([\d_]+)/.exec(APP);
+        assert.ok(hold, "the chime must have its own hold");
+        assert.ok(Number((hold?.[1] ?? "0").replaceAll("_", "")) >= 15_000, "a hold this short would chime at mid-turn pauses");
+        // The test is per session, not per window: a focused window says nothing about the tabs of the bar the user
+        // is not reading, and only the session actually on screen has already told them.
+        assert.ok(/function watching\(\)[\s\S]*?document\.hasFocus\(\)/.test(APP), "a focused window must count as watched");
+        assert.ok(
+            /function onScreen\(sid\)[\s\S]*?sid === attachedSid && watching\(\)/.test(APP),
+            "on screen is the attached session, watched",
+        );
+        assert.ok(/due\.every\(\(entry\) => onScreen\(entry\.id\)\)/.test(APP), "an alert on any other session must still chime");
+    });
+
+    test("one finish is one sound, in one window", () => {
+        // Marked before the mute and on-screen tests, so an alert that stays quiet is spent rather than saved up to
+        // go off later when the window is put away.
+        assert.ok(/for \(const entry of due\) chimed\.add\(entry\.id\);/.test(APP), "a due alert is spent whether or not it is heard");
+        assert.ok(/chimed\.delete\(sid\)/.test(APP), "a spent alert must clear, or a session can only ever chime once");
+        // Two windows on the same container see the same alert, and one sound is the point.
+        assert.ok(APP.includes("CHIME_CLAIM_KEY"), "windows must be able to see each other's chime");
+        assert.ok(/localStorage\.setItem\(SOUND_KEY/.test(APP), "muting must outlive the page it was clicked on");
+    });
+
+    test("the bell sits with the power button and the sound ships as code, not as a file", () => {
+        const css = readFileSync(join(TEMPLATES_DIR, "webterm", "public", "styles.css"), "utf8");
+        assert.ok(APP.includes("right.append(bellButton(), stopButton())"), "the bell belongs in the bar's right-hand cluster");
+        assert.ok(/#bellbtn\.muted\s*\{[^}]*opacity/.test(css), "muted has to read as off without relying on the slash alone");
+        // Synthesised, like the favicon above it is drawn: nothing to fetch, nothing to license, and the whole sound
+        // is three numbers times three in the source.
+        const assets = readdirSync(join(TEMPLATES_DIR, "webterm", "public"));
+        const audio = assets.filter((name) => /\.(mp3|ogg|wav|m4a|aac|flac)$/i.test(name));
+        assert.deepEqual(audio, [], "the chime must stay synthesised rather than shipped as an asset");
     });
 });
 
