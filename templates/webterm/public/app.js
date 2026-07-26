@@ -631,40 +631,45 @@ setInterval(renderBar, AGE_TICK_MS);
 // The icon is drawn here rather than shipped as a file because it has to carry live state. It keeps the chip
 // (that is the product's mark, and its gold is the chip's own, not the interface's palette) and adds a thin
 // frame in the workspace colour, so a row of pinned tabs is readable at a glance. On top of that it carries the
-// state of the container in one mark - a dot in the top-right:
+// state of the container in one mark:
 //
-//   nothing                        - nothing is happening in here
-//   blue bar down the right edge   - an agent is working
-//   green dot in the top corner    - an agent finished and is waiting for you, pulsing until you go and look
+//   nothing                       - nothing is happening in here
+//   white bar across the bottom   - an agent is working, with a lit segment sweeping along it
+//   green dot in the top corner   - an agent finished and is waiting for you, pulsing until you go and look
 //
-// One mark at a time, and the two are told apart by where they sit and what shape they are - not by colour. Hue
-// alone was not enough: a blue dot and a green dot in the same corner were nearly the same dot at 16px, which is
-// the only size that really matters here. Green outranks blue, since something that wants you matters more than
-// something still going, and because only one mark is ever drawn the two are free to share the same corner.
+// One mark at a time, and the two are told apart by where they sit before any colour is read: working owns the
+// bottom edge, waiting owns the top-right corner. That was the lesson of the first version, where both were a
+// dot in the same corner - at 16px, which is the only size that really matters here, a blue dot and a green dot
+// are the same dot. Green outranks white, since something that wants you matters more than something still going.
 //
-// The colours are fixed rather than taken from the palette: this is a traffic light, and it only reads at a
-// glance if green means the same thing in every workspace. Which session it was is the session bar's job. Blue
-// rather than orange for working, because the chip itself is orange and a mark has to be a different thing from
-// the icon it sits on.
+// Working is white rather than a colour on purpose. Every hue in this interface belongs to a workspace or to a
+// session, and the frame around this very icon is one of six of them - so a blue mark sat inside a blue frame in
+// one workspace out of six and stopped reading as a mark at all. White belongs to nobody, and it leaves green as
+// the only hue in the icon that means anything, which is what makes the pair read as a traffic light.
 //
-// Waiting pulses for as long as it is waiting - that is the state you have to come back for, so it keeps asking.
-// It pulses between a bright dot and a dim one, never between a dot and nothing: a hidden tab is exactly the tab
-// this icon exists for, and a browser slows a hidden tab's timers to a second and then to one a minute, so a
-// blink that went dark could sit dark for a minute with the alert up. Two visible states cannot lose it - the
-// worst a throttled tab does is pulse slowly, or stall on the dim dot, which still says green.
+// Both marks move, and neither leans on a particular frame to be understood. A hidden tab is exactly the tab this
+// icon exists for, and a browser slows a hidden tab's timers to a second and then to one a minute, so whatever
+// frame the animation stalls on has to say what the rest of them say: waiting pulses between a bright dot and a
+// dim one rather than between a dot and nothing, and the working segment is the lit part of a bar that is drawn
+// whole underneath it. The worst a throttled tab does is move slowly, or stop - and stopped still reads.
 
 const faviconLink = document.querySelector('link[rel="icon"]');
 // Drawn at 2x the nominal 32px so the downscale to 16px stays crisp.
 const ICON_SIZE = 64;
 const ICON_UNITS = 32;
-// One step of the waiting pulse. Slow enough to read as a pulse rather than a flicker in a tab strip.
-const PULSE_MS = 700;
+// One step of the icon's own clock, which runs only while the icon has something to say. Everything that moves is
+// a multiple of this, so the whole icon is one timer and one counter rather than an animation each.
+const ICON_TICK_MS = 240;
+// The waiting dot's bright-to-dim step, in ticks. Slow enough to read as a pulse rather than a flicker.
+const PULSE_TICKS = 3;
+// One out-and-back of the working segment, in ticks - about two seconds each way, which is a sweep and not a dash.
+const SWEEP_TICKS = 16;
 const DONE_COLOR = "#2fe58a";
-const BUSY_COLOR = "#3b9dff";
+const BUSY_COLOR = "#e6edf3";
 
 let iconCanvas = null;
-let pulseTimer = null;
-let pulseDim = false;
+let iconTimer = null;
+let iconFrame = 0;
 
 // What the dot should say right now, or null for no dot. Read fresh on every paint rather than passed in, so a
 // paint from anywhere - an incoming bar, or the pulse - draws what is true now.
@@ -674,7 +679,20 @@ function dotColor() {
     return null;
 }
 
-// The chip, on the panel dark, with the workspace frame, and the state dot on top of it.
+// Where the waiting pulse is in its cycle: bright, then dim, then bright again.
+function pulseDim() {
+    return Math.floor(iconFrame / PULSE_TICKS) % 2 === 1;
+}
+
+// Where the working segment is on its track - 0 at one end, 1 at the other, and back down again. A triangle
+// rather than a saw, so the segment sweeps back instead of jumping to the start.
+function sweepAt() {
+    const half = SWEEP_TICKS / 2;
+    const step = iconFrame % SWEEP_TICKS;
+    return (step < half ? step : SWEEP_TICKS - step) / half;
+}
+
+// The chip, on the panel dark, with the workspace frame, and the state mark on top of it.
 function paintFavicon() {
     if (!faviconLink) return;
     iconCanvas ??= document.createElement("canvas");
@@ -684,9 +702,9 @@ function paintFavicon() {
     const ctx = iconCanvas.getContext("2d");
     if (!ctx) return;
     const badgeColor = dotColor();
-    // Only the waiting mark pulses. Work is a steady state and a second thing moving would just be noise.
+    // Only one mark is ever drawn, so both phases can be handed over and the drawing picks the one it needs.
     try {
-        drawIcon(ctx, badgeColor, badgeColor === DONE_COLOR && pulseDim);
+        drawIcon(ctx, badgeColor, badgeColor === DONE_COLOR && pulseDim(), sweepAt());
     } catch {
         // A drawing call this browser does not have (roundRect is recent) must not reach the frame handler
         // that got here: the shipped favicon.svg stays, and everything else on the page carries on.
@@ -696,7 +714,7 @@ function paintFavicon() {
     faviconLink.href = iconCanvas.toDataURL("image/png");
 }
 
-function drawIcon(ctx, badgeColor, dim) {
+function drawIcon(ctx, badgeColor, dim, sweep) {
     ctx.scale(ICON_SIZE / ICON_UNITS, ICON_SIZE / ICON_UNITS);
 
     // Panel, and the frame that says which workspace this tab belongs to.
@@ -738,19 +756,25 @@ function drawIcon(ctx, badgeColor, dim) {
         ctx.fill();
     }
 
-    // Working: a bar down the right edge. Its own length is what makes it a different mark from the dot below,
-    // and the right edge is the one place a long mark does not have to compete with the frame it runs beside.
-    // Static, unlike the dot: a browser slows a hidden tab's timers to a second and then to a minute, so anything
-    // that moves has to still read when frozen - and two marks moving in a 16px icon is noise, not information.
+    // Working: a bar across the bottom, with a lit segment sweeping from end to end. The bottom edge is the far
+    // side of the icon from the corner waiting owns, which is what tells the two states apart at 16px - a thin
+    // line down the right edge, which is what this used to be, reads as a scrollbar rather than as anything the
+    // container is doing. The track is 20 wide and the segment 8, so the segment travels the 12 between them.
     // Every mark is punched out of the icon first, so it stays legible over the chip's shoulder and the frame.
     if (badgeColor === BUSY_COLOR) {
         ctx.fillStyle = "#0d1117";
         ctx.beginPath();
-        ctx.roundRect(23.5, 8, 7, 17, 3.5);
+        ctx.roundRect(4.5, 24, 23, 6, 3);
         ctx.fill();
+        // Drawn whole, at a quarter strength, so the bar is there whatever frame a throttled tab stalls on.
         ctx.fillStyle = badgeColor;
+        ctx.globalAlpha = 0.25;
         ctx.beginPath();
-        ctx.roundRect(25, 9.5, 4, 14, 2);
+        ctx.roundRect(6, 25.5, 20, 3.5, 1.75);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.beginPath();
+        ctx.roundRect(6 + sweep * 12, 25.5, 8, 3.5, 1.75);
         ctx.fill();
         return;
     }
@@ -771,22 +795,22 @@ function drawIcon(ctx, badgeColor, dim) {
     }
 }
 
-// The pulse runs only while something is waiting, and stops the moment nothing is. It re-checks the state itself
-// rather than trusting the bar that started it, so a session visited in this window (or in another one) puts the
-// icon back to a steady dot without waiting for anything else to happen.
-function pulseBadge() {
-    pulseTimer = null;
-    if (!sessions.some((entry) => entry.attention)) {
-        pulseDim = false;
+// The clock runs only while the icon has a mark to draw, and stops the moment it does not. It re-checks the state
+// itself rather than trusting the bar that started it, so a session visited in this window (or in another one)
+// puts the icon back to a plain chip without waiting for anything else to happen.
+function tickIcon() {
+    iconTimer = null;
+    if (!dotColor()) {
+        iconFrame = 0;
         paintFavicon();
         return;
     }
-    // Riding the one timer that is already running for exactly as long as something is waiting. A hidden tab's own
-    // timers are throttled hard, so the chime is better off not depending on any single one of them.
+    // Riding the one timer that is already running for exactly as long as something is happening. A hidden tab's
+    // own timers are throttled hard, so the chime is better off not depending on any single one of them.
     maybeChime();
-    pulseDim = !pulseDim;
+    iconFrame++;
     paintFavicon();
-    pulseTimer = setTimeout(pulseBadge, PULSE_MS);
+    iconTimer = setTimeout(tickIcon, ICON_TICK_MS);
 }
 
 // Title and icon together, from the sessions the server last sent. The count goes in the title because that
@@ -798,17 +822,17 @@ function refreshBrowserTab() {
     const name = workspaceName || "totopo";
     document.title = waiting.length > 0 ? `(${waiting.length}) ${name}` : name;
 
-    // Painted from the state every time, pulse or no pulse. Starting the pulse is guarded by the timer rather
-    // than by which sessions are waiting: an alert arriving next to one already up is the same state, and
-    // restarting the cycle on every frame the server sends would make the dot stutter.
+    // Painted from the state every time, moving or not. Starting the clock is guarded by the timer rather than by
+    // what the sessions are doing: an alert arriving next to one already up is the same state, and restarting the
+    // cycle on every frame the server sends would make the mark stutter.
     paintFavicon();
-    if (waiting.length === 0) {
-        if (pulseTimer) clearTimeout(pulseTimer);
-        pulseTimer = null;
-        pulseDim = false;
+    if (!dotColor()) {
+        if (iconTimer) clearTimeout(iconTimer);
+        iconTimer = null;
+        iconFrame = 0;
         return;
     }
-    if (!pulseTimer) pulseTimer = setTimeout(pulseBadge, PULSE_MS);
+    if (!iconTimer) iconTimer = setTimeout(tickIcon, ICON_TICK_MS);
 }
 
 // --- A sound, for the session that is not in front of you ---------------------------------------------------------------------------------
@@ -983,9 +1007,9 @@ function claimChime() {
     return true;
 }
 
-// Called from the two clocks already running: an incoming frame schedules the exact moment, and the favicon pulse -
-// which ticks for as long as anything is waiting and no longer - catches it when a hidden tab's timers are being
-// throttled. Whichever arrives first plays; the other finds the alert already spent.
+// Called from the two clocks already running: an incoming frame schedules the exact moment, and the icon's own
+// clock - which ticks for as long as anything is working or waiting and no longer - catches it when a hidden tab's
+// timers are being throttled. Whichever arrives first plays; the other finds the alert already spent.
 function maybeChime() {
     const due = dueAlerts();
     if (due.length === 0) return;

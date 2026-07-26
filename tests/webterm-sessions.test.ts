@@ -1167,29 +1167,29 @@ describe("the browser tab repeats what the bar says", () => {
         assert.match(body, /const name = workspaceName \|\| "totopo"/);
     });
 
-    test("the icon is repainted from that state, dot and all", () => {
+    test("the icon is repainted from that state, mark and all", () => {
         assert.match(app, /faviconLink\.href = iconCanvas\.toDataURL\("image\/png"\)/);
         // A drawing call this browser lacks must not take the frame handler down with it.
-        assert.match(app, /try \{\s*drawIcon\(ctx, badgeColor, badgeColor === DONE_COLOR && pulseDim\);\s*\} catch \{/);
-        const body = /function drawIcon\(ctx, badgeColor, dim\) \{([\s\S]*?)\n\}/.exec(app)?.[1] ?? "";
+        assert.match(app, /try \{\s*drawIcon\(ctx, badgeColor, badgeColor === DONE_COLOR && pulseDim\(\), sweepAt\(\)\);\s*\} catch \{/);
+        const body = /function drawIcon\(ctx, badgeColor, dim, sweep\) \{([\s\S]*?)\n\}/.exec(app)?.[1] ?? "";
         assert.ok(body, "app.js must define drawIcon");
         assert.match(body, /if \(badgeColor\) \{/, "one mark, drawn when there is something to say");
     });
 
-    test("working and waiting are different shapes in different places", () => {
+    test("working and waiting are different shapes at opposite ends of the icon", () => {
         // Colour alone was not enough: a blue dot and a green dot in the same corner are nearly the same dot at
-        // 16px, which is the only size that matters here. Working is a bar down the right edge, waiting is a dot
-        // in the corner - so the two can be told apart without reading the hue at all.
-        const body = /function drawIcon\(ctx, badgeColor, dim\) \{([\s\S]*?)\n\}/.exec(app)?.[1] ?? "";
-        assert.match(body, /if \(badgeColor === BUSY_COLOR\) \{[\s\S]*?ctx\.roundRect\(25, 9\.5, 4, 14, 2\)/);
+        // 16px, which is the only size that matters here. Working is a bar along the bottom edge, waiting is a
+        // dot in the top corner - so the two can be told apart without reading the hue at all.
+        const body = /function drawIcon\(ctx, badgeColor, dim, sweep\) \{([\s\S]*?)\n\}/.exec(app)?.[1] ?? "";
+        assert.match(body, /if \(badgeColor === BUSY_COLOR\) \{[\s\S]*?ctx\.roundRect\(6 \+ sweep \* 12, 25\.5, 8, 3\.5, 1\.75\)/);
         assert.match(body, /ctx\.arc\(24, 8, dim \? \d[\d.]* : \d[\d.]*, 0, Math\.PI \* 2\)/, "and the dot is the waiting one");
-        // One at a time: waiting outranks working, which is what lets both use the same corner of the icon.
+        // One at a time: waiting outranks working, so the working branch returns before the dot is reached.
         assert.match(body, /return;\n {4}\}/);
     });
 
-    test("the dot says which of the three states this window is in", () => {
+    test("the mark says which of the three states this window is in", () => {
         // From another browser tab, "they are on it" and "one of them wants you" are different things to know,
-        // and a 16px icon has room for one mark - so it is one dot in two colours, waiting outranking working.
+        // and a 16px icon has room for one mark - so it is one mark in two shapes, waiting outranking working.
         const body = /function dotColor\(\) \{([\s\S]*?)\n\}/.exec(app)?.[1] ?? "";
         assert.ok(body, "app.js must define dotColor");
         assert.match(
@@ -1198,26 +1198,38 @@ describe("the browser tab repeats what the bar says", () => {
         );
         // Fixed colours, not the session palette: green only reads at a glance if it means the same everywhere.
         assert.match(app, /const DONE_COLOR = "#[0-9a-f]{6}";\nconst BUSY_COLOR = "#[0-9a-f]{6}";/);
+        // And working must not be one of the six the frame is drawn from, or it disappears into the frame in the
+        // one workspace that owns that hue - which is exactly what a blue working mark did.
+        const busy = /const BUSY_COLOR = "(#[0-9a-f]{6})"/.exec(app)?.[1] ?? "";
+        const palette = /const PALETTE = \[([\s\S]*?)\];/.exec(app)?.[1] ?? "";
+        const hues = [...palette.matchAll(/"(#[0-9a-f]{6})"/g)].map((match) => match[1]);
+        assert.equal(hues.length, 6, "the frame is still drawn from the six-colour palette");
+        assert.ok(!hues.includes(busy), "the working mark must not be a palette hue");
     });
 
-    test("the waiting dot keeps pulsing until the session is visited", () => {
-        const body = /function pulseBadge\(\) \{([\s\S]*?)\n\}/.exec(app)?.[1] ?? "";
-        assert.ok(body, "app.js must define pulseBadge");
-        // The pulse reads the state itself, so visiting the session stops it wherever the visit happened.
-        assert.match(body, /if \(!sessions\.some\(\(entry\) => entry\.attention\)\) \{/);
-        assert.match(body, /pulseTimer = setTimeout\(pulseBadge, PULSE_MS\)/, "and otherwise keeps going");
+    test("the icon keeps moving until the session is visited", () => {
+        const body = /function tickIcon\(\) \{([\s\S]*?)\n\}/.exec(app)?.[1] ?? "";
+        assert.ok(body, "app.js must define tickIcon");
+        // The clock reads the state itself, so visiting the session stops it wherever the visit happened.
+        assert.match(body, /if \(!dotColor\(\)\) \{/);
+        assert.match(body, /iconTimer = setTimeout\(tickIcon, ICON_TICK_MS\)/, "and otherwise keeps going");
         // Started only when it is not already running: an alert arriving next to one already up is the same
-        // state, and restarting the cycle on every frame the server sends would make the dot stutter.
-        assert.match(app, /if \(!pulseTimer\) pulseTimer = setTimeout\(pulseBadge, PULSE_MS\)/);
+        // state, and restarting the cycle on every frame the server sends would make the mark stutter.
+        assert.match(app, /if \(!iconTimer\) iconTimer = setTimeout\(tickIcon, ICON_TICK_MS\)/);
+        // One counter for both animations, so there is a single clock to reason about rather than one each.
+        assert.match(app, /function sweepAt\(\)[\s\S]*?iconFrame % SWEEP_TICKS/);
+        assert.match(app, /function pulseDim\(\)[\s\S]*?iconFrame \/ PULSE_TICKS/);
     });
 
-    test("the pulse never leaves the icon with no mark on it", () => {
+    test("neither mark can stall on a frame that says nothing", () => {
         // A browser slows a hidden tab's timers to a second and then to one a minute - and a hidden tab is the
-        // whole point of the icon. Pulsing between two visible dots means a stalled pulse still says green;
-        // pulsing between a dot and nothing could sit on "nothing" with an alert up.
-        const body = /function drawIcon\(ctx, badgeColor, dim\) \{([\s\S]*?)\n\}/.exec(app)?.[1] ?? "";
+        // whole point of the icon. The waiting dot pulses between two visible dots rather than between a dot and
+        // nothing, and the working track is drawn whole underneath its sweeping segment, so a stopped animation
+        // still says what a running one says.
+        const body = /function drawIcon\(ctx, badgeColor, dim, sweep\) \{([\s\S]*?)\n\}/.exec(app)?.[1] ?? "";
         assert.match(body, /ctx\.globalAlpha = dim \? 0\.\d+ : 1;/);
         assert.match(body, /ctx\.arc\(24, 8, dim \? \d[\d.]* : \d[\d.]*, 0, Math\.PI \* 2\)/);
+        assert.match(body, /ctx\.globalAlpha = 0\.25;[\s\S]*?ctx\.roundRect\(6, 25\.5, 20, 3\.5, 1\.75\)/);
     });
 
     test("the page tells the server when it is not in front of the user", () => {
