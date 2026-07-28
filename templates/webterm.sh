@@ -2,6 +2,7 @@
 # webterm - run an AI agent in the browser (the web agent interface) from inside this container.
 # Baked into the image at /usr/local/share/totopo/webterm.sh, on PATH as `webterm`.
 # The agent is always named explicitly: webterm claude | webterm opencode | webterm codex.
+# The server runs all of them, one per session; the agent named here is the one new sessions start with.
 set -euo pipefail
 
 CONTAINER_PORT=3899
@@ -43,12 +44,15 @@ usage() {
     echo ""
     echo "Example: webterm ${AGENTS[0]}"
     echo ""
+    echo "The interface runs all of them, one per session - the agent named here is the one"
+    echo "its \"+ New session\" starts, and the browser can pick another per session."
+    echo ""
     # With a server up this is the URL to open. With none there is no URL yet - the key comes with the
     # server - so say where it appears rather than handing out a link that would be refused.
     if server_live; then
-        echo "The browser then relays that agent at $(web_url)"
+        echo "The interface is at $(web_url)"
     else
-        echo "The browser then relays that agent at ${TOTOPO_WEB_URL}, plus the key the server prints when it starts."
+        echo "The interface is then at ${TOTOPO_WEB_URL}, plus the key the server prints when it starts."
     fi
 }
 
@@ -75,26 +79,30 @@ if [ -z "$AGENT_KNOWN" ]; then
 fi
 
 # Idempotent: the host launches this on every container start, and the user may run it by hand.
-# If something already listens on the fixed container port, report the live interface instead of
-# starting a second one.
-# A bound port only proves something is listening, so name the agent from the server's state file.
+# If something already listens on the fixed container port, there is nothing to start - the server runs every
+# agent, one per session. Naming another agent moves what "+ New session" starts, over the same key-gated
+# route the browser uses; live sessions keep the agent they were started with, because the agent is the
+# process. A bound port only proves something is listening, so the current default comes from the state file.
 if server_live; then
     RUNNING_AGENT=""
     if [ -r "$STATE_FILE" ]; then
         RUNNING_AGENT="$(head -n 1 "$STATE_FILE" 2>/dev/null || true)"
     fi
     if [ -n "$RUNNING_AGENT" ] && [ "$RUNNING_AGENT" != "$AGENT" ]; then
-        # Known limitation: one server relays one agent. Switching kills the server, and with it every
-        # session it is running, so it is never done implicitly - the user gets the command and decides.
-        echo "webterm is already running, relaying ${RUNNING_AGENT}: $(web_url)"
+        if [ -r "$KEY_FILE" ] && curl -fsS -X POST -H "Content-Type: application/json" \
+            -d "{\"agent\":\"${AGENT}\"}" \
+            "http://127.0.0.1:${CONTAINER_PORT}/agent?k=$(head -n 1 "$KEY_FILE")" >/dev/null 2>&1; then
+            echo "webterm is already running: $(web_url)"
+            echo ""
+            echo "New sessions there now start ${AGENT}. Sessions already open keep running ${RUNNING_AGENT}."
+            exit 0
+        fi
+        echo "webterm is already running, starting new sessions with ${RUNNING_AGENT}: $(web_url)"
         echo ""
-        echo "It relays one agent at a time, so ${AGENT} was not started."
-        echo "To switch (this ends every ${RUNNING_AGENT} session open in the browser):"
-        echo ""
-        echo "  pkill -f webterm/server.js && webterm ${AGENT}"
-        exit 0
+        echo "Could not switch it to ${AGENT} - see ${SERVER_LOG}. Pick the agent per session in the browser instead."
+        exit 1
     fi
-    echo "webterm is already running${RUNNING_AGENT:+ (relaying ${RUNNING_AGENT})}: $(web_url)"
+    echo "webterm is already running${RUNNING_AGENT:+ (new sessions start ${RUNNING_AGENT})}: $(web_url)"
     exit 0
 fi
 
@@ -147,7 +155,7 @@ for _ in 1 2 3 4 5 6 7 8 9 10; do
             fi
             sleep 0.1
         done
-        echo "Web agent interface: $(web_url) (relaying ${AGENT})"
+        echo "Web agent interface: $(web_url) (new sessions start ${AGENT})"
         exit 0
     fi
     sleep 0.3

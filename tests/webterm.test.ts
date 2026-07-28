@@ -566,20 +566,20 @@ describe("composing a message", () => {
 describe("the finish chime", () => {
     const APP = readFileSync(join(TEMPLATES_DIR, "webterm", "public", "app.js"), "utf8");
 
-    test("it waits long past the alert, and stays quiet only for the session on screen", () => {
-        // The registry's own settle is a few seconds, which is right for a light and far too eager for a sound: a
-        // chime cannot be taken back. This is the second hold, and shortening it to nothing is the regression.
+    test("it waits after the alert, long enough to be answered and no longer", () => {
+        // The hold is the entire presence test: an alert still standing at the end of it is one nobody came back to.
+        // Both ends matter. Too short and it fires at a pause you were about to type into; too long and the finish
+        // you are waiting for arrives after you have given up on it, which is the complaint that set this length.
         const hold = /const CHIME_HOLD_MS = ([\d_]+)/.exec(APP);
         assert.ok(hold, "the chime must have its own hold");
-        assert.ok(Number((hold?.[1] ?? "0").replaceAll("_", "")) >= 15_000, "a hold this short would chime at mid-turn pauses");
-        // The test is per session, not per window: a focused window says nothing about the tabs of the bar the user
-        // is not reading, and only the session actually on screen has already told them.
-        assert.ok(/function watching\(\)[\s\S]*?document\.hasFocus\(\)/.test(APP), "a focused window must count as watched");
-        assert.ok(
-            /function onScreen\(sid\)[\s\S]*?sid === attachedSid && watching\(\)/.test(APP),
-            "on screen is the attached session, watched",
-        );
-        assert.ok(/due\.every\(\(entry\) => onScreen\(entry\.id\)\)/.test(APP), "an alert on any other session must still chime");
+        const ms = Number((hold?.[1] ?? "0").replaceAll("_", ""));
+        assert.ok(ms >= 5_000, "a hold this short leaves no time to answer the alert");
+        assert.ok(ms <= 15_000, "a sound this late is one the user has stopped waiting for");
+        // And the alert is all it reads. Not browser focus, which is what it used to read, and not anything about
+        // the turn that came before - the prompt you sent does not buy silence.
+        assert.ok(/entry\.attention && !chimed\.has/.test(APP), "the sound waits on the alert itself");
+        assert.ok(!/t: "away"/.test(APP), "browser focus is no longer what decides");
+        assert.ok(!/entry\.chime/.test(APP), "nothing before the ending has a say any more");
     });
 
     test("one finish is one sound, in one window", () => {
@@ -741,6 +741,76 @@ describe("claude browser self-awareness", () => {
         const config = readFileSync(join(TEMPLATES_DIR, "webterm", "config.js"), "utf8");
         assert.ok(/CONTEXT_FILE\s*=/.test(config), "config.js must define CONTEXT_FILE");
         assert.ok(config.includes('"context", "claude.md"'), "CONTEXT_FILE must resolve the baked note");
+    });
+});
+
+// ---- Several agents, one server ---------------------------------------------------------------------------------------------------------
+// The agent is per session, so the server has to know which ones it will run and refuse anything else: a name
+// from the browser ends up as a process. The list is the same one the launcher accepts and the same one totopo
+// can auto-start, and this is where those three are pinned to each other.
+
+describe("the agents one server will run", () => {
+    const CONFIG_URL = pathToFileURL(join(TEMPLATES_DIR, "webterm", "config.js")).href;
+
+    test("isKnownAgent accepts exactly the auto-start agents", async () => {
+        const { AGENTS, isKnownAgent } = (await import(CONFIG_URL)) as { AGENTS: string[]; isKnownAgent: (name: unknown) => boolean };
+        const expected = AUTO_START_AGENTS.filter((agent) => agent !== AUTO_START.off);
+        assert.deepEqual(AGENTS.slice().sort(), expected.slice().sort(), "config.js agent list drifted from AUTO_START_AGENTS");
+        for (const agent of AGENTS) assert.ok(isKnownAgent(agent));
+        // A name that is not on the list is a spawn that must never happen, however it arrived.
+        for (const bad of ["bash", "sh -c rm", "", "CLAUDE", null, undefined, 7, {}]) {
+            assert.equal(isKnownAgent(bad), false, `${String(bad)} must not be runnable`);
+        }
+    });
+
+    test("the default agent falls back to a known one rather than to whatever the env said", async () => {
+        const { AGENTS, DEFAULT_AGENT } = (await import(CONFIG_URL)) as { AGENTS: string[]; DEFAULT_AGENT: string };
+        // The launcher validates its argument too, so this is the second lock: a bare `node server.js`, or an
+        // env var set by hand, cannot make "+ New session" spawn something arbitrary.
+        assert.ok(AGENTS.includes(DEFAULT_AGENT), "the default must be an agent this server runs");
+    });
+
+    test("the launcher moves the default over the same key-gated route the browser uses", () => {
+        const launcher = readFileSync(join(TEMPLATES_DIR, "webterm.sh"), "utf8");
+        const server = readFileSync(join(TEMPLATES_DIR, "webterm", "server.js"), "utf8");
+        assert.ok(/app\.post\("\/agent", requireKey/.test(server), "the route must demand the key like every other one");
+        assert.ok(launcher.includes("/agent?k="), "the launcher must call it with the live key");
+        // The whole point: naming another agent no longer ends the sessions that are open.
+        assert.ok(!launcher.includes("pkill"), "switching agents must not kill the server any more");
+    });
+
+    test("a session's agent reaches the PTY, and only the default agent's own args ride along", () => {
+        const server = readFileSync(join(TEMPLATES_DIR, "webterm", "server.js"), "utf8");
+        assert.ok(/function spawnAgent\(\{ cwd, agent \}\)/.test(server), "the registry passes the agent through to the spawn");
+        assert.ok(/agent === DEFAULT_AGENT \? AGENT_ARGS : \[\]/.test(server), "WEBTERM_AGENT_ARGS belong to the agent it was set for");
+        // The resume marker holds a command for the agent the host started the interface with, so no other agent
+        // may claim it - it would consume the conversation and then fail to open it.
+        assert.ok(/if \(!RESUME_MARKER \|\| agent !== DEFAULT_AGENT\) return null;/.test(server));
+    });
+
+    test("a name the server does not run is refused before anything can be started", () => {
+        // isKnownAgent is only a lock if it is asked first. The frame comes off a socket, so an unknown name here
+        // is either a stale page or something hand-made, and the gap between reading it and spawning it is the
+        // whole attack surface: nothing may reach create() until the name has been checked against the list.
+        const server = readFileSync(join(TEMPLATES_DIR, "webterm", "server.js"), "utf8");
+        const body = /function newSession\(ws, rawCwd, rawAgent\) \{([\s\S]*?)\n\}/.exec(server)?.[1] ?? "";
+        assert.ok(body, "server.js must define newSession");
+        const checked = body.indexOf("const agent = sessionAgent(rawAgent);");
+        const refused = body.indexOf('send(ws, { t: "error", code: "agent" });');
+        const created = body.indexOf("registry.create(");
+        assert.ok(checked >= 0 && refused > checked, "an unknown agent has to be turned away, not swapped for the default");
+        assert.ok(created > refused, "the refusal must come before the spawn");
+        assert.ok(/return isKnownAgent\(raw\) \? raw : null;/.test(server), "and the check is the shared list, not a local one");
+    });
+
+    test("the panel asks both halves of what a session is, and sends them together", () => {
+        // Which agent and which directory are the only two things that make a session and neither can be changed
+        // later, so they are one question. Two controls could not say "codex, over there" at all, which is the
+        // hole this closed; a frame that carried only one of them would reopen it.
+        const app = readFileSync(join(TEMPLATES_DIR, "webterm", "public", "app.js"), "utf8");
+        assert.ok(/sendFrame\(\{ t: "new", cwd: field\.value\.trim\(\), agent: state\.agent \}\)/.test(app));
+        // And the plain button stays one click: no cwd, no agent, both defaulted by the server.
+        assert.ok(/add\.addEventListener\("click", \(\) => sendFrame\(\{ t: "new" \}\)\)/.test(app));
     });
 });
 

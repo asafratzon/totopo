@@ -50,7 +50,10 @@ const note = document.getElementById("note");
 let sessions = [];
 let attachedSid = null;
 let maxSessions = 8;
-let agentName = "the agent";
+// Which agent "+ New session" starts, and every agent this container will run. A session's own agent is on
+// its entry - several can be live at once - so these two are only about starting the next one.
+let defaultAgent = "the agent";
+let agents = [];
 let workspaceName = "";
 // Where "+ New session" starts an agent, relative to the workspace root ("" is the root itself). The server
 // owns it - it follows the directory totopo was last run in - and the picker opens on it.
@@ -326,7 +329,7 @@ function cancelRename() {
 // for the moment someone wonders what the light means.
 function stateNote(entry) {
     if (entry.working) return " - working";
-    if (entry.attention) return " - finished while you were elsewhere";
+    if (entry.attention) return " - finished, and not looked at since";
     return "";
 }
 
@@ -533,9 +536,7 @@ function stopButton() {
     return button;
 }
 
-// The directory picker, drawn in the same line style as the power button: a folder says "choose where"
-// far better than a caret, which reads as "more options".
-function folderIcon() {
+function chevronIcon() {
     const svg = document.createElementNS(SVG_NS, "svg");
     svg.setAttribute("viewBox", "0 0 24 24");
     svg.setAttribute("width", "13");
@@ -545,11 +546,195 @@ function folderIcon() {
     svg.setAttribute("stroke-width", "2");
     svg.setAttribute("stroke-linecap", "round");
     svg.setAttribute("stroke-linejoin", "round");
-    const folder = document.createElementNS(SVG_NS, "path");
-    folder.setAttribute("d", "M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z");
-    svg.append(folder);
+    const down = document.createElementNS(SVG_NS, "path");
+    down.setAttribute("d", "M6 9l6 6 6-6");
+    svg.append(down);
     return svg;
 }
+
+// --- What the next session should be ------------------------------------------------------------------------------------------------------
+//
+// Two things make a session and neither can be changed later: which agent runs, and where it runs. One server runs
+// every agent it knows, one per session, so the bar can hold claude and codex side by side, each in its own directory.
+//
+// So both are asked in one panel rather than one control each. Two controls could not be combined - "codex, over
+// there" was not sayable - and the pair of them made the bar read like a toolbar for something that is really one
+// question. The plain button still answers it the usual way in one click; the chevron beside it is where the question
+// gets asked in full, and neither moves the default. `webterm <agent>` in the container is what moves that.
+//
+// It is anchored under the button rather than shown as a card in the middle of the screen: this is the one panel that
+// opens on the way to something routine, and a centred card would send the pointer across the window and back for a
+// choice that is usually two clicks. It hangs off the body all the same, because the bar is rebuilt from scratch on
+// every frame and on the age tick, which would take the open panel with it.
+//
+// Nothing typed here is trusted: the server resolves whatever path arrives and refuses what is not a directory in the
+// workspace, and it refuses an agent it does not run.
+
+const DIR_LIST_ID = "dirlist";
+
+let newPopEl = null;
+
+function closeNewPop() {
+    if (!newPopEl) return;
+    newPopEl.remove();
+    newPopEl = null;
+    document.removeEventListener("pointerdown", onNewPopOutside, true);
+}
+
+// Put an open panel back under its button after the bar was rebuilt. A frame arrives whenever anything in the
+// container moves, and a panel that closed itself every time one did would be unusable; a button that is gone
+// (the session limit) takes it with it. Clamped to the window, since the bar can be scrolled far to the right.
+function repositionNewPop() {
+    if (!newPopEl) return;
+    const anchor = document.getElementById("newtab-more");
+    if (!anchor) {
+        closeNewPop();
+        return;
+    }
+    const box = anchor.getBoundingClientRect();
+    const width = newPopEl.offsetWidth;
+    const left = Math.min(box.right - width, window.innerWidth - width - 8);
+    newPopEl.style.top = `${Math.round(box.bottom + 6)}px`;
+    newPopEl.style.left = `${Math.round(Math.max(8, left))}px`;
+}
+
+function onNewPopOutside(event) {
+    // The button itself is left alone: its own click handler toggles, and closing here first would reopen it.
+    if (newPopEl?.contains(event.target) || event.target.closest?.("#newtab-more")) return;
+    closeNewPop();
+}
+
+// Fill the picker's suggestions from the container. Fetched when the panel opens rather than kept around, so
+// a directory created a minute ago is in the list. Failures are silent on purpose: the field still works,
+// and a suggestion list that did not load is not worth a card of its own.
+async function fillDirList(list) {
+    let payload;
+    try {
+        const res = await fetch(`/dirs${KEY_QUERY}`, { cache: "no-store" });
+        if (!res.ok) return;
+        payload = await res.json();
+    } catch {
+        return;
+    }
+    // The panel may have been closed while this was in flight.
+    if (!list.isConnected) return;
+    const dirs = Array.isArray(payload?.dirs) ? payload.dirs : [];
+    // "/" is how the root is written here: a path everyone recognises, and the one value the server reads
+    // back as the workspace root itself.
+    for (const dir of ["/", ...dirs]) {
+        const option = document.createElement("option");
+        option.value = dir;
+        if (dir === "/") option.label = "workspace root";
+        list.append(option);
+    }
+    // The scan is capped, so say when the list is partial instead of letting it look complete.
+    if (payload?.truncated) noteMsg("the directory list is partial - deeper paths can still be typed in");
+}
+
+// The agent half: one chip per agent, the usual one already chosen, so the panel can be opened for the directory
+// alone and closed with Enter. A container that runs a single agent has nothing to ask and gets no row.
+function agentRow(state) {
+    const row = document.createElement("div");
+    row.className = "agentrow";
+    row.setAttribute("role", "radiogroup");
+    row.setAttribute("aria-label", "Agent for the new session");
+    for (const name of agents) {
+        const choice = document.createElement("button");
+        choice.type = "button";
+        choice.className = "agentchoice";
+        choice.textContent = name;
+        choice.setAttribute("role", "radio");
+        choice.setAttribute("aria-checked", String(name === state.agent));
+        choice.classList.toggle("chosen", name === state.agent);
+        choice.addEventListener("click", () => {
+            state.agent = name;
+            for (const other of row.children) {
+                const on = other.textContent === name;
+                other.classList.toggle("chosen", on);
+                other.setAttribute("aria-checked", String(on));
+            }
+        });
+        row.append(choice);
+    }
+    return row;
+}
+
+function popLabel(text) {
+    const label = document.createElement("span");
+    label.className = "poplabel";
+    label.textContent = text;
+    return label;
+}
+
+function toggleNewPop() {
+    if (newPopEl) {
+        closeNewPop();
+        return;
+    }
+    const state = { agent: defaultAgent };
+    const pop = document.createElement("div");
+    pop.id = "newpop";
+    pop.setAttribute("role", "dialog");
+    pop.setAttribute("aria-label", "Start a session");
+
+    if (agents.length > 1) pop.append(popLabel("Agent"), agentRow(state));
+
+    const field = document.createElement("input");
+    field.type = "text";
+    field.className = "path";
+    field.value = defaultCwd;
+    field.placeholder = "workspace root";
+    field.spellcheck = false;
+    field.autocomplete = "off";
+    field.setAttribute("list", DIR_LIST_ID);
+    field.setAttribute("aria-label", "Directory for the new session, relative to the workspace root");
+    const list = document.createElement("datalist");
+    list.id = DIR_LIST_ID;
+    pop.append(popLabel("Directory"), field, list);
+
+    const start = () => {
+        closeNewPop();
+        sendFrame({ t: "new", cwd: field.value.trim(), agent: state.agent });
+    };
+    const row = document.createElement("div");
+    row.className = "poprow";
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.className = "btn";
+    cancel.textContent = "Cancel";
+    cancel.addEventListener("click", () => {
+        closeNewPop();
+        focusTerminal();
+    });
+    const go = document.createElement("button");
+    go.type = "button";
+    go.className = "btn primary";
+    go.textContent = "Start session";
+    go.addEventListener("click", start);
+    row.append(cancel, go);
+    pop.append(row);
+
+    field.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter") return;
+        event.preventDefault();
+        start();
+    });
+
+    document.body.append(pop);
+    newPopEl = pop;
+    repositionNewPop();
+    field.focus();
+    field.select();
+    fillDirList(list);
+    // Capture, so a click on a tab closes this before that tab switches session.
+    document.addEventListener("pointerdown", onNewPopOutside, true);
+}
+
+document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape" || !newPopEl) return;
+    closeNewPop();
+    focusTerminal();
+});
 
 function renderBar() {
     // A drag is in flight, so the bar holds still: rebuilding it would replace the element being dragged,
@@ -564,8 +749,9 @@ function renderBar() {
         tabbar.append(tabFor(entry));
     }
 
-    // One control, two ways in: the button starts a session in the default directory (the common case, and
-    // one click, the way it always was), the folder asks which directory first.
+    // A split button: the left half starts a session the usual way in one click, and the chevron opens the
+    // panel that asks which agent and which directory. Neither moves the default - the panel starts this one
+    // session differently.
     const group = document.createElement("div");
     group.id = "newtab-group";
     const atCap = sessions.length >= maxSessions;
@@ -574,20 +760,21 @@ function renderBar() {
     add.id = "newtab";
     add.type = "button";
     add.textContent = "+ New session";
-    add.title = `Start another ${agentName} in this container, in ${whereLabel(defaultCwd)}`;
+    add.title = `Start another ${defaultAgent} in this container, in ${whereLabel(defaultCwd)}`;
     add.disabled = atCap;
     add.addEventListener("click", () => sendFrame({ t: "new" }));
 
-    const pick = document.createElement("button");
-    pick.id = "newtab-pick";
-    pick.type = "button";
-    pick.append(folderIcon());
-    pick.title = "Start a session in another directory";
-    pick.setAttribute("aria-label", "Start a session in another directory");
-    pick.disabled = atCap;
-    pick.addEventListener("click", newSessionCard);
+    const more = document.createElement("button");
+    more.id = "newtab-more";
+    more.type = "button";
+    more.append(chevronIcon());
+    more.title = agents.length > 1 ? "Start a session with another agent or in another directory" : "Start a session in another directory";
+    more.setAttribute("aria-label", more.title);
+    more.setAttribute("aria-haspopup", "dialog");
+    more.disabled = atCap;
+    more.addEventListener("click", toggleNewPop);
 
-    group.append(add, pick);
+    group.append(add, more);
     tabbar.append(group);
 
     // The far right of the bar: which container this is, and the way to end it. The session count that used
@@ -603,6 +790,9 @@ function renderBar() {
     }
     right.append(bellButton(), stopButton());
     tabbar.append(right);
+
+    // The panel hangs off the body, so it survives this rebuild - but the button under it just moved.
+    repositionNewPop();
 
     // Keep focus in the rename editor across re-renders. The first render after a double-click selects the
     // whole label so it can be typed over; a later render (an incoming frame) only restores the caret.
@@ -835,28 +1025,30 @@ function refreshBrowserTab() {
     if (!iconTimer) iconTimer = setTimeout(tickIcon, ICON_TICK_MS);
 }
 
-// --- A sound, for the session that is not in front of you ---------------------------------------------------------------------------------
+// --- A sound, for the session you are not at ----------------------------------------------------------------------------------------------
 //
-// The fourth thing the "an agent finished and nobody saw it" alert does, and the only one that reaches a window behind an
-// editor. Everything above this - the tab, the title, the icon - has to be looked at to be read.
+// The fourth thing the "an agent finished" alert does, and the only one that reaches a window behind an editor.
+// Everything above this - the tab, the title, the icon - has to be looked at to be read, so all three fire on every
+// ending whoever is watching. A sound cannot be taken back and reaches you in the next room, so it is the one that asks
+// whether you are there.
 //
-// The one alert it stays quiet for is the session already on screen in a window someone is looking at, which is the only
-// place a sound would be telling you what you can see. A session finishing in another tab of this bar is not that, even
-// with the window right in front of you: its tab lights up somewhere off to the side, and that is exactly the kind of
-// thing a screen full of work hides.
+// It asks it by waiting. An alert stands until someone touches that session, so an alert still standing a few seconds
+// after the turn ended is one nobody has come back to, and that is the whole test - touch it inside the hold, by
+// typing, clicking or scrolling, and the sound is called off before it is ever heard. Deliberately not by whether this
+// window has focus, which is what this used to do: focus varies by browser and platform, has to be re-reported on every
+// reconnect, and each hole in it fails towards silence.
 //
-// It waits, twice. The registry already holds a stop for a few seconds before it will call it the end of a turn, which
-// is the right amount for a light: being wrong for a moment there costs nothing, since the light goes out again and
-// nobody was interrupted. A sound that is wrong costs attention and cannot be taken back, so it gets its own, longer
-// hold on top - and anything that spends the alert in the meantime, work resuming or the user coming back, leaves it
-// never heard at all. Two thresholds, one signal.
+// Nothing before the ending counts, the prompt that started the turn included. Sitting and watching a reply arrive is
+// not using the session, and a rule that treated it as such is what made a short turn silent for good.
 //
 // It is synthesised rather than played from a file, for the same reason the favicon above is drawn rather than shipped:
 // nothing to fetch, nothing to license, and the whole sound is legible right here as three numbers times three.
 
 // How long an alert has to keep standing before it is worth a sound. On top of the registry's own settle, so a chime
-// always means "this finished twenty seconds ago and is still waiting", never "it went quiet for a moment".
-const CHIME_HOLD_MS = 20_000;
+// always means "this finished a few seconds ago and nobody has been near it", never "it went quiet for a moment".
+// Short on purpose: this is the only thing between a finish and your ears, and a finish you hear about a minute late
+// is one you have already given up on.
+const CHIME_HOLD_MS = 10_000;
 // A floor between chimes, for alerts that come due a moment apart rather than together.
 const CHIME_GAP_MS = 2_000;
 // How long one window's chime speaks for every window of this workspace. Two of them left open on the same container
@@ -976,22 +1168,11 @@ const chimed = new Set();
 let chimeTimer = null;
 let lastChimeAt = 0;
 
-// Alerts that have now stood long enough to be worth hearing about.
+// Alerts that have stood long enough to be worth hearing about. Still standing is the answer to "did anyone come
+// back": a touch puts the alert out at the server, and it drops out of here on the next frame.
 function dueAlerts() {
     const now = Date.now();
     return sessions.filter((entry) => entry.attention && !chimed.has(entry.id) && now - (arrivedAt.get(entry.id) ?? now) >= CHIME_HOLD_MS);
-}
-
-// Is anyone looking at this window right now? Both halves count: a window behind another browser tab and a window
-// behind an editor are the same thing to someone who is looking at neither.
-function watching() {
-    return document.visibilityState === "visible" && document.hasFocus();
-}
-
-// The one session a chime would have nothing to add to: the one this window has open, with someone in front of it. Every
-// other alert is worth a sound, including one on another tab of a bar the user is sitting right in front of.
-function onScreen(sid) {
-    return sid === attachedSid && watching();
 }
 
 // One window speaks for the workspace. Best effort - two windows racing on the same millisecond both chime, which is
@@ -1013,11 +1194,10 @@ function claimChime() {
 function maybeChime() {
     const due = dueAlerts();
     if (due.length === 0) return;
-    // Spent whether or not it is heard. A session on screen has already said this where the user is looking, and an
-    // alert that stayed quiet for that reason must not go off later when the window is put away - nothing new happened.
+    // Spent whether or not it is heard, so a muted window does not save up its chimes for whenever the bell is
+    // unmuted - nothing new would have happened by then.
     for (const entry of due) chimed.add(entry.id);
     if (!soundOn) return;
-    if (due.every((entry) => onScreen(entry.id))) return;
     const now = Date.now();
     if (now - lastChimeAt < CHIME_GAP_MS) return;
     if (!claimChime()) return;
@@ -1052,8 +1232,8 @@ function bellButton() {
     button.type = "button";
     button.classList.toggle("muted", !soundOn);
     button.title = soundOn
-        ? "Sound on - a chime when an agent finishes somewhere you are not looking. Click to mute."
-        : "Sound muted - click for a chime when an agent finishes somewhere you are not looking.";
+        ? "Sound on - a chime when an agent finishes in a session you have not touched in a while. Click to mute."
+        : "Sound muted - click for a chime when an agent finishes in a session you have not touched in a while.";
     button.setAttribute("aria-label", soundOn ? "Mute the finish sound" : "Unmute the finish sound");
     button.setAttribute("aria-pressed", String(soundOn));
     const svg = document.createElementNS(SVG_NS, "svg");
@@ -1101,10 +1281,11 @@ function toggleSound() {
 
 // --- Overlay cards -----------------------------------------------------------------------------------------------------------------------
 
-// One card shape for every decision: a title, an explanation, buttons, and - where the decision needs one -
-// a field between the two. Each button closes the card and then runs its action, so no card can be left open
-// over a terminal you are typing into.
-function showCard(title, body, buttons, field) {
+// One card shape for every decision: a title, an explanation, and buttons. Each button closes the card and then
+// runs its action, so no card can be left open over a terminal you are typing into. Cards are for questions the
+// user did not go looking for - a confirmation, a refusal - which is why they sit in the middle of the screen;
+// anything opened on purpose from the bar is a panel anchored to what opened it.
+function showCard(title, body, buttons) {
     card.textContent = "";
     const heading = document.createElement("h2");
     heading.textContent = title;
@@ -1123,9 +1304,7 @@ function showCard(title, body, buttons, field) {
         });
         row.append(button);
     }
-    card.append(heading, text);
-    if (field) card.append(field);
-    card.append(row);
+    card.append(heading, text, row);
     overlay.classList.add("show");
 }
 
@@ -1161,87 +1340,10 @@ function takenCard(sid) {
 function closeCard(entry) {
     showCard(
         `End ${entry.label}?`,
-        `The ${agentName} process is killed and this conversation stops. Sessions are never closed for you - ` +
+        `The ${entry.agent} process is killed and this conversation stops. Sessions are never closed for you - ` +
             `this one has been running ${ageLabel(entry.createdAt)}.`,
         [{ label: "Cancel" }, { label: "End session", kind: "danger", run: () => sendFrame({ t: "close", sid: entry.id }) }],
     );
-}
-
-// --- Starting a session somewhere else ---------------------------------------------------------------------------------------------------
-//
-// A session runs in one directory for its whole life, so this is asked once, up front. The field is the
-// authority - anything can be typed into it - and the list beside it is only there so the common case is a
-// click. Neither is trusted: the server resolves whatever arrives and refuses what is not a directory in the
-// workspace.
-
-const DIR_LIST_ID = "dirlist";
-
-// Fill the picker's suggestions from the container. Fetched when the card opens rather than kept around, so
-// a directory created a minute ago is in the list. Failures are silent on purpose: the field still works,
-// and a suggestion list that did not load is not worth a card of its own.
-async function fillDirList(list) {
-    let payload;
-    try {
-        const res = await fetch(`/dirs${KEY_QUERY}`, { cache: "no-store" });
-        if (!res.ok) return;
-        payload = await res.json();
-    } catch {
-        return;
-    }
-    // The card may have been closed while this was in flight.
-    if (!list.isConnected) return;
-    const dirs = Array.isArray(payload?.dirs) ? payload.dirs : [];
-    // "/" is how the root is written here: a path everyone recognises, and the one value the server reads
-    // back as the workspace root itself.
-    for (const dir of ["/", ...dirs]) {
-        const option = document.createElement("option");
-        option.value = dir;
-        if (dir === "/") option.label = "workspace root";
-        list.append(option);
-    }
-    // The scan is capped, so say when the list is partial instead of letting it look complete.
-    if (payload?.truncated) noteMsg("the directory list is partial - deeper paths can still be typed in");
-}
-
-function newSessionCard() {
-    const field = document.createElement("input");
-    field.type = "text";
-    field.className = "path";
-    field.value = defaultCwd;
-    field.placeholder = "workspace root";
-    field.spellcheck = false;
-    field.autocomplete = "off";
-    field.setAttribute("list", DIR_LIST_ID);
-    field.setAttribute("aria-label", "Directory for the new session, relative to the workspace root");
-    const list = document.createElement("datalist");
-    list.id = DIR_LIST_ID;
-    const wrap = document.createElement("div");
-    wrap.className = "field";
-    wrap.append(field, list);
-
-    const start = () => sendFrame({ t: "new", cwd: field.value.trim() });
-    field.addEventListener("keydown", (event) => {
-        if (event.key === "Enter") {
-            event.preventDefault();
-            hideCard();
-            start();
-        } else if (event.key === "Escape") {
-            event.preventDefault();
-            hideCard();
-            focusTerminal();
-        }
-    });
-
-    showCard(
-        "Start a session somewhere else",
-        `New sessions start in ${whereLabel(defaultCwd)}. Pick another directory, or type one relative to the workspace ` +
-            `root - the ${agentName} runs there for the life of the session, and its tab says where.`,
-        [{ label: "Cancel" }, { label: "Start session", kind: "primary", run: start }],
-        wrap,
-    );
-    field.focus();
-    field.select();
-    fillDirList(list);
 }
 
 // The server refused the path, so nothing was started. It does not say which path back: the user just typed
@@ -1251,6 +1353,16 @@ function badDirCard() {
         "That directory is not in the workspace",
         "Nothing was started. The path has to be a directory that already exists inside the workspace - written " +
             'relative to its root, like "packages/api".',
+        [{ label: "Got it", kind: "primary" }],
+    );
+}
+
+// The server was asked for an agent it does not run. Only reachable from a stale page or a hand-made frame -
+// the menu is built from what the server said it runs - so it says the rule and nothing more.
+function badAgentCard() {
+    showCard(
+        "That is not an agent this container runs",
+        `Nothing was started. This interface runs ${agents.join(", ")}. Reload the page if the list above looks wrong.`,
         [{ label: "Got it", kind: "primary" }],
     );
 }
@@ -1480,9 +1592,6 @@ function connect() {
         // it back, and picks something sensible when it cannot.
         // The last session this window drove: the server hands it back when no other window is on it.
         sendFrame({ t: "hello", sid: sessionStorage.getItem(LAST_SID_KEY) ?? "", fresh });
-        // Straight after hello, so a window that reconnects while it is behind something else is not mistaken
-        // for one being watched. A reconnect is a new socket, and the server knows nothing about it yet.
-        reportPresence();
         refreshComposer();
     };
 
@@ -1576,20 +1685,27 @@ function probeConnection() {
 window.addEventListener("online", probeConnection);
 document.addEventListener("visibilitychange", () => {
     if (!document.hidden) probeConnection();
-    reportPresence();
 });
 
-// The server cannot see whether this window is in front of the user, and it has to know: a session that finishes
-// while nobody is looking is the one worth an alert, and until this is reported an open socket looks like a pair
-// of eyes. Hidden and unfocused both count as away - a window behind another browser tab and a window behind an
-// editor are the same thing from here. Coming back is a visit, so the server spends the alert on whatever this
-// window is driving.
-function reportPresence() {
-    sendFrame({ t: "away", on: document.visibilityState === "hidden" || !document.hasFocus() });
+// --- Telling the server you are here ------------------------------------------------------------------------------------------------------
+//
+// The server cannot see the user, and one thing depends on it: whether an alert that is standing has been answered,
+// which is what calls off the sound waiting behind it. A touch is anything deliberate - a key, a click, a scroll.
+// Bare mouse movement is not one: a pointer crossing the window on its way somewhere else says nothing about who is
+// reading it.
+//
+// Only ever sent while the session in front of you is actually waiting on you. Nothing else is listening for it, so
+// the quiet case - which is nearly all of the time - costs no traffic at all, and there is nothing to throttle.
+function noteSeen() {
+    if (!attachedSid) return;
+    const entry = sessions.find((session) => session.id === attachedSid);
+    if (!entry?.attention) return;
+    sendFrame({ t: "seen" });
 }
 
-window.addEventListener("focus", reportPresence);
-window.addEventListener("blur", reportPresence);
+document.addEventListener("pointerdown", noteSeen, { passive: true });
+document.addEventListener("keydown", noteSeen);
+document.addEventListener("wheel", noteSeen, { passive: true });
 
 function onFrame(msg) {
     // Any frame at all proves the socket works, which is what a wake probe is waiting to hear.
@@ -1647,7 +1763,7 @@ function onFrame(msg) {
             attachedSid = null;
             // The box was holding an unsent message for a conversation that no longer exists.
             clearComposer();
-            term.write(`\r\n\x1b[90m[webterm] ${agentName} exited, so this session is gone.\x1b[0m\r\n`);
+            term.write(`\r\n\x1b[90m[webterm] ${msg.agent || "the agent"} exited, so this session is gone.\x1b[0m\r\n`);
             shownSid = null;
             shownMessage = EXITED_SCREEN;
         }
@@ -1660,12 +1776,13 @@ function onFrame(msg) {
     } else if (msg.t === "error") {
         if (msg.code === "cap") capCard();
         else if (msg.code === "cwd") badDirCard();
+        else if (msg.code === "agent") badAgentCard();
         else if (msg.code === "stop") {
             // The container is still here after all, so the page goes back to being usable.
             halted = false;
             hideCurtain();
             stopFailedCard();
-        } else noteMsg(`could not start ${agentName} - check the webterm log in the container`, true);
+        } else noteMsg(`could not start ${msg.agent || "the agent"} - check the webterm log in the container`, true);
     }
 }
 
@@ -1673,7 +1790,8 @@ function applySessions(msg) {
     sessions = Array.isArray(msg.list) ? msg.list : [];
     attachedSid = msg.attachedSid ?? null;
     maxSessions = msg.max ?? maxSessions;
-    agentName = msg.agent || agentName;
+    defaultAgent = msg.agent || defaultAgent;
+    if (Array.isArray(msg.agents)) agents = msg.agents;
     workspaceName = msg.workspace || "";
     defaultCwd = msg.defaultCwd ?? "";
     // Before the bar draws: its flash reads these timestamps, so an alert plays once instead of on every frame.
@@ -1703,7 +1821,7 @@ function applySessions(msg) {
 // is gone from the bar, and what the user needs is the next step.
 function idleMessage() {
     return sessions.length === 0
-        ? `No sessions. Use "+ New session" above to start ${agentName}.`
+        ? `No sessions. Use "+ New session" above to start ${defaultAgent}.`
         : "Every session is open in another window - click one above to bring it here.";
 }
 
@@ -1731,7 +1849,7 @@ function refreshComposer() {
     input.disabled = !live;
     if (!connected) input.placeholder = everConnected ? "Reconnecting... your session kept running." : "Connecting...";
     else if (live) input.placeholder = INPUT_PLACEHOLDER;
-    else if (sessions.length === 0) input.placeholder = `No sessions. Use "+ New session" above to start ${agentName}.`;
+    else if (sessions.length === 0) input.placeholder = `No sessions. Use "+ New session" above to start ${defaultAgent}.`;
     else input.placeholder = "Pick a session above to type in it.";
 }
 

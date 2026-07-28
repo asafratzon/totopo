@@ -11,7 +11,7 @@ Key concepts (the vocabulary used everywhere):
 - **Profile** - a named Dockerfile variant in `totopo.yaml`. Its `dockerfile_hook` is appended to the base image. One profile is active per session.
 - **Shadow path** - a gitignore-style pattern in `totopo.yaml`. Matching host paths are overlaid with empty container-local copies so agents never see or modify them.
 - **Agent context** - markdown injected into each AI CLI's config dir at session start. Bind-mounted into the container; not edited by hand.
-- **Web interface** (webterm) - an optional browser front-end that relays a real agent TUI over a PTY. It lives in `templates/webterm/`, is baked into the image, and is documented in `templates/webterm/README.md`.
+- **Web interface** (webterm) - an optional browser front-end that relays real agent TUIs over a PTY, one per session, so several agents can run at once. It lives in `templates/webterm/`, is baked into the image, and is documented in `templates/webterm/README.md`.
 
 ## Workflow
 

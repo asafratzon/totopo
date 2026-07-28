@@ -10,20 +10,33 @@ import { basename, join, relative, resolve, sep } from "node:path";
 // (127.0.0.1:HOST:3899); the host side may differ per workspace, this side never does.
 export const PORT = Number(process.env.WEBTERM_PORT) || 3899;
 
-// The agent command relayed over the PTY, as [cmd, ...args]. The `webterm` launcher always sets
-// WEBTERM_AGENT from the agent the user named, so the default only applies to a bare `node server.js`.
-export const AGENT_CMD = process.env.WEBTERM_AGENT || "claude";
+// The agents this server will run. One server relays all of them - the agent is per session - so this is the
+// list a session may be started with, and the same list the `webterm` launcher accepts. Nothing else may be
+// spawned: the browser names an agent, and a name that is not in here is refused rather than run.
+export const AGENTS = ["claude", "opencode", "codex"];
+
+export function isKnownAgent(name) {
+    return typeof name === "string" && AGENTS.includes(name);
+}
+
+// The agent a session gets when the browser does not name one, which is the one-click "+ New session". The
+// `webterm` launcher sets it from the agent the user named, so the fallback only applies to a bare
+// `node server.js`. It moves at runtime (POST /agent), so the server holds its own copy of this.
+export const DEFAULT_AGENT = isKnownAgent(process.env.WEBTERM_AGENT) ? process.env.WEBTERM_AGENT : AGENTS[0];
+
+// Extra arguments for the default agent, and only for it: they come from the same launcher run that named it,
+// so they mean nothing to any other agent the browser might start.
 export const AGENT_ARGS = (process.env.WEBTERM_AGENT_ARGS || "").split(/\s+/).filter(Boolean);
 
 // Resume marker: a host-written file whose content is the full command that resumes the most
 // recent conversation. The first session to consume it (rename-then-read, atomic) spawns that
-// command instead of AGENT_CMD; later sessions start fresh. Empty means resume is disabled,
+// command instead of the default agent; later sessions start fresh. Empty means resume is disabled,
 // so a standalone `node server.js` behaves exactly as before.
 export const RESUME_MARKER = process.env.WEBTERM_RESUME_MARKER || "";
 
-// One-line file naming the agent this server relays, written once the port is bound. The `webterm`
-// launcher reads it so a second run can say which agent is live instead of just "already running":
-// probing the port proves something is listening, never what it relays. Empty disables the write.
+// One-line file naming the agent new sessions get, written once the port is bound and again whenever the
+// default moves. The `webterm` launcher reads it so a second run can say what is live instead of just
+// "already running": probing the port proves something is listening, never what it runs. Empty disables it.
 export const STATE_FILE = process.env.WEBTERM_STATE_FILE || "/tmp/webterm.agent";
 
 // The mounted workspace, and the only tree a session may be started in. Every directory the interface
@@ -87,9 +100,10 @@ export const CONTEXT_FILE = process.env.WEBTERM_CONTEXT_FILE || join(import.meta
 // Build the argv a session's agent is spawned with. claude, and only claude, is told it is reached
 // through the web interface: its CLI takes a per-launch system-prompt file, so the browser-awareness
 // note rides on the spawn without touching the shared managed CLAUDE.md the terminal also reads. Every
-// other agent (opencode, codex, a bare shell) is spawned verbatim. The flag is appended last, so it
-// survives a --resume too. Lives here beside CONTEXT_FILE so it imports with no server side effects,
-// which is what lets it be unit-tested without starting the server.
+// other agent (opencode, codex, a bare shell) is spawned verbatim - which is decided per session, since
+// a bar can hold several agents at once. The flag is appended last, so it survives a --resume too. Lives
+// here beside CONTEXT_FILE so it imports with no server side effects, which is what lets it be
+// unit-tested without starting the server.
 export function agentSpawnArgv(cmd, args) {
     if (basename(cmd) === "claude" && CONTEXT_FILE && existsSync(CONTEXT_FILE)) {
         return [...args, "--append-system-prompt-file", CONTEXT_FILE];

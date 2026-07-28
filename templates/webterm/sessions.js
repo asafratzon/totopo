@@ -47,8 +47,7 @@ export const PALETTE_SIZE = 5;
 // a tool that prints nothing while it runs) and carries straight on. So going quiet only starts a countdown,
 // and the alert is raised at the end of it, if the session is still quiet and did not go back to work. Work
 // that resumes takes the countdown with it and is never reported as finished at all. The cost is that a real
-// ending is announced a few seconds late, which nobody is there to notice: the alert is for a window that is
-// not in front of the user.
+// ending is announced a few seconds late, which is far too small a delay for anyone to notice.
 
 /** No output for this long means the agent stopped working. */
 export const WORK_QUIET_MS = 1_500;
@@ -65,10 +64,24 @@ export const ECHO_MS = 500;
 /** How often tick() should be called. Fine enough that the thresholds above land where they say. */
 export const WORK_TICK_MS = 300;
 
-// What an unnamed session is called, with its number after it. Deliberately not the relayed agent's name: one
-// server relays one agent, so "claude" on every tab said nothing that the rest of the page did not, and a bar
-// full of it read as noise. Rename a tab and this is what clearing the name falls back to.
-export const DEFAULT_LABEL = "Agent";
+// --- Are you there? ----------------------------------------------------------------------------------------------------------------------
+//
+// Every ending lights the tab, the browser title and the icon, whoever is watching: a light that is sometimes
+// redundant costs nothing, and one rule for every session is easier to trust than one rule for the tab you have
+// open and another for the rest. A sound is the opposite - it cannot be taken back and it reaches you in another
+// room - so the sound, and only the sound, asks whether you are there.
+//
+// It asks it by interaction with that session: a keystroke, a click, a scroll. Not by browser focus, which was
+// the first answer and the wrong one - it varies by browser and platform, it has to be re-reported on every
+// reconnect, and each hole in it fails towards silence, which is the one direction a notification must not fail
+// in.
+//
+// The question is asked once, after the ending, and only about the seconds that follow it: the page holds the
+// alert for a short while, and a touch inside that window puts it out before it is ever heard. Nothing before
+// the ending counts, including the prompt that started the turn - sitting and watching a reply arrive is not
+// using the session, and the whole complaint this rule answers is a finish you did not hear. The cost is a
+// chime you did not need when you were reading all along, which is a few seconds of your attention; the cost
+// the other way is a turn that finished an hour ago and you never knew.
 
 // Longest a user-chosen session name may be. The bar is one row, so a name that ran on would push the
 // tabs around; past this it is cut. Sanitising lives here so every window agrees on the stored name.
@@ -111,11 +124,7 @@ function isOpen(socket) {
 export function createRegistry({ spawn, maxSessions, maxBuffer, onEvent }) {
     // Insertion-ordered, so iteration is always oldest session first.
     const sessions = new Map();
-    // Windows that have told us they are not in front of the user - behind another browser tab, or another app.
-    // Only the "it finished" alert reads this; a window that is not being looked at still drives its session.
-    // Weak, so a socket that goes away takes its entry with it and nothing has to remember to clean up.
-    const awayClients = new WeakSet();
-    // Monotonic: numbers are never reused, so "Agent 7" means the same session in every window for as
+    // Monotonic: numbers are never reused, so "claude 7" means the same session in every window for as
     // long as it lives, and its colour (derived from the same counter) is predictable.
     let seq = 0;
 
@@ -130,6 +139,8 @@ export function createRegistry({ spawn, maxSessions, maxBuffer, onEvent }) {
             id: session.id,
             label: session.label,
             name: session.name,
+            // Which CLI this session is running. Several agents can be live at once, so the bar says which.
+            agent: session.agent,
             colorIndex: session.colorIndex,
             createdAt: session.createdAt,
             // Relative to the workspace root, so "" reads as "the usual place" and the bar shows nothing.
@@ -137,7 +148,8 @@ export function createRegistry({ spawn, maxSessions, maxBuffer, onEvent }) {
             attached: isOpen(session.client),
             unread: session.unread,
             working: session.working,
-            // "It finished something and you were not there to see it" - the one state the bar shouts about.
+            // "It finished something" - the one state the bar shouts about. Raised on every ending, and it is
+            // also what the sound waits on: an alert still standing a few seconds later is one nobody caught.
             attention: session.attention,
         };
     }
@@ -152,26 +164,13 @@ export function createRegistry({ spawn, maxSessions, maxBuffer, onEvent }) {
     }
 
     /**
-     * True when someone is actually looking at this session: a live socket that has not said it is away. An open
-     * socket is not enough - a window behind another browser tab or another app is driving its session and would
-     * see nothing, which is exactly who the alert is for. Anything unknown counts as looking, so a client that
-     * never reports (an older page, a non-browser client) behaves the way it did before.
+     * The user touched this session - typed into it, clicked in it, scrolled it. That puts out an alert that is
+     * already standing, since you cannot be missing an ending you are sitting in, and putting it out is also what
+     * calls off the sound the page was holding.
+     * Broadcasts only when something actually changed - this is called from every keystroke.
      */
-    function watched(session) {
-        return isOpen(session.client) && !awayClients.has(session.client);
-    }
-
-    /**
-     * A window said whether it is in front of the user. Coming back is a visit: whatever it is driving has been
-     * seen, so its alert is spent, the same as clicking the tab.
-     */
-    function away(client, isAway) {
-        if (isAway) {
-            awayClients.add(client);
-            return;
-        }
-        awayClients.delete(client);
-        const session = sessionFor(client);
+    function seen(sid) {
+        const session = sessions.get(sid);
         if (!session?.attention) return;
         session.attention = false;
         emit({ t: "changed" });
@@ -310,8 +309,8 @@ export function createRegistry({ spawn, maxSessions, maxBuffer, onEvent }) {
      * timers of its own stays testable by calling this by hand. Every flip is announced here, so the whole
      * sweep costs at most one broadcast however many sessions moved.
      *
-     * The alert is only for sessions nobody is looking at - see watched(). A session in front of the user is
-     * already on screen, and lighting up the tab you are looking at would be telling you what you can see.
+     * Every ending raises the alert, whoever is watching and whatever they were doing a moment ago. Whether it
+     * is also worth a sound is settled afterwards, by whether anyone touches the session - see "Are you there?".
      */
     function tick() {
         const now = Date.now();
@@ -334,27 +333,26 @@ export function createRegistry({ spawn, maxSessions, maxBuffer, onEvent }) {
             // The stop held: the turn really is over, and this is the moment worth interrupting the user for.
             // Still-quiet is checked again here because a session can be off the light and yet be producing
             // output - a stretch that has not reached the warm-up - and saying "it finished" over the top of
-            // output arriving is the mistake this whole countdown is here to avoid. A session someone is
-            // looking at spends the countdown on nothing, the same as it always did.
+            // output arriving is the mistake this whole countdown is here to avoid.
             if (session.stoppedAt && now - session.stoppedAt >= ALERT_SETTLE_MS && now - session.lastOutputAt >= WORK_QUIET_MS) {
                 session.stoppedAt = 0;
-                if (!watched(session)) {
-                    session.attention = true;
-                    changed = true;
-                }
+                session.attention = true;
+                changed = true;
             }
         }
         if (changed) emit({ t: "changed" });
     }
 
     /**
-     * The user typed into a session. The write to the PTY belongs to the caller; this is only the timestamp
-     * that keeps the echo coming back out of the working rhythm. Broadcasts nothing: typing changes no state
-     * a bar renders, and a frame per keystroke is exactly what this file avoids everywhere else.
+     * The user typed into a session. The write to the PTY belongs to the caller; this is the timestamp that
+     * keeps the echo coming back out of the working rhythm, and typing is also the plainest way of being here,
+     * so it counts as having seen the session.
      */
     function typed(sid) {
         const session = sessions.get(sid);
-        if (session) session.lastInputAt = Date.now();
+        if (!session) return;
+        session.lastInputAt = Date.now();
+        seen(sid);
     }
 
     // The agent exited by itself (/exit, a crash). There is nothing left to reattach to, so the session
@@ -364,30 +362,33 @@ export function createRegistry({ spawn, maxSessions, maxBuffer, onEvent }) {
         if (sessions.get(session.id) !== session) return;
         sessions.delete(session.id);
         // The display name (custom, else the default) is what the server names it by in the log.
-        emit({ t: "exit", sid: session.id, label: session.name || session.label });
+        emit({ t: "exit", sid: session.id, label: session.name || session.label, agent: session.agent });
         emit({ t: "changed" });
     }
 
     /**
-     * Start a session in `cwd` (absolute) and show it as `cwdLabel` (relative to the workspace).
-     * Both are handed in rather than worked out here: which directories exist and how one is written for
-     * the browser belongs to the server, and the registry only carries the two values - the path to the
-     * PTY, the label to the bar.
+     * Start a session running `agent` in `cwd` (absolute), shown as `cwdLabel` (relative to the workspace).
+     * All three are handed in rather than worked out here: which agents may be run, which directories exist
+     * and how one is written for the browser belong to the server, and the registry only carries the values -
+     * the command and path to the PTY, the labels to the bar.
      *
      * { ok: true, session } or { ok: false, error: "cap" } when the limit is reached.
      */
-    function create({ cwd, cwdLabel } = {}) {
+    function create({ cwd, cwdLabel, agent } = {}) {
         if (sessions.size >= maxSessions) return { ok: false, error: "cap" };
+        const now = Date.now();
         seq += 1;
         const session = {
             id: randomBytes(6).toString("hex"),
             seq,
-            label: `${DEFAULT_LABEL} ${seq}`,
+            // Named after what it runs, since the bar can hold several different agents at once.
+            label: `${agent} ${seq}`,
             // A user-chosen label, or null to fall back to `label`. The number in `label` is always kept,
-            // so clearing the name shows "Agent 7" again and the tooltip can still surface it.
+            // so clearing the name shows "claude 7" again and the tooltip can still surface it.
             name: null,
+            agent,
             colorIndex: (seq - 1) % PALETTE_SIZE,
-            createdAt: Date.now(),
+            createdAt: now,
             // Where the agent runs, and how that reads in the bar ("" for the workspace root).
             cwd,
             cwdLabel: cwdLabel ?? "",
@@ -406,7 +407,7 @@ export function createRegistry({ spawn, maxSessions, maxBuffer, onEvent }) {
             stoppedAt: 0,
             attention: false,
         };
-        session.term = spawn({ cwd });
+        session.term = spawn({ cwd, agent });
         session.term.onData((data) => onData(session, data));
         session.term.onExit(() => onExit(session));
         sessions.set(session.id, session);
@@ -495,7 +496,6 @@ export function createRegistry({ spawn, maxSessions, maxBuffer, onEvent }) {
     return {
         attach,
         attachedCount,
-        away,
         attachedSid,
         close,
         count,
@@ -506,6 +506,7 @@ export function createRegistry({ spawn, maxSessions, maxBuffer, onEvent }) {
         pickForClient,
         rename,
         reorder,
+        seen,
         sessionFor,
         takeover,
         tick,

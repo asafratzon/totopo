@@ -317,7 +317,8 @@ async function webInterfaceMenu(ctx: WorkspaceContext): Promise<void> {
 
         log.message(
             "A browser front-end for the agents (claude, opencode, codex) running in the container -\n" +
-                "the real TUI plus image paste, file upload, and dictation. Loopback-only, never reachable off this machine.\n" +
+                "the real TUI plus image paste, file upload, and dictation, with any of the three per session.\n" +
+                "Loopback-only, never reachable off this machine.\n" +
                 "Each workspace keeps one sticky port from the range, so its URL never changes.\n" +
                 "The URL also carries a key, minted fresh every time the interface starts and refused once it restarts.\n" +
                 "Run webterm inside the container to start it; with auto-start on it starts by itself.",

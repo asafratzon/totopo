@@ -337,8 +337,8 @@ body {
 }
 
 /* Shaped like a session tab, so the bar reads as one row: it is the outline of the next tab. Dashed and
-   empty is what keeps it from looking like a session that is already there. Two halves in one outline - the
-   button starts a session where the last totopo session did, the folder asks for a directory first. */
+   empty is what keeps it from looking like a session that is already there. Split in two - the button starts
+   the usual agent where the last totopo session did, the chevron opens the panel that asks for both. */
 #newtab-group {
     display: flex;
     align-items: stretch;
@@ -348,7 +348,7 @@ body {
 }
 
 #newtab,
-#newtab-pick {
+#newtab-more {
     display: flex;
     align-items: center;
     padding: 7px 11px;
@@ -367,22 +367,101 @@ body {
     border-right: none;
 }
 
-#newtab-pick {
+#newtab-more {
     border-radius: 0 8px 0 0;
-    padding: 7px 9px;
+    padding: 7px 7px;
     justify-content: center;
 }
 
 #newtab:hover,
-#newtab-pick:hover {
+#newtab-more:hover {
     color: var(--accent);
     border-color: var(--accent);
 }
 
 #newtab:disabled,
-#newtab-pick:disabled {
+#newtab-more:disabled {
     opacity: 0.4;
     cursor: not-allowed;
+}
+
+/* What the next session should be, dropped under the chevron. Solid where the outline above it is dashed: that
+   outline is the next tab waiting to exist, this is a thing to fill in. Right under the button it came from,
+   because it opens on the way to something routine and a trip to the middle of the screen is not that. */
+#newpop {
+    position: fixed;
+    z-index: 60;
+    display: flex;
+    flex-direction: column;
+    width: 288px;
+    padding: 12px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
+}
+
+.poplabel {
+    margin: 0 0 6px;
+    color: var(--muted);
+    font-size: 11px;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+}
+
+.poplabel:not(:first-child) {
+    margin-top: 12px;
+}
+
+#newpop .path {
+    width: 100%;
+    padding: 7px 9px;
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font: inherit;
+    font-size: 12.5px;
+    outline: none;
+    box-sizing: border-box;
+}
+
+#newpop .path:focus {
+    border-color: var(--ws);
+}
+
+/* Which agent the session runs, above the directory it runs in - the same one question, asked once. */
+.agentrow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.agentchoice {
+    padding: 6px 11px;
+    background: var(--bg);
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font: inherit;
+    font-size: 12.5px;
+    cursor: pointer;
+}
+
+.agentchoice:hover {
+    color: var(--text);
+}
+
+.agentchoice.chosen {
+    color: var(--ws);
+    border-color: var(--ws);
+}
+
+.poprow {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    margin-top: 14px;
 }
 
 #barright {
@@ -498,28 +577,6 @@ body {
     display: flex;
     gap: 8px;
     justify-content: flex-end;
-}
-
-/* A card that asks for something instead of only deciding. The field takes the paragraph's place in the
-   layout, so the buttons stay exactly where every other card puts them. */
-.card .field {
-    margin: 0 0 14px;
-}
-
-.card .path {
-    width: 100%;
-    padding: 7px 9px;
-    background: var(--bg);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    font: inherit;
-    font-size: 12.5px;
-    outline: none;
-}
-
-.card .path:focus {
-    border-color: var(--ws);
 }
 
 .btn {

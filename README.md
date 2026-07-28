@@ -231,6 +231,9 @@ Add a `profiles` block like the one above when you want image variants.
 When two or more profiles are defined, totopo prompts you to pick one at session start (the choice is remembered); when only one is defined it is selected automatically.
 A profile change triggers a container rebuild on the next session.
 
+Hook lines run **as root, at image build time** - totopo appends `USER devuser` after them - so there is no `sudo` to write and no `$HOME` to install into.
+Anything you install for the container user has to be readable by it, which is what the Rust example above does with `chmod -R a+rx`.
+
 The base image is defined in [`templates/Dockerfile`](templates/Dockerfile) - inspect it to see what's already included before adding your own layers. To force a fully fresh build (no Docker layer cache), use **Settings > Clean rebuild**.
 
 ### AI CLIs
@@ -307,7 +310,7 @@ By default a session drops you into a shell where you run `claude`, `opencode`, 
 
 This is a host-global preference (stored in `~/.totopo/global/config`), so it applies to every workspace. Changing it recreates the current workspace's container; other workspaces pick it up on their next session.
 
-When the [web agent interface](#web-agent-interface) is enabled, the same setting auto-starts the web terminal fronting the chosen agent instead of launching it in the shell.
+When the [web agent interface](#web-agent-interface) is enabled, the same setting auto-starts the web terminal instead of launching an agent in the shell, with the chosen agent as the one its new sessions start with.
 
 With auto-start on, the first session after a container starts resumes your most recent conversation; later sessions start fresh.
 For claude, totopo picks the newest conversation that actually has messages and resumes it by id; opencode and codex use their own `--continue` / `resume --last` flags.
@@ -316,16 +319,17 @@ For claude, totopo picks the newest conversation that actually has messages and 
 
 An opt-in browser front-end for the agents in the container.
 It relays the real agent TUI - your subscription, no API key, same sandbox - and adds what a terminal cannot: every session on one page, images, and dictation.
-Turn it on under **Settings → Web interface** (off by default), then run `webterm claude` (or `opencode` / `codex`) in the container to start it and print its URL.
+Turn it on under **Settings → Web interface** (off by default), then run `webterm claude` (or `opencode` / `codex`) in the container to start it and print its URL - the agent you name is the one new sessions start with, and the browser can pick another per session.
 With [auto-start](#auto-start-agent) on it comes up by itself and the greeting shows the URL.
 
 ![totopo web interface](.github/assets/webterm.png)
 
 - **Every session in one page.** The tab bar lists every session running in the container, up to 8. Click to switch, `+ New session` to start one, double-click to rename, drag to reorder.
-- **Sessions start where you did.** Run `npx totopo` inside `apps/api` and the browser's agent works on `apps/api`, the same directory a terminal session lands in. The caret beside `+ New session` opens one in another directory, and each session keeps its own.
+- **Several agents at once.** One server runs claude, opencode and codex - one agent per session - so the bar can hold a `claude 1` tab next to a `codex 2` tab, each in its own directory. `+ New session` starts the usual one; the chevron beside it opens a small panel that asks which agent and which directory. `webterm <agent>` in the container moves which one is usual, without ending anything.
+- **Sessions start where you did.** Run `npx totopo` inside `apps/api` and the browser's agent works on `apps/api`, the same directory a terminal session lands in. The chevron beside `+ New session` opens one somewhere else, and each session keeps its own for life.
 - **Sessions outlive the browser.** They belong to the container, so a closed tab, dropped wifi or a slept laptop ends nothing, and opening the URL anywhere shows them all. One window drives a session at a time; another can take it over.
-- **Tabs show what each agent is doing.** A light runs round a tab while its agent works, and the tab stays lit when one finishes while you were not watching. The browser tab shows the same from behind another window: the title counts the sessions waiting, and the icon carries a white bar sweeping along its bottom edge while an agent works and a green dot in its corner while one waits.
-- **A chime when an agent finishes.** It plays twenty seconds after a session you are not watching finishes - including another tab of the bar, with the window in front of you. The delay keeps a mid-turn pause from making a sound. The bell in the tab bar mutes it, and the choice is remembered.
+- **Tabs show what each agent is doing.** A light runs round a tab while its agent works, and the tab stays lit when one finishes, until you go and look. The browser tab shows the same from behind another window: the title counts the sessions waiting, and the icon carries a white bar sweeping along its bottom edge while an agent works and a green dot in its corner while one waits.
+- **A chime when an agent finishes something you were not there for.** Ten seconds after a session finishes, if nobody has touched it since - no key, no click, no scroll - it sounds once. Touching it in those ten seconds is what calls the sound off, so the sessions you are actually working in stay quiet. The bell in the tab bar mutes it, and the choice is remembered.
 - **Images and dictation.** Paste, drop or upload an image and the agent gets its path; dictate instead of typing.
 - **Drafts stay with their session.** A half-written message, attachments included, waits until you send it or the session ends.
 - **Stop the container from the page.** The power button at the right of the tab bar stops it - every session in it, browser and terminal alike - after a prompt that names what ends.

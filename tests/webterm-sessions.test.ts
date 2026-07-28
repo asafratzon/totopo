@@ -9,8 +9,9 @@ import { pathToFileURL } from "node:url";
 // no node-pty on the host, and no real agent processes started by the test run.
 const WEBTERM_DIR = join(import.meta.dirname, "..", "templates", "webterm");
 
+type CreateOptions = { cwd?: string; cwdLabel?: string; agent?: string };
 type Registry = {
-    away: (client: FakeSocket, isAway: boolean) => void;
+    seen: (sid: string | null) => void;
     tick: () => void;
     typed: (sid: string) => void;
     attach: (sid: string, client: FakeSocket) => "attached" | "busy" | "gone";
@@ -18,7 +19,7 @@ type Registry = {
     attachedSid: (client: FakeSocket) => string | null;
     close: (sid: string) => boolean;
     count: () => number;
-    create: (options?: { cwd?: string; cwdLabel?: string }) => { ok: true; session: Session } | { ok: false; error: string };
+    create: (options?: CreateOptions) => { ok: true; session: Session } | { ok: false; error: string };
     detach: (client: FakeSocket) => void;
     get: (sid: string) => Session | undefined;
     list: () => WireEntry[];
@@ -32,6 +33,7 @@ type Session = {
     id: string;
     label: string;
     name: string | null;
+    agent: string;
     colorIndex: number;
     buffer: string;
     term: FakeTerm;
@@ -42,6 +44,7 @@ type WireEntry = {
     id: string;
     label: string;
     name: string | null;
+    agent: string;
     colorIndex: number;
     createdAt: number;
     cwd: string;
@@ -50,12 +53,12 @@ type WireEntry = {
     working: boolean;
     attention: boolean;
 };
-type Event = { t: string; sid?: string; client?: FakeSocket; data?: string; label?: string };
+type Event = { t: string; sid?: string; client?: FakeSocket; data?: string; label?: string; agent?: string };
 
 const { createRegistry, PALETTE_SIZE, MAX_NAME_LENGTH, cleanName, WORK_QUIET_MS, WORK_WARMUP_MS, WORK_TICK_MS, ECHO_MS, ALERT_SETTLE_MS } =
     (await import(pathToFileURL(join(WEBTERM_DIR, "sessions.js")).href)) as {
         createRegistry: (options: {
-            spawn: (spawnOptions: { cwd?: string }) => FakeTerm;
+            spawn: (spawnOptions: { cwd?: string; agent?: string }) => FakeTerm;
             maxSessions: number;
             maxBuffer: number;
             onEvent: (event: Event) => void;
@@ -112,8 +115,8 @@ class FakeTerm {
 function setup(maxSessions = 8) {
     const events: Event[] = [];
     const terms: FakeTerm[] = [];
-    // What each spawn was asked for, in order - the directory a session runs in is passed through here.
-    const spawns: Array<{ cwd?: string }> = [];
+    // What each spawn was asked for, in order - the agent and the directory both pass through here.
+    const spawns: Array<{ cwd?: string; agent?: string }> = [];
     const registry = createRegistry({
         spawn: (spawnOptions) => {
             spawns.push(spawnOptions);
@@ -128,9 +131,10 @@ function setup(maxSessions = 8) {
     return { events, registry, terms, spawns };
 }
 
-// Create a session and fail loudly rather than returning a union the tests would have to narrow.
-function start(registry: Registry, options?: { cwd?: string; cwdLabel?: string }): Session {
-    const created = registry.create(options);
+// Create a session and fail loudly rather than returning a union the tests would have to narrow. The agent
+// defaults to claude the way the server's own default does, so tests that do not care can leave it out.
+function start(registry: Registry, options?: CreateOptions): Session {
+    const created = registry.create({ agent: "claude", ...options });
     assert.ok(created.ok, "create() should have succeeded here");
     return created.session;
 }
@@ -224,7 +228,7 @@ describe("a session outlives the browser", () => {
         assert.equal(registry.count(), 0);
         const exited = events.find((e) => e.t === "exit");
         assert.equal(exited?.sid, session.id);
-        assert.equal(exited?.label, "Agent 1", "the log line names the session, so the label travels with the event");
+        assert.equal(exited?.label, "claude 1", "the log line names the session, so the label travels with the event");
     });
 });
 
@@ -366,7 +370,7 @@ describe("labels and colours follow one counter", () => {
 
         assert.deepEqual(
             sessions.map((s) => s.label),
-            Array.from({ length: PALETTE_SIZE + 2 }, (_, i) => `Agent ${i + 1}`),
+            Array.from({ length: PALETTE_SIZE + 2 }, (_, i) => `claude ${i + 1}`),
         );
         assert.deepEqual(
             sessions.map((s) => s.colorIndex),
@@ -379,7 +383,7 @@ describe("labels and colours follow one counter", () => {
         const first = start(registry);
         registry.close(first.id);
 
-        assert.equal(start(registry).label, "Agent 2", "the next session is 2, not 1 again");
+        assert.equal(start(registry).label, "claude 2", "the next session is 2, not 1 again");
     });
 });
 
@@ -392,7 +396,11 @@ describe("the directory a session runs in", () => {
         const { registry, spawns } = setup();
         const session = start(registry, { cwd: "/workspace/apps/api", cwdLabel: "apps/api" });
 
-        assert.deepEqual(spawns, [{ cwd: "/workspace/apps/api" }], "the agent must be spawned in the directory it was given");
+        assert.deepEqual(
+            spawns,
+            [{ cwd: "/workspace/apps/api", agent: "claude" }],
+            "the agent must be spawned in the directory it was given",
+        );
         assert.equal(entryFor(registry, session.id).cwd, "apps/api");
     });
 
@@ -431,7 +439,7 @@ describe("renaming a session", () => {
         assert.equal(registry.rename(session.id, "refactor auth"), true);
 
         assert.equal(entryFor(registry, session.id).name, "refactor auth");
-        assert.equal(entryFor(registry, session.id).label, "Agent 1", "the default label stays, so the number is still there");
+        assert.equal(entryFor(registry, session.id).label, "claude 1", "the default label stays, so the number is still there");
         assert.equal(events.filter((e) => e.t === "changed").length, 1, "the bar is rebroadcast once");
     });
 
@@ -501,7 +509,7 @@ describe("reordering the bar", () => {
 
         assert.equal(registry.reorder(first.id, 2), true);
 
-        assert.deepEqual(bar(registry), ["Agent 2", "Agent 3", "Agent 1"]);
+        assert.deepEqual(bar(registry), ["claude 2", "claude 3", "claude 1"]);
         assert.equal(events.filter((e) => e.t === "changed").length, 1, "the bar is rebroadcast once");
     });
 
@@ -513,7 +521,7 @@ describe("reordering the bar", () => {
 
         registry.reorder(third.id, 0);
 
-        assert.deepEqual(bar(registry), ["Agent 3", "Agent 1", "Agent 2"]);
+        assert.deepEqual(bar(registry), ["claude 3", "claude 1", "claude 2"]);
     });
 
     test("an index past the ends clamps rather than being refused", () => {
@@ -523,10 +531,10 @@ describe("reordering the bar", () => {
         const third = start(registry);
 
         registry.reorder(first.id, 99);
-        assert.deepEqual(bar(registry), ["Agent 2", "Agent 3", "Agent 1"], "past the right edge lands last");
+        assert.deepEqual(bar(registry), ["claude 2", "claude 3", "claude 1"], "past the right edge lands last");
 
         registry.reorder(third.id, -5);
-        assert.deepEqual(bar(registry), ["Agent 3", "Agent 2", "Agent 1"], "past the left edge lands first");
+        assert.deepEqual(bar(registry), ["claude 3", "claude 2", "claude 1"], "past the left edge lands first");
     });
 
     test("a move that changes nothing is not broadcast", () => {
@@ -552,7 +560,7 @@ describe("reordering the bar", () => {
         registry.reorder(first.id, 1);
 
         const moved = entryFor(registry, first.id);
-        assert.equal(moved.label, "Agent 1", "the number is the session's, not the tab position's");
+        assert.equal(moved.label, "claude 1", "the number is the session's, not the tab position's");
         assert.equal(moved.name, "refactor auth");
         assert.equal(moved.colorIndex, 0, "and so is the colour");
         assert.equal(moved.attached, true, "the window is still driving it");
@@ -567,7 +575,7 @@ describe("reordering the bar", () => {
         const first = start(registry);
         const second = start(registry);
         const third = start(registry);
-        // Drag the third tab to the front, so "Agent 2" is now the last tab in the bar.
+        // Drag the third tab to the front, so "claude 2" is now the last tab in the bar.
         registry.reorder(third.id, 0);
         registry.attach(second.id, window);
 
@@ -989,101 +997,84 @@ describe("the working state", () => {
         assert.equal(entry.attention, false, "lighting up for these teaches the user to ignore the light");
     });
 
-    test("a session a window is already watching never asks", () => {
+    test("a session someone is sitting in front of lights up all the same", () => {
         const { registry } = setup();
         const session = start(registry);
         registry.attach(session.id, new FakeSocket());
+        // The prompt that started the turn. Past the echo window, so what follows is the agent's own output.
+        registry.typed(session.id);
+        mock.timers.tick(ECHO_MS);
 
         streams(registry, session, WORK_WARMUP_MS);
         goesQuiet(registry);
         settles(registry);
 
-        assert.equal(entryFor(registry, session.id).attention, false, "you are looking straight at it");
+        // Nothing before the ending has a say, the prompt that started the turn included: sitting and watching a
+        // reply arrive is not using the session, and counting the prompt is what once made a short turn silent.
+        assert.equal(entryFor(registry, session.id).attention, true);
     });
 
-    test("coming back during the countdown is in time to stop it", () => {
+    test("an ending stands until someone comes back to it", () => {
         const { registry } = setup();
         const session = start(registry);
         const window = new FakeSocket();
         registry.attach(session.id, window);
-        registry.away(window, true);
 
         streams(registry, session, WORK_WARMUP_MS);
         goesQuiet(registry);
-        // Back at the window while the stop is still being confirmed. Nothing needs to be spent when the alert
-        // is raised, because it is never raised: whoever it was for is already looking at the session.
-        registry.away(window, false);
         settles(registry);
+
+        // A standing alert is the whole answer to "did anyone come back": the page holds its sound for a few
+        // seconds and plays it only if the alert is still here. The socket is open and this window still drives
+        // the session, which is why an open socket cannot be what decides - the user could be in another app.
+        const entry = entryFor(registry, session.id);
+        assert.equal(entry.attention, true);
+        assert.equal(registry.attachedSid(window), session.id, "a quiet session is still this window's to drive");
+    });
+
+    test("typing into a session puts its alert out", () => {
+        const { registry } = setup();
+        const session = start(registry);
+        streams(registry, session, WORK_WARMUP_MS);
+        goesQuiet(registry);
+        settles(registry);
+
+        // Keystrokes reach the registry as the echo stamp anyway, so answering an alert by typing the next
+        // prompt needs no extra frame from the page.
+        registry.typed(session.id);
 
         assert.equal(entryFor(registry, session.id).attention, false);
     });
 
-    test("a window that is not in front of the user is not watching", () => {
-        const { registry } = setup();
-        const session = start(registry);
-        const window = new FakeSocket();
-        registry.attach(session.id, window);
-        // Behind another browser tab, or another app. The socket is open and this window still drives the
-        // session, which is why an open socket cannot be what decides: the alert is the only thing that would
-        // ever reach a user who is looking somewhere else.
-        registry.away(window, true);
-
-        streams(registry, session, WORK_WARMUP_MS);
-        goesQuiet(registry);
-        settles(registry);
-
-        assert.equal(entryFor(registry, session.id).attention, true);
-        assert.equal(registry.attachedSid(window), session.id, "being away does not hand the session back");
-    });
-
-    test("coming back to the window spends the alert on what it is driving", () => {
+    test("touching a session spends its alert and leaves the others standing", () => {
         const { events, registry } = setup();
         const session = start(registry);
         const other = start(registry);
-        const window = new FakeSocket();
-        registry.attach(session.id, window);
-        registry.away(window, true);
-        streams(registry, session, WORK_WARMUP_MS);
-        goesQuiet(registry);
-        settles(registry);
-        streams(registry, other, WORK_WARMUP_MS);
-        goesQuiet(registry);
-        settles(registry);
+        for (const each of [session, other]) {
+            streams(registry, each, WORK_WARMUP_MS);
+            goesQuiet(registry);
+            settles(registry);
+        }
         events.length = 0;
 
-        registry.away(window, false);
+        registry.seen(session.id);
 
-        assert.equal(entryFor(registry, session.id).attention, false, "it is on screen now, which is what the alert asked for");
-        assert.equal(entryFor(registry, other.id).attention, true, "the sessions this window is not on still wait");
+        assert.equal(entryFor(registry, session.id).attention, false, "you cannot be missing an ending you are sitting in");
+        assert.equal(entryFor(registry, other.id).attention, true, "the sessions you are not in still wait");
         assert.equal(events.filter((e) => e.t === "changed").length, 1);
     });
 
-    test("coming back with nothing to spend says nothing", () => {
+    test("a touch with no alert standing says nothing", () => {
         const { events, registry } = setup();
         const session = start(registry);
-        const window = new FakeSocket();
-        registry.attach(session.id, window);
+        registry.attach(session.id, new FakeSocket());
         events.length = 0;
 
-        // Every focus and blur reports, so this runs whenever the user clicks between apps.
-        registry.away(window, false);
-        registry.away(window, true);
-        registry.away(window, false);
+        registry.seen(session.id);
+        registry.seen(null);
+        registry.seen("gone");
 
-        assert.equal(events.length, 0);
-    });
-
-    test("a client that never reports is treated as watching", () => {
-        const { registry } = setup();
-        const session = start(registry);
-        registry.attach(session.id, new FakeSocket());
-
-        streams(registry, session, WORK_WARMUP_MS);
-        goesQuiet(registry);
-        settles(registry);
-
-        // The old behaviour, kept for anything on the socket that is not this page.
-        assert.equal(entryFor(registry, session.id).attention, false);
+        assert.equal(events.length, 0, "a broadcast per click is exactly what this must not cause");
     });
 
     test("visiting the session spends the alert", () => {
@@ -1232,16 +1223,31 @@ describe("the browser tab repeats what the bar says", () => {
         assert.match(body, /ctx\.globalAlpha = 0\.25;[\s\S]*?ctx\.roundRect\(6, 25\.5, 20, 3\.5, 1\.75\)/);
     });
 
-    test("the page tells the server when it is not in front of the user", () => {
-        // Without this an open socket looks like a pair of eyes, and the alert - the whole reason the icon and the
-        // title exist - could never fire for the window it was built for.
-        assert.match(app, /t: "away", on: document\.visibilityState === "hidden" \|\| !document\.hasFocus\(\)/);
-        // Both events, and again on every reconnect: a new socket knows nothing about this window yet.
-        assert.match(app, /window\.addEventListener\("focus", reportPresence\)/);
-        assert.match(app, /window\.addEventListener\("blur", reportPresence\)/);
-        const open = /ws\.onopen = \(\) => \{([\s\S]*?)\n {4}\};/.exec(app)?.[1] ?? "";
-        assert.ok(open, "app.js must open the socket");
-        assert.match(open, /reportPresence\(\)/);
+    test("the page tells the server the user came back, by what they do", () => {
+        // A standing alert is what the sound waits on, so putting it out is what calls the sound off - and only the
+        // page can see the touch that does it. Deliberate acts, not a pointer crossing the window on its way past.
+        assert.match(app, /document\.addEventListener\("pointerdown", noteSeen, \{ passive: true \}\)/);
+        assert.match(app, /document\.addEventListener\("keydown", noteSeen\)/);
+        assert.match(app, /document\.addEventListener\("wheel", noteSeen, \{ passive: true \}\)/);
+        assert.doesNotMatch(app, /addEventListener\("mousemove", noteSeen/, "a pointer passing through is not the user");
+        // Sent only when the session in front of you is actually waiting on you, which is what keeps a scroll from
+        // being a frame. Nothing else is listening for it.
+        const body = /function noteSeen\(\) \{([\s\S]*?)\n\}/.exec(app)?.[1] ?? "";
+        assert.ok(body, "app.js must define noteSeen");
+        assert.match(body, /if \(!entry\?\.attention\) return;/);
+        assert.match(body, /sendFrame\(\{ t: "seen" \}\)/);
+        // And focus is not what any of this reads any more: it varies by browser, has to be re-reported on every
+        // reconnect, and every hole in it fails towards silence. The clipboard gate is the one honest use left.
+        assert.doesNotMatch(app, /t: "away"/);
+        assert.equal([...app.matchAll(/document\.hasFocus\(\)/g)].length, 1, "only the clipboard may ask about focus");
+    });
+
+    test("the sound is the only thing that waits, and it waits on the alert alone", () => {
+        // The tab, the title and the icon fire on every ending, whoever is watching - they cost nothing and one
+        // rule is easier to trust than two. The sound reads the same alert a few seconds later, and nothing else:
+        // an alert still standing then is one nobody came back to.
+        assert.match(app, /entry\.attention && !chimed\.has\(entry\.id\)/);
+        assert.match(app, /if \(!entry\.attention \|\| chimed\.has\(entry\.id\)\) continue;/);
     });
 
     test("the dot follows the state it was painted from", () => {

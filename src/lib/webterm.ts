@@ -383,8 +383,10 @@ export function plantResumeMarker(containerName: string, resumeCommand: string):
 }
 
 /**
- * The `docker exec` argv that starts the baked webterm server, relaying the given agent and opening its
- * sessions in `workdir`. The agent is always passed explicitly - `webterm` on its own only prints usage.
+ * The `docker exec` argv that starts the baked webterm server, with the given agent as the one its new
+ * sessions start with, opening them in `workdir`. The server runs every agent it knows, one per session, so
+ * this is a default rather than the only agent it will run. It is always passed explicitly - `webterm` on its
+ * own only prints usage.
  *
  * The directory travels as an env var rather than as `docker exec -w`: `-w` on a path docker cannot use
  * fails the whole exec, which would cost the user the interface over something the server itself can just
@@ -395,7 +397,7 @@ export function webtermExecArgs(containerName: string, agent: Exclude<AutoStartA
 }
 
 /**
- * Start the baked webterm server detached, once per container start, relaying the given agent.
+ * Start the baked webterm server detached, once per container start, defaulting to the given agent.
  * The launcher is idempotent (exits quietly when the port is already bound).
  * Best-effort - the user can always run `webterm <agent>` by hand.
  */

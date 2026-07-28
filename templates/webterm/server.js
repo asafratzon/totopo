@@ -1,8 +1,9 @@
 // server.js - HTTP + WebSocket relay for interactive AI agent CLI sessions.
 //
-// The page is mission control for this container: it lists every live session (one PTY each, all
-// running AGENT_CMD in the workspace) as tabs, and one of them is attached to the browser window at a
-// time. The window renders the live TUI (xterm.js) and forwards keystrokes; a rich composer uploads
+// The page is mission control for this container: it lists every live session (one PTY each, running an
+// agent in the workspace) as tabs, and one of them is attached to the browser window at a time. Sessions
+// pick their own agent, so claude and codex can be two tabs of the same bar.
+// The window renders the live TUI (xterm.js) and forwards keystrokes; a rich composer uploads
 // pasted images to /tmp/uploads and injects the composed message as one bracketed paste.
 // Sessions belong to the server, not to the socket: see sessions.js for what that buys.
 // Every route that carries the relay is gated by the key the URL holds (?k=), minted fresh at every start.
@@ -18,15 +19,17 @@ import express from "express";
 import { WebSocketServer } from "ws";
 import {
     AGENT_ARGS,
-    AGENT_CMD,
+    AGENTS,
     agentSpawnArgv,
     CHECK_INTERVAL_MS,
     CLIENT_PING_INTERVAL_MS,
+    DEFAULT_AGENT,
     DIR_SCAN_DEPTH,
     DIR_SCAN_MAX,
     DIR_SCAN_SKIP,
     isAllowedOrigin,
     isAuthorized,
+    isKnownAgent,
     KEY,
     KEY_FILE,
     MAX_OUTPUT_BUFFER,
@@ -120,6 +123,34 @@ const defaultCwdRefused = WEBTERM_CWD_RAW !== "" && resolveWorkspacePath(WEBTERM
 function sessionCwd(raw) {
     if (typeof raw !== "string") return defaultCwd;
     return resolveWorkspacePath(raw) ?? resolveWorkspacePath(raw.replace(/^\/+/, ""));
+}
+
+// --- Which agent a session runs ----------------------------------------------------------------------------------------------------------
+//
+// The same shape as the directory above: a default that new sessions take, which the launcher seeds and the
+// container command can move, and a per-session choice the browser can make. A session's agent is fixed for
+// its whole life - it is the process - so nothing here ever touches a live one.
+
+let defaultAgent = DEFAULT_AGENT;
+
+/**
+ * The agent a session the browser asked for should run, or null when it named something we do not run.
+ * No agent at all means the default, which is what the plain "+ New session" sends.
+ */
+function sessionAgent(raw) {
+    if (raw === undefined || raw === null) return defaultAgent;
+    return isKnownAgent(raw) ? raw : null;
+}
+
+// The one-line file that names the default agent, for the `webterm` launcher to read back. Written when the
+// port is bound and again whenever the default moves, so a second `webterm <agent>` can say what is live.
+function publishAgent() {
+    if (!STATE_FILE) return;
+    try {
+        writeFileSync(STATE_FILE, `${defaultAgent}\n`);
+    } catch (err) {
+        console.warn(`[webterm] could not write ${STATE_FILE}: ${err instanceof Error ? err.message : String(err)}`);
+    }
 }
 
 /**
@@ -327,10 +358,12 @@ function broadcastSessions() {
     for (const client of clients) {
         send(client, {
             t: "sessions",
-            agent: AGENT_CMD,
+            // What "+ New session" will use, so the picker opens on them and every window agrees, and the
+            // whole list of agents, so the menu beside it offers what this server will actually run.
+            agent: defaultAgent,
+            agents: AGENTS,
             workspace: WORKSPACE,
             max: MAX_SESSIONS,
-            // What "+ New session" will use, so the picker opens on it and every window agrees.
             defaultCwd: workspaceLabel(defaultCwd),
             list,
             attachedSid: registry.attachedSid(client),
@@ -347,8 +380,8 @@ function handleEvent(event) {
     } else if (event.t === "taken") {
         send(event.client, { t: "taken", sid: event.sid });
     } else if (event.t === "exit") {
-        console.log(`[webterm] session "${event.label}" ended on its own (${AGENT_CMD} exited)`);
-        for (const client of clients) send(client, { t: "exit", sid: event.sid });
+        console.log(`[webterm] session "${event.label}" ended on its own (${event.agent} exited)`);
+        for (const client of clients) send(client, { t: "exit", sid: event.sid, agent: event.agent });
     } else if (event.t === "changed") {
         broadcastSessions();
     }
@@ -362,13 +395,16 @@ const registry = createRegistry({
 });
 
 // What the host asks before it offers to stop the container. `sessions` is how many conversations are
-// alive (they all die with the container), `attached` how many a window is watching right now. Counts
-// and the agent name only - nothing about the conversations themselves.
+// alive (they all die with the container), `attached` how many a window is watching right now, `agent` the
+// one a new session gets and `agents` what is actually running, per agent. Counts and names only - nothing
+// about the conversations themselves.
 // A window whose socket dropped asks it too: an answer means the relay is fine, a 403 means this window's
 // key is no longer the live one, and no answer at all means the container is gone. Three different things
 // to tell the user, and this is what tells them apart.
 app.get("/status", requireKey, (_req, res) => {
-    res.json({ agent: AGENT_CMD, sessions: registry.count(), attached: registry.attachedCount() });
+    const agents = {};
+    for (const entry of registry.list()) agents[entry.agent] = (agents[entry.agent] ?? 0) + 1;
+    res.json({ agent: defaultAgent, agents, sessions: registry.count(), attached: registry.attachedCount() });
 });
 
 // What the picker fills its suggestions from. Scanned per request rather than cached: the picker is opened
@@ -400,11 +436,33 @@ app.post("/cwd", requireKey, express.json({ limit: 4096 }), (req, res) => {
     res.json({ default: workspaceLabel(defaultCwd) });
 });
 
+// `webterm <agent>` in the container, with the interface already running. It moves what "+ New session"
+// starts and nothing else: live sessions keep the agent they were started with, because the agent is the
+// process. This is what replaced killing the server to change agents, which took every open session with it.
+app.post("/agent", requireKey, express.json({ limit: 4096 }), (req, res) => {
+    const wanted = sessionAgent(req.body?.agent);
+    if (wanted === null || req.body?.agent === undefined) {
+        res.status(400).json({ error: `not an agent this server runs (${AGENTS.join(", ")})` });
+        return;
+    }
+    if (wanted !== defaultAgent) {
+        defaultAgent = wanted;
+        console.log(`[webterm] new sessions now start ${defaultAgent}`);
+        publishAgent();
+        // Every open window shows the default on its "+ New session", so they all have to hear it.
+        broadcastSessions();
+    }
+    res.json({ default: defaultAgent });
+});
+
 // Consume the host-planted resume marker, if any. The rename is the claim: of all racing consumers
 // (this server's sessions, the shell autostart hook) exactly one wins, so only one session resumes.
 // Returns the resume command as [cmd, ...args], or null when there is nothing to resume.
-function consumeResumeMarker() {
-    if (!RESUME_MARKER) return null;
+// `agent` is what the session is about to start. The marker holds a resume command for the agent the host
+// started this interface with (DEFAULT_AGENT, not wherever the default has moved to since), so any other
+// agent leaves it alone rather than claiming a conversation it cannot open.
+function consumeResumeMarker(agent) {
+    if (!RESUME_MARKER || agent !== DEFAULT_AGENT) return null;
     const claimed = `${RESUME_MARKER}.web`;
     try {
         renameSync(RESUME_MARKER, claimed);
@@ -421,13 +479,13 @@ function consumeResumeMarker() {
     }
 }
 
-// Spawn the agent for a new session, in the directory the registry was given. Env is inherited so
-// subscription auth flows through. The first session after a container start finds the host-planted marker
-// and continues the most recent conversation; every later session starts fresh, which is what the user
-// wants once mid-work.
-function spawnAgent({ cwd }) {
-    const resume = consumeResumeMarker();
-    const [spawnCmd, ...baseArgs] = resume ?? [AGENT_CMD, ...AGENT_ARGS];
+// Spawn a new session's agent, in the directory the registry was given. Env is inherited so subscription
+// auth flows through. The first session after a container start finds the host-planted marker and continues
+// the most recent conversation; every later session starts fresh, which is what the user wants once mid-work.
+// AGENT_ARGS belong to the agent the launcher named, so any other agent is spawned bare.
+function spawnAgent({ cwd, agent }) {
+    const resume = consumeResumeMarker(agent);
+    const [spawnCmd, ...baseArgs] = resume ?? [agent, ...(agent === DEFAULT_AGENT ? AGENT_ARGS : [])];
     if (resume) console.log(`[webterm] resuming most recent conversation: ${resume.join(" ")}`);
     // Append the browser-awareness flag for claude (fresh or resumed); every other agent is untouched.
     const spawnArgs = agentSpawnArgv(spawnCmd, baseArgs);
@@ -450,23 +508,30 @@ function openSession(ws, sid) {
     else if (result === "gone") broadcastSessions();
 }
 
-// Start a session and attach this window to it. `rawCwd` is what the browser asked for, if anything: the
-// plain "+ New session" sends nothing and takes the default, the picker sends a path relative to the
-// workspace. A path that names nothing usable is refused rather than quietly swapped for the default -
-// starting an agent somewhere the user did not ask for is worse than saying no.
-function newSession(ws, rawCwd) {
+// Start a session and attach this window to it. `rawCwd` and `rawAgent` are what the browser asked for, if
+// anything: the plain "+ New session" sends neither and takes both defaults, the picker sends a path
+// relative to the workspace and the menu sends an agent. Either one naming something we cannot run is
+// refused rather than quietly swapped for the default - starting the wrong agent, or one somewhere the user
+// did not ask for, is worse than saying no.
+function newSession(ws, rawCwd, rawAgent) {
     const cwd = sessionCwd(rawCwd);
     if (cwd === null) {
         console.warn(`[webterm] refused a new session: "${rawCwd}" is not a directory inside the workspace`);
         send(ws, { t: "error", code: "cwd" });
         return;
     }
+    const agent = sessionAgent(rawAgent);
+    if (agent === null) {
+        console.warn(`[webterm] refused a new session: "${rawAgent}" is not an agent this server runs`);
+        send(ws, { t: "error", code: "agent" });
+        return;
+    }
     let created;
     try {
-        created = registry.create({ cwd, cwdLabel: workspaceLabel(cwd) });
+        created = registry.create({ cwd, cwdLabel: workspaceLabel(cwd), agent });
     } catch (err) {
-        console.error(`[webterm] could not start ${AGENT_CMD}: ${err instanceof Error ? err.message : String(err)}`);
-        send(ws, { t: "error", code: "spawn" });
+        console.error(`[webterm] could not start ${agent}: ${err instanceof Error ? err.message : String(err)}`);
+        send(ws, { t: "error", code: "spawn", agent });
         return;
     }
     if (!created.ok) {
@@ -569,17 +634,18 @@ function handleFrame(ws, msg) {
         case "attach":
             if (sid) openSession(ws, sid);
             return;
-        case "away":
-            // Whether this window is in front of the user. It changes nothing about who drives what - only
-            // whether a session finishing here is worth an alert.
-            registry.away(ws, msg.on === true);
+        case "seen":
+            // The user did something in this window - a click, a scroll, a key. It changes nothing about who
+            // drives what, only whether the next ending of the session it is driving is worth a sound. Typing
+            // arrives as "in" and is stamped there, so this covers everything that is not a keystroke.
+            registry.seen(registry.attachedSid(ws));
             return;
         case "takeover":
             if (sid) registry.takeover(sid, ws);
             return;
         case "new":
-            // No cwd on the frame means the default; the picker sends one.
-            newSession(ws, msg.cwd);
+            // No cwd or agent on the frame means the defaults; the picker and the agent menu send theirs.
+            newSession(ws, msg.cwd, msg.agent);
             return;
         case "stop":
             // Never implicit: the browser only sends this after the user confirmed a card that names
@@ -697,18 +763,11 @@ server.listen(PORT, "0.0.0.0", () => {
     // watching the port to know when to print it.
     publishKey();
     console.log(`[webterm] listening on container port ${PORT} - open the published host port in your browser`);
-    console.log(`[webterm] relaying: ${[AGENT_CMD, ...AGENT_ARGS].join(" ")} (new sessions start in ${defaultCwd})`);
+    console.log(`[webterm] agents: ${AGENTS.join(", ")} (new sessions start ${[defaultAgent, ...AGENT_ARGS].join(" ")} in ${defaultCwd})`);
     if (defaultCwdRefused) {
         console.warn(`[webterm] ignored WEBTERM_CWD="${WEBTERM_CWD_RAW}": not a directory inside ${WORKSPACE_ROOT}`);
     }
-    // Publish the relayed agent for the `webterm` launcher: a port probe proves something is listening,
-    // not what it relays. Written after listen so the file only exists once the port is really bound.
-    // Best-effort - without it the launcher just reports "already running" without naming the agent.
-    if (STATE_FILE) {
-        try {
-            writeFileSync(STATE_FILE, `${AGENT_CMD}\n`);
-        } catch {
-            // Not fatal: the state file is a convenience for the launcher's message.
-        }
-    }
+    // Publish the default agent for the `webterm` launcher: a port probe proves something is listening, not
+    // what it runs. Written after listen so the file only exists once the port is really bound.
+    publishAgent();
 });
