@@ -2,10 +2,15 @@ import assert from "node:assert/strict";
 import type { AddressInfo } from "node:net";
 import { createServer } from "node:net";
 import { describe, test } from "node:test";
+import { WEB_CONTAINER_PORT } from "../src/lib/constants.js";
 import {
     assertHostPortsAvailable,
     formatPortNotice,
+    formatWebRange,
+    inRange,
     type PortMapping,
+    parsePublishedPorts,
+    parseWebRange,
     portEnvArgs,
     portPublishArgs,
     portsLabel,
@@ -26,6 +31,42 @@ function occupyEphemeralPort(): Promise<{ server: ReturnType<typeof createServer
 function closeServer(server: ReturnType<typeof createServer>): Promise<void> {
     return new Promise((resolve) => server.close(() => resolve()));
 }
+
+// ---- inRange ----------------------------------------------------------------------------------------------------------------------------
+
+describe("inRange", () => {
+    test("accepts the bounds and rejects outside them", () => {
+        assert.equal(inRange(1024), true);
+        assert.equal(inRange(65535), true);
+        assert.equal(inRange(1023), false);
+        assert.equal(inRange(65536), false);
+        assert.equal(inRange(3900.5), false);
+    });
+});
+
+// ---- parseWebRange / formatWebRange -----------------------------------------------------------------------------------------------------
+
+describe("parseWebRange", () => {
+    test("parses a valid range and round-trips through formatWebRange", () => {
+        assert.deepEqual(parseWebRange("3900-3999"), { start: 3900, end: 3999 });
+        assert.equal(formatWebRange({ start: 3900, end: 3999 }), "3900-3999");
+        assert.deepEqual(parseWebRange("  4000-4001 "), { start: 4000, end: 4001 });
+    });
+
+    test("rejects malformed input", () => {
+        assert.equal(parseWebRange("3900"), null);
+        assert.equal(parseWebRange("3900:3999"), null);
+        assert.equal(parseWebRange("a-b"), null);
+        assert.equal(parseWebRange(""), null);
+    });
+
+    test("rejects reversed, equal, and out-of-bounds ranges", () => {
+        assert.equal(parseWebRange("3999-3900"), null);
+        assert.equal(parseWebRange("3900-3900"), null);
+        assert.equal(parseWebRange("100-3999"), null);
+        assert.equal(parseWebRange("3900-70000"), null);
+    });
+});
 
 // ---- validatePortsConfig ----------------------------------------------------------------------------------------------------------------
 
@@ -74,6 +115,15 @@ describe("validatePortsConfig", () => {
     test("rejects duplicate host ports, whether bare or mapped", () => {
         assert.throws(() => validatePortsConfig([{ port: 4820 }, { port: 4820 }]), /duplicate host port 4820/);
         assert.throws(() => validatePortsConfig([{ port: 8080 }, { port: "8080:3000" }]), /duplicate host port 8080/);
+    });
+
+    test("reserves the web interface container port, in either entry form", () => {
+        // Two publishers on container 3899 means whichever binds first wins, so the web URL could front
+        // the user's service. Rejected up front rather than skipped later.
+        assert.throws(() => validatePortsConfig([{ port: WEB_CONTAINER_PORT }]), /reserved for the totopo web agent interface/);
+        assert.throws(() => validatePortsConfig([{ port: `8080:${WEB_CONTAINER_PORT}` }]), /reserved for the totopo web agent interface/);
+        // The reservation is on the container side only - the same number as a host port is fine.
+        assert.doesNotThrow(() => validatePortsConfig([{ port: `${WEB_CONTAINER_PORT}:3000` }]));
     });
 
     test("rejects duplicate env names", () => {
@@ -197,5 +247,52 @@ describe("assertHostPortsAvailable", () => {
         } finally {
             await closeServer(server);
         }
+    });
+
+    test("never fails a session over the web interface port", async () => {
+        const { server, port } = await occupyEphemeralPort();
+        try {
+            // The web interface is optional, so its mapping is skipped even though the port is taken -
+            // the caller drops it and the session runs on. Only totopo.yaml ports are hard failures.
+            await assert.doesNotReject(assertHostPortsAvailable([{ host: port, container: WEB_CONTAINER_PORT }], port));
+        } finally {
+            await closeServer(server);
+        }
+    });
+
+    test("still fails on a taken totopo.yaml port alongside a skipped web port", async () => {
+        const { server, port } = await occupyEphemeralPort();
+        try {
+            const mappings = [
+                { host: port, container: WEB_CONTAINER_PORT },
+                { host: port, container: 3000 },
+            ];
+            // The web entry is skipped; the totopo.yaml entry on the same taken host port is not.
+            await assert.rejects(assertHostPortsAvailable(mappings, port), (err: Error) => {
+                assert.match(err.message, /already in use/);
+                assert.match(err.message, new RegExp(`"${port}:3000"`));
+                return true;
+            });
+        } finally {
+            await closeServer(server);
+        }
+    });
+});
+
+// ---- parsePublishedPorts (pure) ---------------------------------------------------------------------------------------------------------
+
+describe("parsePublishedPorts", () => {
+    test("reads host ports out of a docker ps ports column", () => {
+        const out = "127.0.0.1:3900->3899/tcp\n[::]:5432->5432/tcp, 0.0.0.0:8080->80/tcp\n";
+        assert.deepEqual(
+            [...parsePublishedPorts(out)].sort((a, b) => a - b),
+            [3900, 5432, 8080],
+        );
+    });
+
+    test("is empty for no output and ignores unpublished ports", () => {
+        assert.equal(parsePublishedPorts("").size, 0);
+        // An exposed-but-unpublished port has no "->" host side.
+        assert.equal(parsePublishedPorts("3899/tcp").size, 0);
     });
 });

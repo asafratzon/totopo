@@ -43,6 +43,13 @@ export const CONTAINER_STARTUP = `${CONTAINER_HOME}/startup.mjs`;
 // and the store-dir env var (RUNTIME_ENV below) so the mount target and the env var can never drift apart.
 export const CONTAINER_PNPM_STORE = `${CONTAINER_HOME}/.local/share/pnpm/store`;
 
+// What the container runs as PID 1 so it stays up between sessions. It has to be a shell that traps TERM,
+// not a bare `sleep infinity`: the kernel drops signals sent to PID 1 from inside its own PID namespace
+// unless PID 1 installed a handler, and without a handler nothing in the container - including the web
+// interface's "stop the container" button - can ever end it. `docker stop` from the host works either way,
+// and gets cleaner with the trap: an immediate exit 0 instead of the 10s timeout and a SIGKILL.
+export const CONTAINER_KEEP_ALIVE = ["bash", "-c", 'trap "exit 0" TERM INT; while :; do sleep 86400 & wait $!; done'] as const;
+
 // Claude Code default status line script - baked into the image, referenced from ~/.claude/settings.json
 export const CLAUDE_STATUSLINE_PATH = "/usr/local/share/totopo/claude-statusline.sh";
 
@@ -123,3 +130,29 @@ export const AUDIO_MODES: readonly AudioMode[] = Object.values(AUDIO_MODE);
 export const AUTO_START = { off: "off", claude: "claude", opencode: "opencode", codex: "codex" } as const;
 export type AutoStartAgent = (typeof AUTO_START)[keyof typeof AUTO_START];
 export const AUTO_START_AGENTS: readonly AutoStartAgent[] = Object.values(AUTO_START);
+
+// Web agent interface (webterm). The server always binds this fixed container port; totopo publishes it
+// loopback-only to a sticky per-workspace host port taken from web_range (host-global setting).
+export const WEB_CONTAINER_PORT = 3899;
+export const WEB_RANGE_DEFAULT = "3900-3999";
+
+// Where the webterm server publishes the key its URL carries (`/?k=<key>`). A new key is minted every time
+// that server starts and written here as soon as it has the port, so whoever prints the URL reads it back
+// from this file rather than storing one: the container greeting, the `webterm` launcher, and totopo on the
+// host before it probes /status. Container-side path - the host only ever reads it through `docker exec`.
+export const WEB_KEY_FILE_PATH = "/tmp/webterm.key";
+
+// Resume marker: a host-written container file whose content is the full command that resumes the most
+// recent conversation. Planted by dev.ts on every container create/start when auto-start is on; consumed
+// (rename-then-read, atomic) by exactly one of the webterm server or the .bashrc autostart hook, so the
+// first session after a container start resumes and every later one starts fresh. Lives in the devuser
+// home, not /tmp - consumers execute the file's content, so it must not sit in a world-writable dir.
+export const RESUME_MARKER_PATH = `${CONTAINER_HOME}/.totopo-resume-pending`;
+
+// Per-agent command that reopens the most recent conversation. Pinned against the real CLIs by the
+// drift test in tests/webterm.test.ts, which checks each flag/subcommand against the CLI's own help.
+export const AGENT_RESUME_COMMAND: Record<Exclude<AutoStartAgent, "off">, string> = {
+    claude: "claude --continue",
+    opencode: "opencode --continue",
+    codex: "codex resume --last",
+};

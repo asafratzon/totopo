@@ -82,13 +82,21 @@ RUN git config --system protocol.allow never && \
 # pnpm is pinned exact: pnpm 11 changed where global settings are read from
 # (~/.config/pnpm/config.yaml, no longer ~/.npmrc), so an unpinned major bump
 # can silently break the baked store-dir config.
+#
+# The date is stamped in this same RUN, not further down, because it is the
+# claim "the CLIs are this fresh" and startup.mjs skips its update for a day
+# on the strength of it. Docker caches this layer until a line above changes,
+# so an image rebuilt weeks later can carry CLIs weeks old; written here, the
+# stamp is cached along with them and stays true. Written to a neutral path
+# because /home/devuser does not exist yet - the next layer copies it in.
 # ---------------------------------------------------------------------------
 RUN npm install -g \
     pnpm@11.6.0 \
     opencode-ai \
     @anthropic-ai/claude-code \
     @openai/codex \
-    && npm cache clean --force
+    && npm cache clean --force \
+    && date -u +"%Y-%m-%dT%H:%M:%S.000Z" > /usr/local/share/ai-cli-installed
 
 # ---------------------------------------------------------------------------
 # Layer 8 - Non-root user
@@ -96,7 +104,7 @@ RUN npm install -g \
 RUN groupadd --gid 1001 devuser && \
     useradd --uid 1001 --gid devuser --shell /bin/bash --create-home devuser && \
     mkdir -p /home/devuser/.local/state /home/devuser/.local/share /home/devuser/.local/share/pnpm /home/devuser/.local/bin /home/devuser/.config/pnpm && \
-    date -u +"%Y-%m-%dT%H:%M:%S.000Z" > /home/devuser/.ai-cli-updated && \
+    cp /usr/local/share/ai-cli-installed /home/devuser/.ai-cli-updated && \
     chown -R devuser:devuser /home/devuser
 
 # ---------------------------------------------------------------------------
@@ -133,6 +141,18 @@ RUN chmod +x /usr/local/share/totopo/claude-statusline.sh
 COPY context-usage.sh /usr/local/share/totopo/context-usage.sh
 RUN chmod +x /usr/local/share/totopo/context-usage.sh && \
     ln -sf /usr/local/share/totopo/context-usage.sh /usr/local/bin/context-usage
+
+# ---------------------------------------------------------------------------
+# Layer 13 - Bake webterm (web agent interface) with deps preinstalled
+# npm ci builds node-pty against this image's toolchain (Layer 1). The
+# launcher gates on TOTOPO_WEB_URL, so the command is inert until the
+# feature is enabled on the host (Settings > Web interface).
+# ---------------------------------------------------------------------------
+COPY webterm/ /usr/local/share/totopo/webterm/
+RUN cd /usr/local/share/totopo/webterm && npm ci --omit=dev && npm cache clean --force
+COPY webterm.sh /usr/local/share/totopo/webterm.sh
+RUN chmod +x /usr/local/share/totopo/webterm.sh && \
+    ln -sf /usr/local/share/totopo/webterm.sh /usr/local/bin/webterm
 
 WORKDIR /workspace
 

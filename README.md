@@ -99,7 +99,7 @@ On every run, totopo shows the workspace menu:
 
 - **Open session** - start or resume the dev container and connect
 - **Stop container** - stop the running container
-- **Settings** - git mode, shadow paths, voice, auto-start agent, rebuild, reset config
+- **Settings** - git mode, shadow paths, voice, auto-start agent, web interface, rebuild, reset config
 - **Advanced** - multi-workspace management (stop containers, clear memory, uninstall)
 
 ### Working directory
@@ -231,6 +231,9 @@ Add a `profiles` block like the one above when you want image variants.
 When two or more profiles are defined, totopo prompts you to pick one at session start (the choice is remembered); when only one is defined it is selected automatically.
 A profile change triggers a container rebuild on the next session.
 
+Hook lines run **as root, at image build time** - totopo appends `USER devuser` after them - so there is no `sudo` to write and no `$HOME` to install into.
+Anything you install for the container user has to be readable by it, which is what the Rust example above does with `chmod -R a+rx`.
+
 The base image is defined in [`templates/Dockerfile`](templates/Dockerfile) - inspect it to see what's already included before adding your own layers. To force a fully fresh build (no Docker layer cache), use **Settings > Clean rebuild**.
 
 ### AI CLIs
@@ -243,7 +246,7 @@ codex       # Codex (OpenAI)
 opencode    # OpenCode
 ```
 
-Agents are self-aware - sandbox constraints, git remote block, and any active shadow path overlays are injected into agent context at every session start.
+At every session start, totopo injects the sandbox constraints, the git remote block, and any active shadow paths into the agent's context, so each agent knows what it can and cannot do.
 
 totopo keeps all three CLIs on their latest published versions, checking for updates automatically.
 
@@ -255,7 +258,7 @@ For convenience, every Claude session opens with a status line at the bottom of 
 🤖 Opus 4.8 xhigh · 🧠 174k / 1M (17%) · ⚡ ▓▓▓▓▓▓▓▓░░ 83% (🔌 2h 15m) · Claude Code v2.1.132
 ```
 
-Four segments: the model display name (any parenthetical such as "(1M context)" trimmed) followed by reasoning effort in purple, current context usage as used tokens over the window size with a percentage, an energy gauge of the 5-hour rate-limit window showing the share remaining - green while plenty is left, yellow then red as it drains - with a countdown to recharge (subscriber accounts only), and the installed Claude Code CLI version with a freshness hint that escalates as the install ages. Ask Claude `/totopo-statusline` to customize or restore the default.
+Four segments: the model name with its reasoning effort in purple (any parenthetical such as "(1M context)" is trimmed); context usage, as used tokens over the window size with a percentage; how much of the 5-hour rate-limit window is left - green while plenty is, then yellow and red as it drains - with a countdown to recharge on subscriber accounts; and the installed Claude Code CLI version, with a hint that gets more insistent as the install ages. Ask Claude `/totopo-statusline` to customize or restore the default.
 
 The same data is snapshotted to `~/.claude/context-usage/` on every prompt render, so you can ask Claude itself how much context or quota is left - it reads the snapshot via the bundled `context-usage` helper.
 
@@ -306,6 +309,35 @@ Claude Code's `/voice` records from a mic via SoX, but a container has none (on 
 By default a session drops you into a shell where you run `claude`, `opencode`, or `codex` yourself. To launch your favorite agent automatically as each session starts, pick it under **Settings → Auto-start agent**. Quit the agent and you land back in the container shell (the session stays open) - the info banner still lists how to run `status`, `exit`, and the other agents.
 
 This is a host-global preference (stored in `~/.totopo/global/config`), so it applies to every workspace. Changing it recreates the current workspace's container; other workspaces pick it up on their next session.
+
+When the [web agent interface](#web-agent-interface) is enabled, the same setting auto-starts the web terminal instead of launching an agent in the shell, with the chosen agent as the one its new sessions start with.
+
+With auto-start on, the first session after a container starts resumes your most recent conversation; later sessions start fresh.
+For claude, totopo picks the newest conversation that actually has messages and resumes it by id; opencode and codex use their own `--continue` / `resume --last` flags.
+
+## Web agent interface
+
+An opt-in browser front-end for the agents in the container.
+It relays the real agent TUI - your subscription, no API key, same sandbox - and adds what a terminal cannot: every session on one page, images, and dictation.
+Turn it on under **Settings → Web interface** (off by default), then run `webterm claude` (or `opencode` / `codex`) in the container to start it and print its URL - the agent you name is the one new sessions start with, and the browser can pick another per session.
+With [auto-start](#auto-start-agent) on it comes up by itself and the greeting shows the URL.
+
+![totopo web interface](.github/assets/webterm.png)
+
+- **Every session in one page.** The tab bar lists every session running in the container, up to 8. Click to switch, `+ New session` to start one, double-click to rename, drag to reorder.
+- **Several agents at once.** One server runs claude, opencode and codex - one agent per session - so the bar can hold a `claude 1` tab next to a `codex 2` tab, each in its own directory. `+ New session` starts the usual one; the chevron beside it opens a small panel that asks which agent and which directory. `webterm <agent>` in the container moves which one is usual, without ending anything.
+- **Sessions start where you did.** Run `npx totopo` inside `apps/api` and the browser's agent works on `apps/api`, the same directory a terminal session lands in. The chevron beside `+ New session` opens one somewhere else, and each session keeps its own for life.
+- **Sessions outlive the browser.** They belong to the container, so a closed tab, dropped wifi or a slept laptop ends nothing, and opening the URL anywhere shows them all. One window drives a session at a time; another can take it over.
+- **Tabs show what each agent is doing.** A light runs round a tab while its agent works, and the tab stays lit when one finishes, until you go and look. The browser tab shows the same from behind another window: the title counts the sessions waiting, and the icon carries a white bar sweeping along its bottom edge while an agent works and a green dot in its corner while one waits.
+- **A chime when an agent finishes something you were not there for.** Ten seconds after a session finishes, if nobody has touched it since - no key, no click, no scroll - it sounds once. Touching it in those ten seconds is what calls the sound off, so the sessions you are actually working in stay quiet. The bell in the tab bar mutes it, and the choice is remembered.
+- **Images and dictation.** Paste, drop or upload an image and the agent gets its path; dictate instead of typing.
+- **Drafts stay with their session.** A half-written message, attachments included, waits until you send it or the session ends.
+- **Stop the container from the page.** The power button at the right of the tab bar stops it - every session in it, browser and terminal alike - after a prompt that names what ends.
+- **Its own sticky host port.** One loopback-only port per workspace from a range (default `3900-3999`), kept host-side and never in `totopo.yaml`, so the port survives restarts and rebuilds. Container port `3899` is reserved for the relay.
+- **A key in the URL.** The printed URL ends in `/?k=<key>`, and the relay rejects anything without it - the page, the socket, uploads and the status probe alike. The key is created when the interface starts and never stored on the host, so it dies with the container. Reaching the port is not enough to drive your agent.
+  If the key is no longer the live one, or the container is gone, the page says so instead of looking usable.
+- **Same sandbox as the terminal.** Loopback-only, key-gated, origin-checked, non-root.
+- **It never blocks a session.** If no port is free or the server does not come up, totopo says so and opens the session without it.
 
 ## Troubleshooting
 

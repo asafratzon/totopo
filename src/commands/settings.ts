@@ -7,11 +7,22 @@ import { relative } from "node:path";
 import { cancel, confirm, isCancel, log, multiselect, note, outro, path, select, text } from "@clack/prompts";
 import { getStatus, IS_MACOS, installPulse, startServer, stopServer, testMic } from "../lib/audio-host.js";
 import { AUDIO_MODE, AUDIO_TCP_PORT, AUTO_START, type AutoStartAgent, GIT_MODE, type GitMode } from "../lib/constants.js";
-import { readAudioMode, readAutoStartAgent, writeAudioMode, writeAutoStartAgent } from "../lib/global-config.js";
+import {
+    readAudioMode,
+    readAutoStartAgent,
+    readWebEnabled,
+    readWebRange,
+    writeAudioMode,
+    writeAutoStartAgent,
+    writeWebEnabled,
+    writeWebRange,
+} from "../lib/global-config.js";
+import { formatWebRange, PORT_MAX, PORT_MIN, parseWebRange } from "../lib/ports.js";
 import { countPatternHits } from "../lib/shadows.js";
 import { buildDefaultTotopoYaml, readTotopoYaml, writeTotopoYaml } from "../lib/totopo-yaml.js";
+import { assignWebPortsToAllWorkspaces, readWebKey, reassignOutOfRangeWebPorts } from "../lib/webterm.js";
 import type { WorkspaceContext } from "../lib/workspace-identity.js";
-import { readAudio, readGitMode, writeAudio, writeGitMode } from "../lib/workspace-identity.js";
+import { readAudio, readGitMode, readWebPort, writeAudio, writeGitMode } from "../lib/workspace-identity.js";
 
 // --- Shadow paths menu -------------------------------------------------------------------------------------------------------------------
 async function shadowPathsMenu(ctx: WorkspaceContext): Promise<void> {
@@ -279,12 +290,117 @@ async function audioMenu(ctx: WorkspaceContext): Promise<void> {
     }
 }
 
+// --- Web agent interface menu ------------------------------------------------------------------------------------------------------------
+async function webInterfaceMenu(ctx: WorkspaceContext): Promise<void> {
+    while (true) {
+        const enabled = readWebEnabled();
+        const range = readWebRange();
+        const webPort = readWebPort(ctx.workspaceId);
+
+        // The URL only opens the interface with the key the running server minted, so the live one is shown
+        // whenever it can be read. With nothing running there is no key to show, and saying where it comes
+        // from beats printing half a URL.
+        const liveKey = webPort === null ? null : readWebKey(ctx.containerName);
+        const url =
+            webPort === null
+                ? "no port assigned yet"
+                : liveKey !== null
+                  ? `http://localhost:${webPort}/?k=${liveKey}`
+                  : `http://localhost:${webPort}  (the key comes with the interface when it starts)`;
+
+        note(
+            `web interface:  ${enabled ? "enabled" : "disabled"}  (all workspaces)\n` +
+                `port range:     ${formatWebRange(range)}\n` +
+                `this workspace: ${url}`,
+            "Web agent interface",
+        );
+
+        log.message(
+            "A browser front-end for the agents (claude, opencode, codex) running in the container -\n" +
+                "the real TUI plus image paste, file upload, and dictation, with any of the three per session.\n" +
+                "Loopback-only, never reachable off this machine.\n" +
+                "Each workspace keeps one sticky port from the range, so its URL never changes.\n" +
+                "The URL also carries a key, minted fresh every time the interface starts and refused once it restarts.\n" +
+                "Run webterm inside the container to start it; with auto-start on it starts by itself.",
+        );
+
+        const action = await select({
+            message: "Web interface:",
+            options: [
+                {
+                    value: "toggle",
+                    label: enabled ? "Disable web interface" : "Enable web interface",
+                    hint: enabled ? "the webterm command goes dormant" : "assigns every workspace a sticky port",
+                },
+                { value: "range", label: "Port range", hint: `current: ${formatWebRange(range)}` },
+                { value: "back", label: "← Back" },
+            ],
+        });
+        if (isCancel(action) || action === "back") return;
+
+        if (action === "toggle") {
+            const next = !enabled;
+            writeWebEnabled(next);
+            if (next) {
+                // Enable-time walk: every known workspace takes its sticky port now, so URLs are
+                // predictable from the start and no allocation happens at session time.
+                const assigned = assignWebPortsToAllWorkspaces(range);
+                for (const a of assigned) {
+                    log.info(`${a.workspaceId}: port ${a.port}`);
+                }
+                const own = readWebPort(ctx.workspaceId);
+                // The port, not a URL: the interface is not running yet, and the URL is only complete once
+                // it starts and mints the key it will accept.
+                log.success(`Web interface enabled${own !== null ? ` - this workspace: port ${own}` : ""}.`);
+            } else {
+                // Sticky ports stay in every .lock so re-enabling restores the same URLs.
+                log.success("Web interface disabled.");
+            }
+            await promptStopContainer(ctx);
+            continue;
+        }
+
+        // action === "range"
+        const input = await text({
+            message: "Port range (START-END):",
+            placeholder: formatWebRange(range),
+            initialValue: formatWebRange(range),
+            validate: (v) => {
+                const raw = (v ?? "").trim();
+                if (!/^\d+-\d+$/.test(raw)) return "Use START-END, e.g. 3900-3999";
+                const parsed = parseWebRange(raw);
+                if (!parsed) {
+                    const [start = 0, end = 0] = raw.split("-").map(Number);
+                    if (start >= end) return "Start must be below end";
+                    return `Ports must be between ${PORT_MIN} and ${PORT_MAX}`;
+                }
+                return undefined;
+            },
+        });
+        if (isCancel(input)) continue;
+
+        const newRange = parseWebRange((input as string).trim());
+        if (!newRange) continue; // Validate above guarantees this never fires; keeps the type narrow.
+        if (formatWebRange(newRange) === formatWebRange(range)) continue;
+
+        writeWebRange(newRange);
+        // Only assignments now outside the range move; in-range ports stay sticky.
+        const moves = reassignOutOfRangeWebPorts(newRange);
+        for (const m of moves) {
+            log.info(`${m.workspaceId}: port ${m.from} -> ${m.to}`);
+        }
+        log.success(`Port range set to ${formatWebRange(newRange)}.`);
+        if (enabled) await promptStopContainer(ctx);
+    }
+}
+
 // --- Auto-start agent menu ---------------------------------------------------------------------------------------------------------------
 async function autoStartMenu(ctx: WorkspaceContext): Promise<void> {
     const current = readAutoStartAgent();
 
     note(
         "When set, the chosen agent launches automatically as you enter the container; quit it and you drop to a shell.\n" +
+            "When the web interface is enabled, the agent auto-starts in the web terminal instead of the shell.\n" +
             "This is a host-global preference - it applies to every workspace.",
         "Auto-start agent",
     );
@@ -371,6 +487,7 @@ export async function run(ctx: WorkspaceContext): Promise<"back" | "rebuild" | "
             { value: "git-mode", label: "Git mode", hint: `current: ${currentGitMode}` },
             { value: "shadow-paths", label: "Shadow paths", hint: "manage shadow patterns" },
             { value: "audio", label: "Voice / audio", hint: "Claude Code /voice mic setup" },
+            { value: "web", label: "Web interface", hint: readWebEnabled() ? "enabled" : "browser front-end for agents" },
             { value: "auto-start", label: "Auto-start agent", hint: `current: ${readAutoStartAgent()}` },
             { value: "rebuild", label: "Rebuild container", hint: "force a fresh image build" },
             { value: "clean-rebuild", label: "Clean rebuild", hint: "fresh build, no cache" },
@@ -393,6 +510,9 @@ export async function run(ctx: WorkspaceContext): Promise<"back" | "rebuild" | "
                 break;
             case "audio":
                 await audioMenu(ctx);
+                break;
+            case "web":
+                await webInterfaceMenu(ctx);
                 break;
             case "auto-start":
                 await autoStartMenu(ctx);
@@ -424,10 +544,10 @@ export async function stop(containerName: string): Promise<void> {
     }
 
     log.info(`Stopping ${containerName}...`);
+    // Stop-only (no rm) so the next session resumes fast via the "exited" -> docker start path.
     spawnSync("docker", ["stop", containerName], { stdio: "pipe" });
-    spawnSync("docker", ["rm", containerName], { stdio: "pipe" });
 
-    outro(`${containerName} stopped and removed.`);
+    outro(`${containerName} stopped.`);
 }
 
 // --- Reset workspace image (stop container + remove image for fresh rebuild) -------------------------------------------------------------

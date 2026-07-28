@@ -127,7 +127,7 @@ describe("session lifecycle", () => {
 
     test("creates container and returns 'created'", async () => {
         const result = await startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
-        assert.equal(result, "created");
+        assert.equal(result.status, "created");
         assert.equal(dockerContainerStatus(containerName), "running");
     });
 
@@ -220,7 +220,7 @@ describe("session lifecycle", () => {
     test("second call to running container returns 'connected'", async () => {
         await startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
         const result = await startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
-        assert.equal(result, "connected");
+        assert.equal(result.status, "connected");
         assert.equal(dockerContainerStatus(containerName), "running");
     });
 
@@ -230,7 +230,7 @@ describe("session lifecycle", () => {
         assert.equal(dockerContainerStatus(containerName), "exited");
 
         const result = await startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
-        assert.equal(result, "resumed");
+        assert.equal(result.status, "resumed");
         assert.equal(dockerContainerStatus(containerName), "running");
     });
 
@@ -246,7 +246,7 @@ describe("session lifecycle", () => {
         const result = await startContainer(
             makeOpts(containerName, workspaceRoot, cacheDir, { expandedShadows: expanded, shadowPatterns: ["node_modules"] }),
         );
-        assert.equal(result, "created", "container should be recreated after shadow change");
+        assert.equal(result.status, "created", "container should be recreated after shadow change");
         assert.ok(dockerContainerLabel(containerName, LABEL_SHADOWS).includes("node_modules"), "shadow label should reflect new shadow");
     });
 
@@ -255,7 +255,7 @@ describe("session lifecycle", () => {
         assert.equal(dockerContainerLabel(containerName, LABEL_PROFILE), DEFAULT_PROFILE);
 
         const result = await startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { activeProfile: "extended" }));
-        assert.equal(result, "created", "container should be recreated after profile change");
+        assert.equal(result.status, "created", "container should be recreated after profile change");
         assert.equal(dockerContainerLabel(containerName, LABEL_PROFILE), "extended");
     });
 
@@ -296,7 +296,7 @@ describe("session lifecycle", () => {
             makeOpts(containerName, workspaceRoot, cacheDir, { envConfig: validateEnvConfig(".env", workspaceRoot) }),
         );
 
-        assert.equal(result, "created", "container should be recreated when env changes");
+        assert.equal(result.status, "created", "container should be recreated when env changes");
         assert.equal(dockerExec(containerName, ["printenv", "TOTOPO_TEST_VAR"]).stdout, "changed789");
         assert.notEqual(dockerContainerLabel(containerName, LABEL_ENV), labelBefore, "env label must reflect the edited file");
     });
@@ -313,7 +313,7 @@ describe("session lifecycle", () => {
         assert.equal(dockerContainerLabel(containerName, LABEL_GIT_MODE), GIT_MODE.local);
 
         const result = await startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { gitMode: GIT_MODE.strict }));
-        assert.equal(result, "created", "container should be recreated when git mode changes");
+        assert.equal(result.status, "created", "container should be recreated when git mode changes");
         assert.equal(dockerContainerLabel(containerName, LABEL_GIT_MODE), GIT_MODE.strict);
     });
 
@@ -346,7 +346,7 @@ describe("session lifecycle", () => {
 
             writeAutoStartAgent(AUTO_START.claude);
             const result = await startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
-            assert.equal(result, "created", "container should be recreated when the auto-start agent changes");
+            assert.equal(result.status, "created", "container should be recreated when the auto-start agent changes");
             assert.equal(dockerContainerLabel(containerName, LABEL_AUTOSTART), AUTO_START.claude);
             assert.equal(dockerExec(containerName, ["printenv", "TOTOPO_AUTOSTART"]).stdout, AUTO_START.claude);
         } finally {
@@ -389,7 +389,7 @@ describe("session lifecycle", () => {
         assert.equal(dockerContainerLabel(containerName, LABEL_AUDIO), "false");
 
         const result = await startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { audio: true }));
-        assert.equal(result, "created", "container should be recreated when audio is toggled");
+        assert.equal(result.status, "created", "container should be recreated when audio is toggled");
         assert.equal(dockerContainerLabel(containerName, LABEL_AUDIO), audioStateLabel(true, undefined));
     });
 
@@ -407,7 +407,7 @@ describe("session lifecycle", () => {
         assert.equal(labelA, audioStateLabel(true, cookieA));
 
         const result = await startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { audio: true, audioCookiePath: cookieB }));
-        assert.equal(result, "created", "container should be recreated when the cookie path changes");
+        assert.equal(result.status, "created", "container should be recreated when the cookie path changes");
         assert.equal(dockerContainerLabel(containerName, LABEL_AUDIO), audioStateLabel(true, cookieB));
         assert.notEqual(dockerContainerLabel(containerName, LABEL_AUDIO), labelA, "audio label must reflect the new cookie path");
     });
@@ -547,7 +547,7 @@ describe("profile hooks", () => {
                 profileHook: "",
             }),
         );
-        assert.equal(result, "created");
+        assert.equal(result.status, "created");
         const whoami = dockerExec(containerName, ["whoami"]);
         assert.equal(whoami.stdout, "devuser");
     });

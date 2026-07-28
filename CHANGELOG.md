@@ -7,6 +7,23 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [3.16.0] - 2026-07-28
+
+### Added
+
+- A browser front-end for your agents - the web interface. Turn it on under Settings > Web interface, then run `webterm claude` in the container to drive the real agent TUI from your browser: sessions live in the container, run several at a time, and each starts where you ran `npx totopo`. One server runs claude, opencode and codex side by side, one agent per session, so the chevron beside `+ New session` asks which agent and which directory the next one gets. When an agent finishes its tab lights up, and ten seconds later a chime follows for a session nobody has come back to; the bell in the tab bar mutes it. Existing containers are offered a rebuild on next session start.
+
+### Changed
+
+- Stopping containers from the Advanced menu now leaves them in place, so the next session resumes fast; Stop containers and Clear agent memory always ask which one.
+
+### Fixed
+
+- A rebuilt container could start with AI CLIs weeks out of date - the "last updated" stamp was written even when the install layer came from Docker's cache.
+- With auto-start on, resume now picks up the conversation from the directory you ran `npx totopo` in, instead of always the workspace root.
+
+---
+
 ## [3.15.1] - 2026-07-21
 
 ### Changed

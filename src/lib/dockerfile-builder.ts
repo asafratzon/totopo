@@ -5,11 +5,20 @@
 
 import { spawn, spawnSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { type Dirent, existsSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spinner } from "@clack/prompts";
-import { CONTAINER_HOME, CONTAINER_NAME_PREFIX, CONTAINER_STARTUP, CONTAINER_USER, LABEL_BUILD_HASH, LABEL_MANAGED } from "./constants.js";
+import {
+    CONTAINER_HOME,
+    CONTAINER_NAME_PREFIX,
+    CONTAINER_STARTUP,
+    CONTAINER_USER,
+    LABEL_BUILD_HASH,
+    LABEL_MANAGED,
+    RESUME_MARKER_PATH,
+    WEB_KEY_FILE_PATH,
+} from "./constants.js";
 
 // --- User shell config appended after USER instruction -----------------------------------------------------------------------------------
 
@@ -21,24 +30,50 @@ ENV PATH="${CONTAINER_HOME}/.cargo/bin:${CONTAINER_HOME}/.bun/bin:${CONTAINER_HO
 # Prompt helper: print the working directory relative to the workspace root, so /workspace shows as
 # "/" and /workspace/src shows as "/src". Paths outside the workspace fall back to their full path.
 RUN echo '__totopo_pwd() { local p="\${PWD#/workspace}"; printf "/%s" "\${p#/}"; }' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo '# The web interface URL, key and all. The key is minted by the webterm server at every start and' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo '# published to the key file, so the greeting reads it back instead of holding a URL that goes stale.' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo '__totopo_web_url() { if [ -r ${WEB_KEY_FILE_PATH} ]; then echo "\${TOTOPO_WEB_URL}/?k=$(head -n 1 ${WEB_KEY_FILE_PATH})"; else echo "\${TOTOPO_WEB_URL}"; fi; }' \\
+        >> ${CONTAINER_HOME}/.bashrc && \\
     echo 'export PS1="\\[\\033[01;32m\\][totopo@\${TOTOPO_WORKSPACE}]\\[\\033[00m\\] \\[\\033[01;34m\\]\\$(__totopo_pwd)\\[\\033[00m\\] \\[\\033[01;32m\\]❯\\[\\033[00m\\] "' \\
         >> ${CONTAINER_HOME}/.bashrc && \\
     echo 'echo ""' >> ${CONTAINER_HOME}/.bashrc && \\
     echo 'echo -e "\\033[32m●\\033[0m  \\033[1mYou'"'"'re now in a totopo sandbox\\033[0m \\033[90m·\\033[0m \\033[1m\${TOTOPO_WORKSPACE}\\033[0m"' >> ${CONTAINER_HOME}/.bashrc && \\
     echo 'echo ""' >> ${CONTAINER_HOME}/.bashrc && \\
     echo 'echo -e "   \\033[90m▸ Run \\033[38;5;208mclaude\\033[90m, \\033[38;5;208mopencode\\033[90m, or \\033[38;5;208mcodex\\033[90m to start an agent.\\033[0m"' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo '# Web agent interface hint. TOTOPO_WEB_URL is injected by docker run only when the feature is enabled on the host.' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo 'if [ -n "$TOTOPO_WEB_URL" ] && [ -z "$TOTOPO_AUTOSTART" ]; then' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo '    echo -e "   \\033[90m▸ Run \\033[38;5;208mwebterm <agent>\\033[90m to open one in the web interface.\\033[0m"' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo 'fi' >> ${CONTAINER_HOME}/.bashrc && \\
     echo 'echo -e "   \\033[90m▸ Run \\033[97mstatus\\033[90m to see container details & installed versions.\\033[0m"' >> ${CONTAINER_HOME}/.bashrc && \\
     echo 'echo -e "   \\033[90m▸ Run \\033[97mexit\\033[90m to end the session and return to the host.\\033[0m"' >> ${CONTAINER_HOME}/.bashrc && \\
     echo 'echo ""' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo '# With auto-start on, the agent runs in the web terminal - announce it like the shell auto-start, URL on its own line.' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo 'if [ -n "$TOTOPO_WEB_URL" ] && [ -n "$TOTOPO_AUTOSTART" ]; then' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo '    echo -e "\\033[32m●\\033[0m  \\033[90mAuto-start enabled: \\033[38;5;208m\${TOTOPO_AUTOSTART}\\033[90m is available in the web interface.\\033[0m"' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo '    echo ""' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo '    echo -e "   \\033[97m$(__totopo_web_url)\\033[0m"' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo '    echo ""' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo 'fi' >> ${CONTAINER_HOME}/.bashrc && \\
     echo 'alias status="node ${CONTAINER_STARTUP}"' >> ${CONTAINER_HOME}/.bashrc && \\
     echo '' >> ${CONTAINER_HOME}/.bashrc && \\
     echo '# Auto-start the configured agent. TOTOPO_AUTOSTART is set by docker run when the host-global setting is on.' >> ${CONTAINER_HOME}/.bashrc && \\
     echo '# The exported TOTOPO_AUTOSTARTED guard makes nested shells and the post-exit shell skip relaunching.' >> ${CONTAINER_HOME}/.bashrc && \\
-    echo 'if [ -n "$TOTOPO_AUTOSTART" ] && [ -z "$TOTOPO_AUTOSTARTED" ]; then' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo '# When the web interface is on (TOTOPO_WEB_URL set), the webterm server fronts the agent instead of the shell.' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo 'if [ -n "$TOTOPO_AUTOSTART" ] && [ -z "$TOTOPO_AUTOSTARTED" ] && [ -z "$TOTOPO_WEB_URL" ]; then' >> ${CONTAINER_HOME}/.bashrc && \\
     echo '    export TOTOPO_AUTOSTARTED=1' >> ${CONTAINER_HOME}/.bashrc && \\
-    echo '    echo -e "\\033[32m●\\033[0m  \\033[90mAuto-start enabled: launching \\033[38;5;208m\${TOTOPO_AUTOSTART}\\033[90m.\\033[0m"' >> ${CONTAINER_HOME}/.bashrc && \\
-    echo '    echo ""' >> ${CONTAINER_HOME}/.bashrc && \\
-    echo '    "$TOTOPO_AUTOSTART"' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo '    # A host-planted resume marker means this is the first session since the container started:' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo '    # claim it (the mv is atomic, so racing consumers cannot double-resume) and run its command.' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo '    if mv "${RESUME_MARKER_PATH}" "${RESUME_MARKER_PATH}.shell" 2>/dev/null; then' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo '        __totopo_resume=$(cat "${RESUME_MARKER_PATH}.shell")' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo '        rm -f "${RESUME_MARKER_PATH}.shell"' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo '        echo -e "\\033[32m●\\033[0m  \\033[90mAuto-start enabled: launching \\033[38;5;208m\${TOTOPO_AUTOSTART}\\033[90m (resuming most recent conversation).\\033[0m"' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo '        echo ""' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo '        $__totopo_resume' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo '    else' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo '        echo -e "\\033[32m●\\033[0m  \\033[90mAuto-start enabled: launching \\033[38;5;208m\${TOTOPO_AUTOSTART}\\033[90m.\\033[0m"' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo '        echo ""' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo '        "$TOTOPO_AUTOSTART"' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo '    fi' >> ${CONTAINER_HOME}/.bashrc && \\
     echo 'fi' >> ${CONTAINER_HOME}/.bashrc
 
 CMD ["/bin/bash"]
@@ -82,7 +117,32 @@ export const BAKED_TEMPLATE_FILES: ReadonlyArray<string> = [
     "runtime-constants.mjs",
     "startup-git-mode.mjs",
     "startup.mjs",
+    "webterm.sh",
 ];
+
+// Directories (relative to the templates dir) baked into the image via a directory COPY. Hashed
+// recursively by computeBuildHash so editing any file inside triggers a rebuild prompt, with
+// node_modules skipped - a local install there must never flip the hash (it is .dockerignore'd too).
+export const BAKED_TEMPLATE_DIRS: ReadonlyArray<string> = ["webterm"];
+
+// Relative paths of every regular file under dir (sorted, node_modules subtrees skipped). Missing
+// dirs yield [] for the same reason computeBuildHash tolerates missing files: minimal test contexts.
+function walkTemplateDir(root: string, prefix = ""): string[] {
+    const files: string[] = [];
+    let entries: Dirent[];
+    try {
+        entries = readdirSync(root, { withFileTypes: true });
+    } catch {
+        return files;
+    }
+    for (const entry of entries) {
+        if (entry.name === "node_modules") continue;
+        const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+        if (entry.isDirectory()) files.push(...walkTemplateDir(join(root, entry.name), rel));
+        else if (entry.isFile()) files.push(rel);
+    }
+    return files.sort();
+}
 
 /**
  * Fingerprint everything the package contributes to the image: the assembled Dockerfile content
@@ -102,6 +162,12 @@ export function computeBuildHash(dockerfileContent: string, buildContextDir: str
         const path = join(buildContextDir, name);
         if (existsSync(path)) {
             h.update(readFileSync(path));
+        }
+    }
+    for (const dir of [...BAKED_TEMPLATE_DIRS].sort()) {
+        for (const rel of walkTemplateDir(join(buildContextDir, dir))) {
+            h.update(`\nfile:${dir}/${rel}\n`);
+            h.update(readFileSync(join(buildContextDir, dir, rel)));
         }
     }
     return h.digest("hex");

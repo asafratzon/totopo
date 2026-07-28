@@ -17,6 +17,8 @@ import {
     AUDIODRIVER_VALUE,
     AUTO_START,
     type AudioMode,
+    type AutoStartAgent,
+    CONTAINER_KEEP_ALIVE,
     CONTAINER_STARTUP,
     CONTAINER_WORKSPACE,
     DEFAULT_PROFILE,
@@ -32,15 +34,17 @@ import {
     LABEL_RUNTIME_ENV,
     LABEL_SHADOWS,
     RUNTIME_ENV,
+    WEB_CONTAINER_PORT,
 } from "../lib/constants.js";
 import { buildDockerfile, buildImageWithTempfile, computeBuildHash } from "../lib/dockerfile-builder.js";
 import { type EnvConfig, envLabel, envRunArgs, envWarnings, validateEnvConfig } from "../lib/env.js";
-import { readAudioMode, readAutoStartAgent } from "../lib/global-config.js";
+import { readAudioMode, readAutoStartAgent, readWebEnabled, readWebRange } from "../lib/global-config.js";
 import { isImageStale } from "../lib/migrate-to-latest.js";
 import { buildPnpmStoreMountArgs } from "../lib/pnpm-store.js";
 import {
     assertHostPortsAvailable,
     formatPortNotice,
+    formatWebRange,
     type PortMapping,
     portEnvArgs,
     portPublishArgs,
@@ -51,6 +55,17 @@ import { connectedSessionCount, containerSessionCount, loginShellExecArgs } from
 import { buildShadowMountArgs, ensureShadowsInSync, expandShadowPatterns } from "../lib/shadows.js";
 import type { ProfileConfig } from "../lib/totopo-yaml.js";
 import { readTotopoYaml } from "../lib/totopo-yaml.js";
+import {
+    plantResumeMarker,
+    readWebKey,
+    resolveWebPort,
+    resumeCommandFor,
+    setWebDefaultCwd,
+    startWebtermAndVerify,
+    webInterfaceAnswers,
+    webPortUsable,
+    webSessionInfo,
+} from "../lib/webterm.js";
 import type { WorkspaceContext } from "../lib/workspace-identity.js";
 import { readActiveProfile, readAudio, readGitMode, writeActiveProfile } from "../lib/workspace-identity.js";
 
@@ -224,11 +239,21 @@ export interface StartContainerOpts {
     shadowPatterns: string[]; // Raw patterns from totopo.yaml, used for agent context docs
     workspaceName: string;
     portMappings: PortMapping[]; // Normalized host->container mappings from validatePortsConfig
+    webPort?: number; // Sticky host port for the web agent interface; its mapping is already in portMappings
     noCache?: boolean;
     quiet?: boolean; // Suppress log output and docker stdio; used by tests
 }
 
-export type ContainerStartResult = "created" | "resumed" | "connected";
+export type ContainerStartStatus = "created" | "resumed" | "connected";
+
+export interface ContainerStartResult {
+    status: ContainerStartStatus;
+    // The web port the container really publishes, which is not always the one that was asked for: the
+    // create path re-probes it and drops the mapping when something took it in the meantime. Callers must
+    // use this rather than opts.webPort - otherwise the launcher, the liveness probe and the end-of-session
+    // stop prompt all end up talking to whatever now holds that port.
+    webPort: number | null;
+}
 
 export async function startContainer(opts: StartContainerOpts): Promise<ContainerStartResult> {
     const {
@@ -247,6 +272,7 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
         shadowPatterns,
         workspaceName,
         portMappings,
+        webPort,
         noCache,
         quiet = false,
     } = opts;
@@ -410,6 +436,12 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
     // create / resume / connect path below. Idempotent file writes with no dependency on the image build.
     injectAgentContext(cacheDir, agentDocs);
 
+    // What the container ends up publishing for the web interface. Only the create path can change it (by
+    // dropping a mapping whose port was taken), and it is returned so the caller stops using the port it
+    // asked for. Resume and connect reuse a container whose mapping is already fixed, and any change to it
+    // would have recreated the container via the ports label.
+    let publishedWebPort = webPort;
+
     // Build the image (if needed) and run a fresh container. Shared by the no-container path and the
     // resume-recovery path below. Build/run failures are terminal, so they outro and exit here.
     const createAndRun = async (): Promise<void> => {
@@ -421,17 +453,37 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
             process.exit(buildResult.status);
         }
 
+        // Minutes can pass between run() probing the web port and this create path (profile selection, a
+        // recreate confirm, the image build), so re-probe it here. The interface is optional: a port taken in
+        // the meantime drops the mapping and the session continues without it. Only totopo.yaml ports are
+        // allowed to fail a session, which is what assertHostPortsAvailable below is for.
+        let published = portMappings;
+        if (webPort !== undefined && !(await webPortUsable(webPort, containerName))) {
+            if (!quiet) {
+                log.warn(`Web interface: host port ${webPort} was taken before the container could start - continuing without it.`);
+            }
+            published = portMappings.filter((m) => m.host !== webPort);
+            publishedWebPort = undefined;
+        }
+
         // Ports are static config, so probe host availability up front. The old container was already removed on
         // every path that reaches here, so we never probe our own live port. A taken host port fails clearly and
         // names the entry, before docker run - so no doomed `created` container is left behind on a clash.
         try {
-            await assertHostPortsAvailable(portMappings);
+            await assertHostPortsAvailable(published, publishedWebPort);
         } catch (err) {
             if (!quiet) outro(err instanceof Error ? err.message : String(err));
             process.exit(1);
         }
 
         if (!quiet) log.info("Starting dev container...");
+
+        // Only set when the web interface is enabled AND its port survived the re-probe above: this gates the
+        // greeting hint, the webterm launcher, and the shell autostart handoff. Built here rather than with the
+        // other runtime env so a dropped mapping cannot leave a URL behind that nothing is listening on.
+        // Never stale either way: the web mapping is part of the ports label written just below, so a moved or
+        // dropped port recreates the container and rebuilds this. No dedicated label needed for the same reason.
+        const webEnvArgs = publishedWebPort !== undefined ? ["-e", `TOTOPO_WEB_URL=http://localhost:${publishedWebPort}`] : [];
 
         // portEnvArgs come after envArgs/runtimeEnvArgs/audioRunArgs so the published value wins any -e collision.
         const runArgs = [
@@ -442,19 +494,21 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
             ...mountArgs,
             ...envArgs,
             ...runtimeEnvArgs,
+            ...webEnvArgs,
             ...audioRunArgs,
-            ...portEnvArgs(portMappings),
-            ...portPublishArgs(portMappings),
+            ...portEnvArgs(published),
+            ...portPublishArgs(published),
             "--security-opt",
             "no-new-privileges:true",
             ...labelArgs,
             "--label",
-            `${LABEL_PORTS}=${currentPortsLabel}`,
+            // Labelled with what was actually published, not what was planned, so the next session compares
+            // like for like: a dropped web mapping recreates once when the port comes back, not every start.
+            `${LABEL_PORTS}=${portsLabel(published)}`,
             "--label",
             `${LABEL_ENV}=${currentEnvLabel}`,
             containerName,
-            "sleep",
-            "infinity",
+            ...CONTAINER_KEEP_ALIVE,
         ];
 
         // Capture stderr so the real docker error is re-emitted on failure. A single run - the pre-flight probe
@@ -470,10 +524,12 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
         }
     };
 
+    const result = (status: ContainerStartStatus): ContainerStartResult => ({ status, webPort: publishedWebPort ?? null });
+
     if (containerStatus === null) {
         // --- No container - build image and run --------------------------------------------------------------------------------------------
         await createAndRun();
-        return "created";
+        return result("created");
     } else if (containerStatus === "exited") {
         // --- Container stopped - resume (recreate on a dangling-mount failure) -------------------------------------------------------------
         if (!quiet) log.info("Resuming dev container...");
@@ -500,13 +556,33 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
             }
             stopAndRemoveContainer(containerName);
             await createAndRun();
-            return "created";
+            return result("created");
         }
-        return "resumed";
+        return result("resumed");
     } else {
         // --- Container running - connect ---------------------------------------------------------------------------------------------------
-        return "connected";
+        return result("connected");
     }
+}
+
+/**
+ * Start the web interface and confirm it really came up. When the interface is on, the container's shell
+ * hook deliberately does not launch an agent (the browser is meant to), so a launch that failed silently
+ * would leave the user with an advertised URL that never answers and no agent anywhere. Nothing is started
+ * in its place: the message says what to run, and the choice is the user's.
+ * `workdir` is where its sessions open - the same directory the terminal session below lands in.
+ */
+async function launchWebInterface(
+    containerName: string,
+    agent: Exclude<AutoStartAgent, "off">,
+    webPort: number,
+    workdir: string,
+): Promise<void> {
+    if (await startWebtermAndVerify(containerName, agent, webPort, workdir)) return;
+    log.warn(
+        `Web interface: the server did not come up on port ${webPort}, so the URL in the greeting will not answer.\n` +
+            `  Run \`webterm ${agent}\` in the container to see why, or just run \`${agent}\` in the terminal.`,
+    );
 }
 
 // --- Main --------------------------------------------------------------------------------------------------------------------------------
@@ -531,6 +607,43 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
     } catch (err) {
         log.error(err instanceof Error ? err.message : String(err));
         process.exit(1);
+    }
+
+    // --- Web agent interface port (host-global toggle, sticky per-workspace assignment) --------------------------------------------------
+    // Pushing the mapping into portMappings is the whole wiring: publish args, the availability probe,
+    // and the LABEL_PORTS recreate fingerprint all pick it up with no arg-builder changes.
+    // The interface is optional, so every problem below drops it for this session and says why - it must
+    // never fail a session the way a totopo.yaml port does. The sticky assignment is left alone in all
+    // cases, so the next session picks the same port back up once whatever is in the way is gone.
+    const webEnabled = readWebEnabled();
+    let webPort: number | null = null;
+    if (webEnabled) {
+        const range = readWebRange();
+        // What disqualifies a candidate port: this workspace already publishes it from totopo.yaml, or
+        // something on the host holds it. Both move the sticky assignment rather than skipping the session -
+        // the port sticks to wherever it was last put, so the workspace settles on one that works instead of
+        // repeating the same conflict at every start. (A totopo.yaml entry can no longer target the
+        // container-side web port at all: validatePortsConfig reserves it.)
+        const declaredHosts = new Set(portMappings.map((m) => m.host));
+        const usable = async (port: number) => !declaredHosts.has(port) && (await webPortUsable(port, containerName));
+        const resolved = await resolveWebPort(ctx.workspaceId, range, usable);
+        if (resolved.ok) {
+            if (resolved.movedFrom !== undefined) {
+                log.info(`Web interface: port ${resolved.movedFrom} was not available - moved to ${resolved.port} and kept there.`);
+            }
+            webPort = resolved.port;
+            portMappings.push({ host: webPort, container: WEB_CONTAINER_PORT });
+        } else if (resolved.reason === "exhausted") {
+            log.warn(
+                `Web interface: no free port left in ${formatWebRange(range)} - web interface skipped this session.\n` +
+                    "  Widen the range in Settings > Web interface.",
+            );
+        } else {
+            log.warn(
+                "Web interface: the port assignment could not be recorded for this workspace - web interface skipped this session.\n" +
+                    "  Check that the workspace cache dir is writable.",
+            );
+        }
     }
 
     // --- Resolve working directory -------------------------------------------------------------------------------------------------------
@@ -609,9 +722,13 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
         shadowPatterns,
         workspaceName: ctx.workspaceId,
         portMappings,
+        ...(webPort !== null && { webPort }),
         ...(options?.noCache !== undefined && { noCache: options.noCache }),
     };
-    await startContainer(containerOpts);
+    let startResult = await startContainer(containerOpts);
+    // The create path re-probes the web port and drops it when something took it while the image built, so
+    // from here on the published port is the only one worth talking to.
+    webPort = startResult.webPort;
 
     // --- Stale image check - prompt user to rebuild if image is outdated ------------------------------------------------------------------
     const dockerfileContent = buildDockerfile(join(templatesDir, "Dockerfile"), profileHook);
@@ -632,14 +749,19 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
         if (rebuild) {
             stopAndRemoveContainer(containerName);
             spawnSync("docker", ["rmi", containerName], { stdio: "pipe" });
-            await startContainer(containerOpts);
+            startResult = await startContainer(containerOpts);
+            webPort = startResult.webPort;
             stale = false;
         }
     }
 
     // --- Published ports notice (every session start: created / resumed / connected) -----------------------------------------------------
     // Ports are static config, so the notice derives straight from the mappings - no .lock lookup needed.
+    // The web mapping is skipped here: its URL is announced by the container greeting, where it is actionable.
+    // Matched on the container port, which validatePortsConfig reserves - so it can only ever be totopo's own
+    // web mapping, and it is skipped whether or not the port survived the create path's re-probe.
     for (const m of portMappings) {
+        if (m.container === WEB_CONTAINER_PORT) continue;
         log.info(formatPortNotice(m));
     }
 
@@ -660,6 +782,39 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
         }
     }
 
+    // --- Once-per-container-start hooks (auto-resume marker + webterm auto-start) --------------------------------------------------------
+    // Deliberately after the startup checks above: those update the AI CLIs inside the container, and the
+    // interface spawns its agent the moment it comes up. Started any earlier, the browser would get a session
+    // running the version the image was built with - a claude too old to know the current models - and the only
+    // way out would be to wait for the update and start another session. The terminal never had this problem:
+    // the login shell attaches below, after the update.
+    //
+    // Runs on the created AND resumed (docker start) paths, never on connect to an already-running container -
+    // that is what makes the resume once-per-start. The marker is planted before the user's shell attaches, so
+    // whichever session launches first (webterm PTY or the .bashrc hook) consumes a fresh marker and resumes
+    // the most recent conversation; later sessions start fresh.
+    if (startResult.status !== "connected") {
+        const autoStartAgent = readAutoStartAgent();
+        if (autoStartAgent !== AUTO_START.off) {
+            plantResumeMarker(containerName, resumeCommandFor(autoStartAgent, cacheDir, workdir));
+            if (webPort !== null) await launchWebInterface(containerName, autoStartAgent, webPort, workdir);
+        }
+    } else if (webPort !== null) {
+        // Connecting to a container that is already up: the interface it started with should still be
+        // serving. When it is not (crashed, or stopped by hand) the greeting would advertise a URL that
+        // does not answer, so start it again. No resume marker here - this is not a container start, so
+        // the relaunched interface opens a fresh conversation rather than re-resuming an old one.
+        const autoStartAgent = readAutoStartAgent();
+        if (autoStartAgent !== AUTO_START.off && !(await webInterfaceAnswers(webPort))) {
+            await launchWebInterface(containerName, autoStartAgent, webPort, workdir);
+        } else {
+            // The interface has been serving since an earlier session, so the directory it was started with
+            // is that session's, not this one's. Move it, so the browser opens new sessions where this
+            // session was started from - the same promise the terminal below keeps.
+            await setWebDefaultCwd(webPort, readWebKey(containerName), workdir);
+        }
+    }
+
     // --- Connect -------------------------------------------------------------------------------------------------------------------------
     const exec = spawnSync("docker", loginShellExecArgs(workdir, containerName), {
         stdio: "inherit",
@@ -676,13 +831,25 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
     }
 
     // --- Offer to stop this workspace's container (last shell closed) --------------------------------------------------------------------
-    // The container itself keeps running (sleep infinity) after the shell exits. When this was the last
+    // The container itself keeps running (CONTAINER_KEEP_ALIVE is PID 1) after the shell exits. When this was the last
     // shell to it, offer to stop it to free memory. Stop-only (no rm) so the next session resumes fast
     // via the "exited" -> docker start path. Runs after the global audio auto-stop above; all platforms.
+    // Agent sessions in the web interface are live conversations the shell scan cannot see - they run
+    // inside the container, with no host client process - and they end with the container. So when the
+    // interface reports any, the prompt says how many and defaults to keeping the container; stopping it
+    // is still offered, because those sessions may be finished ones nobody has closed yet.
     if (containerSessionCount(containerName) === 0) {
+        // The counts are behind the interface's key, so it is read from the container first - fresh, because
+        // a new one is minted at every server start and nothing on the host keeps one.
+        const webSessions = (webPort === null ? null : await webSessionInfo(webPort, readWebKey(containerName)))?.sessions ?? 0;
+        if (webSessions > 0) {
+            const count = webSessions === 1 ? "1 agent session is" : `${webSessions} agent sessions are`;
+            const them = webSessions === 1 ? "it" : "them";
+            log.warn(`Web interface: ${count} open in the browser - stopping the container ends ${them}.`);
+        }
         const stopNow = await confirm({
             message: "Last session to this container closed. Stop it? (resumes fast)",
-            initialValue: true,
+            initialValue: webSessions === 0,
         });
         if (!isCancel(stopNow) && stopNow) {
             log.info("Stopping container...");

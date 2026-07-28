@@ -17,7 +17,9 @@ import {
     GLOBAL_CONFIG_FILE,
     GLOBAL_DIR,
     TOTOPO_DIR,
+    WEB_RANGE_DEFAULT,
 } from "./constants.js";
+import { formatWebRange, parseWebRange, type WebRange } from "./ports.js";
 
 // --- Keys --------------------------------------------------------------------------------------------------------------------------------
 
@@ -25,6 +27,8 @@ import {
 export const GLOBAL_CONFIG_KEYS = {
     audioMode: "audio_mode",
     autoStartAgent: "auto_start_agent",
+    webEnabled: "web_enabled",
+    webRange: "web_range",
 } as const;
 
 // --- Path --------------------------------------------------------------------------------------------------------------------------------
@@ -94,5 +98,34 @@ export function readAutoStartAgent(): AutoStartAgent {
 export function writeAutoStartAgent(agent: AutoStartAgent): void {
     const config = parseGlobalConfig();
     config.set(GLOBAL_CONFIG_KEYS.autoStartAgent, agent);
+    writeGlobalConfig(config);
+}
+
+// --- Web agent interface -----------------------------------------------------------------------------------------------------------------
+
+/** Read whether the web agent interface is enabled. Defaults to false when unset, missing, or unrecognized. */
+export function readWebEnabled(): boolean {
+    return parseGlobalConfig().get(GLOBAL_CONFIG_KEYS.webEnabled) === "true";
+}
+
+/** Write the web agent interface toggle. Creates the config file on demand and preserves all other keys. */
+export function writeWebEnabled(enabled: boolean): void {
+    const config = parseGlobalConfig();
+    config.set(GLOBAL_CONFIG_KEYS.webEnabled, String(enabled));
+    writeGlobalConfig(config);
+}
+
+/** Read the web interface host-port range. Falls back to the default when unset, missing, or invalid. */
+export function readWebRange(): WebRange {
+    const value = parseGlobalConfig().get(GLOBAL_CONFIG_KEYS.webRange);
+    const parsed = value !== undefined ? parseWebRange(value) : null;
+    // The default is a constant that always parses; the assertion just narrows the type.
+    return parsed ?? (parseWebRange(WEB_RANGE_DEFAULT) as WebRange);
+}
+
+/** Write the web interface host-port range. Creates the config file on demand and preserves all other keys. */
+export function writeWebRange(range: WebRange): void {
+    const config = parseGlobalConfig();
+    config.set(GLOBAL_CONFIG_KEYS.webRange, formatWebRange(range));
     writeGlobalConfig(config);
 }
