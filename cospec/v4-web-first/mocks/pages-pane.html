@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Web pane - side split with pagination bar and draggable width</title>
+<style>
+  :root {
+    --bg: #0d1117; --panel: #161b22; --border: #30363d; --text: #e6edf3;
+    --muted: #8b949e; --term-bg: #12161d; --ws: #2fe58a; --accent: var(--ws);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  body { display: flex; flex-direction: column; height: 100vh; }
+
+  .axis { background: #1f2530; color: var(--muted); font-size: 12px; padding: 6px 12px;
+    border-bottom: 1px solid var(--border); }
+  .axis b { color: var(--text); }
+
+  #tabbar { display: flex; gap: 4px; padding: 6px 12px 0; background: var(--panel);
+    border-bottom: 1px solid var(--border); flex: none; }
+  .tab { display: flex; align-items: center; gap: 8px; padding: 7px 11px; font-size: 13px;
+    border: 1px solid var(--border); border-bottom: none; border-radius: 8px 8px 0 0;
+    background: #10151c; color: var(--muted); }
+  .tab.active { background: var(--bg); color: var(--text); border-top: 2px solid var(--accent); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+  .tab .dim { opacity: 0.45; }
+  .newtab { margin-left: 6px; align-self: center; color: var(--muted); font-size: 13px; padding: 6px 8px; }
+
+  #middle { flex: 1; display: flex; min-height: 0; }
+  #term { flex: 1; background: var(--term-bg); padding: 14px 16px; font: 12.5px/1.55 ui-monospace, "SF Mono", Menlo, monospace;
+    color: #c9d1d9; overflow: hidden; min-width: 200px; }
+  #term .p { color: var(--accent); }
+  #term .dim { color: var(--muted); }
+
+  /* Drag handle between terminal and pane */
+  #grip { width: 6px; cursor: col-resize; background: var(--panel); border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border); flex: none; position: relative; }
+  #grip::after { content: ""; position: absolute; top: 50%; left: 1px; width: 2px; height: 34px;
+    margin-top: -17px; border-radius: 2px; background: #3a4250; }
+  #grip:hover::after, body.dragging #grip::after { background: var(--accent); }
+  body.dragging { user-select: none; cursor: col-resize; }
+
+  /* The pane */
+  #pane { width: 44%; min-width: 0; display: flex; flex-direction: column; background: var(--bg); flex: none; }
+
+  /* Pagination bar above the page content */
+  #pagebar { display: flex; align-items: center; gap: 6px; padding: 7px 10px; background: var(--panel);
+    border-bottom: 1px solid var(--border); overflow: hidden; flex: none; }
+  #pagebar .nav { color: var(--muted); font-size: 15px; padding: 1px 6px; border-radius: 6px; flex: none; }
+  #pagebar .nav:hover { background: #10151c; }
+  #chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; min-width: 0; }
+  .chip { flex: none; display: flex; gap: 6px; align-items: baseline; border: 1px solid var(--border); border-radius: 14px;
+    padding: 3px 11px; font-size: 12px; color: var(--muted); background: #10151c; white-space: nowrap; }
+  .chip .ct { color: var(--text); }
+  .chip.sel { border-color: var(--accent); background: #0f1722; }
+  .chip.sel .ct { color: var(--accent); }
+  .chip .time { font-size: 10.5px; }
+  .chip .new { background: var(--accent); color: #04140b; font-size: 9.5px; border-radius: 8px; padding: 0 5px; font-weight: 700; }
+  #pagebar .count { margin-left: auto; color: var(--muted); font-size: 11.5px; flex: none; padding-left: 8px; }
+
+  #doc { flex: 1; overflow: auto; padding: 20px 24px; min-width: 0; }
+  #doc h1 { font-size: 18px; margin: 0 0 4px; }
+  #doc .meta { color: var(--muted); font-size: 12px; margin-bottom: 16px; }
+  #doc h2 { font-size: 14px; margin: 18px 0 6px; color: var(--accent); }
+  #doc p, #doc li { font-size: 13.5px; line-height: 1.6; color: #c9d1d9; }
+  #doc table { border-collapse: collapse; font-size: 12.5px; margin: 8px 0; }
+  #doc td, #doc th { border: 1px solid var(--border); padding: 5px 10px; }
+  #doc th { background: var(--panel); }
+
+  .fb { margin-top: 22px; border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; background: var(--panel); }
+  .fb .fbtitle { font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+  .fb label { display: block; font-size: 13px; margin: 5px 0; color: #c9d1d9; }
+  .fb textarea { width: 100%; min-height: 46px; background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px; padding: 8px; font-size: 13px; margin-top: 8px; }
+  .fb .submit { margin-top: 10px; background: var(--accent); color: #04140b; border: none; font-weight: 600;
+    padding: 7px 16px; border-radius: 8px; font-size: 13px; }
+  .fb .hint { color: var(--muted); font-size: 11.5px; margin-top: 6px; }
+
+  /* Collapsed pane: a thin vertical strip */
+  #pane.collapsed { width: 30px; }
+  #pane.collapsed #pagebar, #pane.collapsed #doc { display: none; }
+  #spine { display: none; flex: 1; align-items: center; justify-content: center; background: var(--panel);
+    border-left: 1px solid var(--border); cursor: pointer; }
+  #pane.collapsed #spine { display: flex; }
+  #spine .label { writing-mode: vertical-rl; letter-spacing: 0.18em; font-size: 11px; color: var(--muted);
+    text-transform: uppercase; display: flex; align-items: center; gap: 8px; }
+  #spine .badge { writing-mode: horizontal-tb; background: var(--accent); color: #04140b; font-size: 10px;
+    border-radius: 8px; padding: 0 5px; font-weight: 700; }
+
+  #status { display: flex; gap: 10px; align-items: center; padding: 6px 14px; background: var(--panel);
+    border-top: 1px solid var(--border); font-size: 12px; color: var(--muted); flex-wrap: wrap; flex: none; }
+  .seg { display: flex; gap: 6px; align-items: center; white-space: nowrap; }
+  .seg b { color: var(--text); font-weight: 600; }
+  .bar { width: 74px; height: 6px; border-radius: 3px; background: #262c36; overflow: hidden; }
+  .bar i { display: block; height: 100%; background: var(--accent); }
+  .bar.warn i { background: #d29922; }
+  .sep { color: #3a4250; }
+
+  #composer { display: flex; padding: 10px 14px 14px; background: var(--panel); gap: 10px; flex: none; }
+  #inputwrap { flex: 1; position: relative; }
+  #input { width: 100%; min-height: 52px; background: var(--bg); color: var(--muted); border: 1px solid var(--accent);
+    border-radius: 10px; padding: 12px 96px 12px 12px; font-size: 13.5px; }
+  .actions { position: absolute; right: 10px; bottom: 10px; display: flex; gap: 8px; }
+  .abtn { width: 28px; height: 28px; border-radius: 7px; border: 1px solid var(--border); background: #10151c;
+    color: var(--muted); display: flex; align-items: center; justify-content: center; font-size: 13px; }
+  .abtn.send { background: var(--accent); color: #04140b; border: none; font-weight: 700; }
+</style>
+</head>
+<body>
+  <div class="axis"><b>Web pane.</b> Side split; history is the horizontal pagination bar above the page. <b>Drag the divider</b> between terminal and pane to resize - drag it very narrow and the pane collapses to a vertical WEB PANE spine (click the spine to reopen).</div>
+
+  <nav id="tabbar">
+    <div class="tab active"><span class="dot"></span> claude 1 <span class="dim">apps/api</span></div>
+    <div class="tab"><span class="dot" style="background:#8b949e"></span> codex 2 <span class="dim">/workspace</span></div>
+    <div class="newtab">+ New session</div>
+  </nav>
+
+  <div id="middle">
+    <div id="term">
+<span class="p">&#10095;</span> I went through the ports code and wrote up the rework plan.<br />
+&nbsp;&nbsp;I published it as a page - see the pane. Answer the two questions<br />
+&nbsp;&nbsp;at the bottom of the page when you have a moment.<br />
+<br />
+<span class="dim">tool &#9656; Read src/lib/ports.ts (219 lines)</span><br />
+<span class="dim">tool &#9656; Grep "containerPublishedPorts" - 4 hits</span><br />
+<br />
+<span class="p">&#10095;</span> _
+    </div>
+
+    <div id="grip"></div>
+
+    <div id="pane">
+      <div id="pagebar">
+        <span class="nav">&#8249;</span>
+        <div id="chips">
+          <span class="chip"><span class="ct">Session model diagram</span><span class="time">1 h</span></span>
+          <span class="chip"><span class="ct">How the port range works</span><span class="time">18 m</span></span>
+          <span class="chip sel"><span class="ct">Plan: publish-ports rework</span><span class="time">2 m</span></span><!-- New pages badge their chip and never auto-select; opening clears the badge -->
+        </div>
+        <span class="nav">&#8250;</span>
+        <span class="count">3 / 3</span>
+      </div>
+      <div id="doc">
+        <h1>Plan: publish-ports rework</h1>
+        <div class="meta">Published by claude 1 &#183; 2 min ago</div>
+        <h2>Goal</h2>
+        <p>Replace the scan-and-retry port logic with static docker-style mappings, and fail fast on a taken port.</p>
+        <h2>Phases</h2>
+        <table>
+          <tr><th>#</th><th>Phase</th><th>Done when</th></tr>
+          <tr><td>1</td><td>Parse the new entries</td><td>Schema and tests pass</td></tr>
+          <tr><td>2</td><td>Wire into docker run</td><td>Ports open on session start</td></tr>
+          <tr><td>3</td><td>Docs and demo</td><td>README section rewritten</td></tr>
+        </table>
+        <div class="fb">
+          <div class="fbtitle">Two questions before I start</div>
+          <label><input type="radio" name="q1" checked /> Fail the whole start when a port is taken</label>
+          <label><input type="radio" name="q1" /> Skip the taken port and warn</label>
+          <textarea placeholder="Anything else about the plan&#8230;"></textarea>
+          <button type="button" class="submit">Send to agent</button>
+          <div class="hint">Saves your answers into the session's feedback file and nudges the agent.</div>
+        </div>
+      </div>
+      <div id="spine"><span class="label"><span class="badge">1</span> Web pane</span></div><!-- Badge = unread count, not total pages -->
+    </div>
+  </div>
+
+  <div id="status">
+    <span class="seg">&#129302; <b>Opus 5</b> medium</span><span class="sep">&#183;</span>
+    <span class="seg">&#129504; <b>174k</b> / 1M <span class="bar"><i style="width:17%"></i></span> 17%</span><span class="sep">&#183;</span>
+    <span class="seg">&#9889; <span class="bar warn"><i style="width:83%"></i></span> <b>83%</b> (&#128268; 2h 15m)</span><span class="sep">&#183;</span>
+    <span class="seg">Claude Code v2.1.132</span>
+  </div>
+
+  <div id="composer">
+    <div id="inputwrap">
+      <div id="input">Reply to claude 1&#8230;</div>
+      <div class="actions"><div class="abtn">&#128206;</div><div class="abtn">&#127908;</div><div class="abtn send">&#8593;</div></div>
+    </div>
+  </div>
+
+  <script>
+    // Draggable divider: resizes the pane; below a threshold it collapses to the vertical spine.
+    const grip = document.getElementById("grip");
+    const pane = document.getElementById("pane");
+    const spine = document.getElementById("spine");
+    const COLLAPSE_AT = 150;
+    let dragging = false;
+
+    grip.addEventListener("pointerdown", (e) => {
+      dragging = true;
+      document.body.classList.add("dragging");
+      grip.setPointerCapture(e.pointerId);
+    });
+    grip.addEventListener("pointermove", (e) => {
+      if (!dragging) return;
+      const width = Math.max(0, window.innerWidth - e.clientX - 3);
+      if (width < COLLAPSE_AT) {
+        pane.classList.add("collapsed");
+        pane.style.width = "";
+      } else {
+        pane.classList.remove("collapsed");
+        pane.style.width = `${Math.min(width, window.innerWidth * 0.7)}px`;
+      }
+    });
+    grip.addEventListener("pointerup", () => {
+      dragging = false;
+      document.body.classList.remove("dragging");
+    });
+    spine.addEventListener("click", () => {
+      pane.classList.remove("collapsed");
+      pane.style.width = "44%";
+    });
+  </script>
+</body>
+</html>

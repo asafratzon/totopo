@@ -35,5 +35,5 @@ Thumbs.db
 # Build output
 dist/
 
-# totopo - agent session data is local only
-.totopo/agents/
+# cospec - per-user web interface read state is local only
+cospec/**/.cospec/
