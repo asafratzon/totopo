@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, test } from "node:test";
-import { GIT_MODE, GLOBAL_DIR, LOCK_FILE, PULSE_COOKIE_FILE, TOTOPO_DIR, WORKSPACES_DIR } from "../src/lib/constants.js";
+import { GIT_MODE, GLOBAL_DIR, LOCK_FILE, TOTOPO_DIR, WORKSPACES_DIR } from "../src/lib/constants.js";
 import { migrateAddAudio, migrateAddGitMode, runMigration } from "../src/lib/migrate-to-latest.js";
 import { LOCK_KEYS } from "../src/lib/workspace-identity.js";
 import { cleanTempDir, createTempDir, overrideEnv } from "./helpers.js";
@@ -295,7 +295,7 @@ describe("migrate-to-latest", () => {
     test("skips .lock files already in key=value format", async () => {
         const wsDir = join(fakeHome, ".totopo", "workspaces", "my-ws");
         mkdirSync(wsDir, { recursive: true });
-        const original = `${LOCK_KEYS.workspaceRoot}=/some/path\n${LOCK_KEYS.activeProfile}=slim\n${LOCK_KEYS.gitMode}=${GIT_MODE.strict}\n${LOCK_KEYS.audio}=false\n`;
+        const original = `${LOCK_KEYS.workspaceRoot}=/some/path\n${LOCK_KEYS.activeProfile}=slim\n${LOCK_KEYS.gitMode}=${GIT_MODE.strict}\naudio=false\n`;
         writeFileSync(join(wsDir, LOCK_FILE), original);
 
         await runMigration(tmp);
@@ -326,7 +326,7 @@ describe("migrate-to-latest", () => {
     test("skips .lock files already using root= key", async () => {
         const wsDir = join(fakeHome, ".totopo", "workspaces", "my-ws");
         mkdirSync(wsDir, { recursive: true });
-        const original = `${LOCK_KEYS.workspaceRoot}=/some/path\n${LOCK_KEYS.activeProfile}=slim\n${LOCK_KEYS.gitMode}=${GIT_MODE.strict}\n${LOCK_KEYS.audio}=false\n`;
+        const original = `${LOCK_KEYS.workspaceRoot}=/some/path\n${LOCK_KEYS.activeProfile}=slim\n${LOCK_KEYS.gitMode}=${GIT_MODE.strict}\naudio=false\n`;
         writeFileSync(join(wsDir, LOCK_FILE), original);
 
         await runMigration(tmp);
@@ -360,7 +360,7 @@ describe("migrate-to-latest", () => {
     test("migrateRemoveLastCliUpdate is a no-op when key is absent", async () => {
         const wsDir = join(fakeHome, ".totopo", "workspaces", "my-ws");
         mkdirSync(wsDir, { recursive: true });
-        const original = `${LOCK_KEYS.workspaceRoot}=/some/path\n${LOCK_KEYS.activeProfile}=slim\n${LOCK_KEYS.gitMode}=${GIT_MODE.local}\n${LOCK_KEYS.audio}=false\n`;
+        const original = `${LOCK_KEYS.workspaceRoot}=/some/path\n${LOCK_KEYS.activeProfile}=slim\n${LOCK_KEYS.gitMode}=${GIT_MODE.local}\naudio=false\n`;
         writeFileSync(join(wsDir, LOCK_FILE), original);
 
         await runMigration(tmp);
@@ -436,7 +436,7 @@ describe("migrate-to-latest", () => {
 
         assert.equal(count, 1);
         const content = readFileSync(join(wsDir, LOCK_FILE), "utf8");
-        assert.ok(content.includes(`${LOCK_KEYS.audio}=false`), "should add audio=false");
+        assert.ok(content.includes(`audio=false`), "should add audio=false");
         assert.ok(content.includes(`${LOCK_KEYS.workspaceRoot}=/some/path`), "should preserve root");
         assert.ok(content.includes(`${LOCK_KEYS.gitMode}=${GIT_MODE.local}`), "should preserve git mode");
     });
@@ -444,7 +444,7 @@ describe("migrate-to-latest", () => {
     test("migrateAddAudio is idempotent when audio is already present", () => {
         const wsDir = join(fakeHome, ".totopo", "workspaces", "modern-audio-ws");
         mkdirSync(wsDir, { recursive: true });
-        const original = `${LOCK_KEYS.workspaceRoot}=/some/path\n${LOCK_KEYS.activeProfile}=default\n${LOCK_KEYS.audio}=true\n`;
+        const original = `${LOCK_KEYS.workspaceRoot}=/some/path\n${LOCK_KEYS.activeProfile}=default\naudio=true\n`;
         writeFileSync(join(wsDir, LOCK_FILE), original);
 
         const count = migrateAddAudio();
@@ -476,7 +476,7 @@ describe("migrate-to-latest", () => {
         await runMigration(tmp);
 
         const content = readFileSync(join(wsDir, LOCK_FILE), "utf8");
-        assert.ok(content.includes(`${LOCK_KEYS.audio}=false`));
+        assert.ok(content.includes(`audio=false`));
     });
 
     // ---- migrateMoveAudioCookie -----------------------------------------------------------------------------------------------------------
@@ -486,7 +486,7 @@ describe("migrate-to-latest", () => {
     test("migrateMoveAudioCookie is a no-op when no source cookie exists", async () => {
         await runMigration(tmp);
 
-        const newCookie = join(fakeHome, TOTOPO_DIR, GLOBAL_DIR, PULSE_COOKIE_FILE);
+        const newCookie = join(fakeHome, TOTOPO_DIR, GLOBAL_DIR, "pulse-cookie");
         assert.ok(!existsSync(newCookie), "no cookie should be created when there was none to move");
     });
 
@@ -497,7 +497,7 @@ describe("migrate-to-latest", () => {
 
         await runMigration(tmp);
 
-        const newCookie = join(fakeHome, TOTOPO_DIR, GLOBAL_DIR, PULSE_COOKIE_FILE);
+        const newCookie = join(fakeHome, TOTOPO_DIR, GLOBAL_DIR, "pulse-cookie");
         assert.ok(!existsSync(oldCookie), "old cookie should be gone");
         assert.ok(existsSync(newCookie), "cookie should be moved into global/");
         assert.equal(readFileSync(newCookie, "utf8"), "secret-cookie-bytes", "cookie contents should be preserved");
@@ -505,7 +505,7 @@ describe("migrate-to-latest", () => {
 
     test("migrateMoveAudioCookie drops the stale source when the destination already exists", async () => {
         const oldCookie = join(fakeHome, TOTOPO_DIR, "pulse-cookie");
-        const newCookie = join(fakeHome, TOTOPO_DIR, GLOBAL_DIR, PULSE_COOKIE_FILE);
+        const newCookie = join(fakeHome, TOTOPO_DIR, GLOBAL_DIR, "pulse-cookie");
         mkdirSync(join(fakeHome, TOTOPO_DIR, GLOBAL_DIR), { recursive: true });
         writeFileSync(oldCookie, "stale-source");
         writeFileSync(newCookie, "authoritative-dest");
@@ -525,7 +525,7 @@ describe("migrate-to-latest", () => {
         await runMigration(tmp);
 
         assert.ok(!existsSync(oldPath), "leftover directory at the old cookie path should be removed");
-        const newCookie = join(fakeHome, TOTOPO_DIR, GLOBAL_DIR, PULSE_COOKIE_FILE);
+        const newCookie = join(fakeHome, TOTOPO_DIR, GLOBAL_DIR, "pulse-cookie");
         assert.ok(!existsSync(newCookie), "no cookie should be created from a leftover directory");
     });
 
@@ -535,7 +535,7 @@ describe("migrate-to-latest", () => {
         writeFileSync(oldCookie, "secret-cookie-bytes");
 
         await runMigration(tmp);
-        const newCookie = join(fakeHome, TOTOPO_DIR, GLOBAL_DIR, PULSE_COOKIE_FILE);
+        const newCookie = join(fakeHome, TOTOPO_DIR, GLOBAL_DIR, "pulse-cookie");
         assert.equal(readFileSync(newCookie, "utf8"), "secret-cookie-bytes");
 
         await runMigration(tmp);

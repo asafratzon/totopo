@@ -35,7 +35,6 @@ import {
     GLOBAL_DIR,
     LABEL_BUILD_HASH,
     LOCK_FILE,
-    PULSE_COOKIE_FILE,
     SHADOWS_DIR,
     TOTOPO_DIR,
     TOTOPO_YAML,
@@ -526,9 +525,9 @@ export function migrateAddAudio(): number {
         const lockPath = join(baseDir, entry, LOCK_FILE);
         try {
             const content = readFileSync(lockPath, "utf8");
-            if (content.includes(`${LOCK_KEYS.audio}=`)) continue;
+            if (content.includes(`audio=`)) continue;
             const trimmed = content.endsWith("\n") ? content : `${content}\n`;
-            writeFileSync(lockPath, `${trimmed}${LOCK_KEYS.audio}=false\n`);
+            writeFileSync(lockPath, `${trimmed}audio=false\n`);
             migrated++;
         } catch {
             // unreadable -- skip, will surface as a broken workspace elsewhere
@@ -569,7 +568,7 @@ function migrateMoveAudioCookie(): void {
     // A real legacy cookie file: move it once. If a cookie already exists at the destination (e.g. the
     // server cold-started since), the destination is authoritative - drop the stale source instead.
     const globalDir = join(homedir(), TOTOPO_DIR, GLOBAL_DIR);
-    const newPath = join(globalDir, PULSE_COOKIE_FILE);
+    const newPath = join(globalDir, "pulse-cookie");
     mkdirSync(globalDir, { recursive: true });
     if (existsSync(newPath)) {
         safeRmSync(oldPath);

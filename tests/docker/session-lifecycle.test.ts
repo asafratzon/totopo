@@ -11,14 +11,12 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, afterEach, before, beforeEach, describe, test } from "node:test";
 import type { StartContainerOpts } from "../../src/commands/dev.js";
-import { audioStateLabel, startContainer } from "../../src/commands/dev.js";
+import { startContainer } from "../../src/commands/dev.js";
 import {
-    AUDIO_COOKIE_CONTAINER_PATH,
     AUTO_START,
     CONTAINER_STARTUP,
     DEFAULT_PROFILE,
     GIT_MODE,
-    LABEL_AUDIO,
     LABEL_AUTOSTART,
     LABEL_ENV,
     LABEL_GIT_MODE,
@@ -30,7 +28,7 @@ import { buildDockerfile, buildImageWithTempfile, computeBuildHash } from "../..
 import { envLabel, validateEnvConfig } from "../../src/lib/env.js";
 import { writeAutoStartAgent } from "../../src/lib/global-config.js";
 import { isImageStale } from "../../src/lib/migrate-to-latest.js";
-import { connectedSessionCount, containerSessionCount, loginShellExecArgs } from "../../src/lib/sessions.js";
+import { containerSessionCount, loginShellExecArgs } from "../../src/lib/sessions.js";
 import { expandShadowPatterns } from "../../src/lib/shadows.js";
 import {
     cleanTempDir,
@@ -39,7 +37,6 @@ import {
     dockerContainerLabel,
     dockerContainerStatus,
     dockerExec,
-    dockerExtraHosts,
     forceRemoveContainer,
     forceRemoveImage,
     isolateGlobalConfigHome,
@@ -94,7 +91,6 @@ function makeOpts(
         envConfig: { inlineVars: [], files: [] },
         hasGit: false,
         gitMode: GIT_MODE.local,
-        audio: false,
         shadowPatterns: [],
         workspaceName: "test-workspace",
         portMappings: [],
@@ -353,63 +349,6 @@ describe("session lifecycle", () => {
             restore();
             await cleanTempDir(home);
         }
-    });
-
-    test("audio off by default: no label flag, no PulseAudio env, no extra host", async () => {
-        await startContainer(makeOpts(containerName, workspaceRoot, cacheDir));
-        assert.equal(dockerContainerLabel(containerName, LABEL_AUDIO), "false");
-        assert.equal(dockerExec(containerName, ["sh", "-c", "echo $PULSE_SERVER"]).stdout, "");
-        assert.ok(!dockerExtraHosts(containerName).includes("host.docker.internal"), "no --add-host when audio is off");
-    });
-
-    test("audio on: label, PulseAudio env, and host-gateway are wired", async () => {
-        await startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { audio: true }));
-        assert.equal(dockerContainerLabel(containerName, LABEL_AUDIO), audioStateLabel(true, undefined));
-        assert.equal(dockerExec(containerName, ["printenv", "PULSE_SERVER"]).stdout, "tcp:host.docker.internal:4713");
-        assert.equal(dockerExec(containerName, ["printenv", "AUDIODRIVER"]).stdout, "pulseaudio");
-        assert.ok(
-            dockerExtraHosts(containerName).includes("host.docker.internal:host-gateway"),
-            "--add-host should map host.docker.internal",
-        );
-        // No cookie path provided -> no PULSE_COOKIE and no cookie mount.
-        assert.equal(dockerExec(containerName, ["sh", "-c", "echo $PULSE_COOKIE"]).stdout, "");
-    });
-
-    test("audio on with cookie: PULSE_COOKIE env and cookie mounted read-only", async () => {
-        const cookieFile = join(cacheDir, "pulse-cookie");
-        const secret = "totopo-test-cookie-secret";
-        writeFileSync(cookieFile, secret);
-        await startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { audio: true, audioCookiePath: cookieFile }));
-        assert.equal(dockerExec(containerName, ["printenv", "PULSE_COOKIE"]).stdout, AUDIO_COOKIE_CONTAINER_PATH);
-        assert.equal(dockerExec(containerName, ["cat", AUDIO_COOKIE_CONTAINER_PATH]).stdout, secret);
-    });
-
-    test("audio toggle triggers container recreation", async () => {
-        await startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { audio: false }));
-        assert.equal(dockerContainerLabel(containerName, LABEL_AUDIO), "false");
-
-        const result = await startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { audio: true }));
-        assert.equal(result.status, "created", "container should be recreated when audio is toggled");
-        assert.equal(dockerContainerLabel(containerName, LABEL_AUDIO), audioStateLabel(true, undefined));
-    });
-
-    test("audio cookie path change triggers container recreation", async () => {
-        // Reproduces the v3.10.0 cookie relocation: same audio bool, different host cookie path. The path
-        // is part of the audio identity label, so the container must be recreated (rebinding the mount)
-        // rather than resumed against the now-dangling old mount.
-        const cookieA = join(cacheDir, "cookie-a");
-        const cookieB = join(cacheDir, "cookie-b");
-        writeFileSync(cookieA, "cookie-a-bytes");
-        writeFileSync(cookieB, "cookie-b-bytes");
-
-        await startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { audio: true, audioCookiePath: cookieA }));
-        const labelA = dockerContainerLabel(containerName, LABEL_AUDIO);
-        assert.equal(labelA, audioStateLabel(true, cookieA));
-
-        const result = await startContainer(makeOpts(containerName, workspaceRoot, cacheDir, { audio: true, audioCookiePath: cookieB }));
-        assert.equal(result.status, "created", "container should be recreated when the cookie path changes");
-        assert.equal(dockerContainerLabel(containerName, LABEL_AUDIO), audioStateLabel(true, cookieB));
-        assert.notEqual(dockerContainerLabel(containerName, LABEL_AUDIO), labelA, "audio label must reflect the new cookie path");
     });
 });
 
@@ -749,8 +688,6 @@ describe("host-side session detection", () => {
 
         openClient();
         assert.ok(await waitUntil(() => containerSessionCount(containerName) === 1), "a live session must be counted");
-        // connectedSessionCount sums every totopo container, so it is at least our one open session.
-        assert.ok(connectedSessionCount() >= 1, "connectedSessionCount must see the open session");
 
         const client = clients[0];
         assert.ok(client);

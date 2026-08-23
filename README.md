@@ -47,7 +47,7 @@ For a deeper look at how totopo works and how to configure it, see the sections 
 
 ### Advanced Session
 
-A session with more features turned on: the host audio server for [voice input](#voice-mode-microphone) starts automatically, [AI CLIs get updated](#ai-clis), `claude` launches via [auto-start](#auto-start-agent), and exiting shuts everything down:
+A session with more features turned on: [AI CLIs get updated](#ai-clis), `claude` launches via [auto-start](#auto-start-agent), and exiting shuts everything down:
 
 ![totopo advanced demo](.github/assets/advanced.gif)
 
@@ -99,7 +99,7 @@ On every run, totopo shows the workspace menu:
 
 - **Open session** - start or resume the dev container and connect
 - **Stop container** - stop the running container
-- **Settings** - git mode, shadow paths, voice, auto-start agent, web interface, rebuild, reset config
+- **Settings** - git mode, shadow paths, auto-start agent, web interface, rebuild, reset config
 - **Advanced** - multi-workspace management (stop containers, clear memory, uninstall)
 
 ### Working directory
@@ -294,16 +294,6 @@ To clear memory: `npx totopo` → **Advanced > Clear agent memory**.
         └── shadows/    # container-local shadow path storage
 ```
 
-## Voice Mode (microphone)
-
-Claude Code's `/voice` records from a mic via SoX, but a container has none (on Docker Desktop the Linux VM has no device passthrough). totopo bridges your host mic in over a local PulseAudio server - **opt-in per workspace** from **Settings → Voice / audio**.
-
-**macOS (automated):** in that menu, **Enable wiring**, then **Install pulseaudio → Start host server → Test microphone** (approve the mic prompt for your terminal under **System Settings → Privacy & Security → Microphone**). Open a session and run `/voice`. The main menu reminds you while the server runs - stop it there when done. For hands-off control, turn **Auto start/stop** on in the same menu: totopo then starts the server when a voice-enabled session opens and stops it once your last session exits, so you never start or stop it by hand.
-
-**Linux / Windows (manual):** automation is macOS-only. **Enable wiring**, then run your own PulseAudio server reachable at TCP `4713` (load `module-native-protocol-tcp`). It must accept totopo's cookie at `~/.totopo/global/pulse-cookie` (mounted read-only into the container), or load the module with `auth-anonymous=1`. On Windows the source is typically the WSLg PulseAudio server.
-
-> **Security:** while running, the server exposes your mic on a local TCP port, gated by an `auth-ip-acl` (private networks only) and - the real gate - a **dedicated, rotating cookie**: totopo-owned (not your general PulseAudio credential), mounted read-only, regenerated on every server start, so a leaked cookie dies on the next restart. Still, run the server only while you need voice and stop it after. A deliberate widening of totopo's boundary - see [what totopo protects against](#what-totopo-protects-against).
-
 ## Auto-start agent
 
 By default a session drops you into a shell where you run `claude`, `opencode`, or `codex` yourself. To launch your favorite agent automatically as each session starts, pick it under **Settings → Auto-start agent**. Quit the agent and you land back in the container shell (the session stays open) - the info banner still lists how to run `status`, `exit`, and the other agents.
@@ -345,8 +335,6 @@ With [auto-start](#auto-start-agent) on it comes up by itself and the greeting s
 
 **Single machine** - `~/.totopo/` is local. Switching machines requires re-running setup in each workspace.
 
-**Voice mode / audio** - `/voice` needs a microphone, which a container does not have by default. Enable it under **Settings → Voice / audio**; see [Voice Mode](#voice-mode-microphone).
-
 **Shift+Enter not working in VS Code terminal** - add this to your VS Code keybindings (`Cmd+Shift+P` → "Open Keyboard Shortcuts (JSON)"):
 
 ```json
@@ -371,8 +359,6 @@ Totopo makes everyday agent mistakes safer. It is not built to stop a determined
 - Secrets you didn't shadow. A `.env` tracked in git is visible unless you list it in `shadow_paths`.
 - Container escapes. Totopo uses a non-root user and `no-new-privileges`, but no capability drops or seccomp profiles. For stronger isolation, use a microVM sandbox.
 - Edits to your working tree. The workspace is bind-mounted, so agent changes land on your real files. Commit often.
-
-**Voice mode widens this boundary** - enabling the mic bridge runs a host PulseAudio server that exposes your microphone over a local TCP port (cookie- and ACL-gated) for as long as it runs. Opt in only while dictating, and stop the server when done (or let automatic mode handle it on macOS); see [Voice Mode](#voice-mode-microphone).
 
 ## Disclaimer
 

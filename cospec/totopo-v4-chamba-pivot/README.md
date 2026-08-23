@@ -1,7 +1,7 @@
 # Totopo v4 cleanup and the chamba pivot
 
 - Created: 2026-08-22
-- Status: ready
+- Status: executing
 - Mode: imagination
 
 ## Protocol
@@ -31,3 +31,5 @@
 - 2026-08-23: revision finalized - Status: ready
 - 2026-08-23: second quality review over the revised artifacts (1 fresh-context reviewer, revision-residue focus): 11 findings RV-37..RV-47, 9 applied directly, 2 decided by the user and applied (chamba drops the Help/README URL entirely; stage 1's reviews consolidate into one 3-reviewer checkpoint after phase 4)
 - 2026-08-23: finalized after the second review - Status: ready
+- 2026-08-23: execution started on `v4.0.0-rc-development` (branched from `main`)
+- 2026-08-23: phase 1 done - audio retirement (FR-07, FR-08): audio-host module, constants, .lock flag, global setting, dev wiring, menus, settings submenu, Dockerfile packages, context bullet and README voice sections all removed; `IS_MACOS` and `connectedSessionCount` dropped with their last callers; 584 tests pass. The migration chain's own audio migrations survive here by design - phase 2 deletes the whole file.

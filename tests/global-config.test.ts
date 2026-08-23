@@ -2,14 +2,12 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, test } from "node:test";
-import { AUDIO_MODE, AUTO_START, GLOBAL_CONFIG_FILE, GLOBAL_DIR, TOTOPO_DIR, WEB_RANGE_DEFAULT } from "../src/lib/constants.js";
+import { AUTO_START, GLOBAL_CONFIG_FILE, GLOBAL_DIR, TOTOPO_DIR, WEB_RANGE_DEFAULT } from "../src/lib/constants.js";
 import {
     globalConfigPath,
-    readAudioMode,
     readAutoStartAgent,
     readWebEnabled,
     readWebRange,
-    writeAudioMode,
     writeAutoStartAgent,
     writeWebEnabled,
     writeWebRange,
@@ -39,36 +37,6 @@ describe("global-config", () => {
         assert.equal(globalConfigPath(), join(fakeHome, TOTOPO_DIR, GLOBAL_DIR, GLOBAL_CONFIG_FILE));
     });
 
-    test("readAudioMode defaults to manual when the config file is missing", () => {
-        assert.equal(readAudioMode(), AUDIO_MODE.manual);
-        assert.ok(!existsSync(globalConfigPath()), "reading should not create the file");
-    });
-
-    test("writeAudioMode creates the file on demand and round-trips", () => {
-        writeAudioMode(AUDIO_MODE.automatic);
-        assert.ok(existsSync(globalConfigPath()), "writing should create the config file");
-        assert.equal(readAudioMode(), AUDIO_MODE.automatic);
-        writeAudioMode(AUDIO_MODE.manual);
-        assert.equal(readAudioMode(), AUDIO_MODE.manual);
-    });
-
-    test("readAudioMode coerces an unrecognized value to manual", () => {
-        mkdirSync(join(fakeHome, TOTOPO_DIR, GLOBAL_DIR), { recursive: true });
-        writeFileSync(globalConfigPath(), "audio_mode=bogus\n");
-        assert.equal(readAudioMode(), AUDIO_MODE.manual);
-    });
-
-    test("writeAudioMode preserves other keys present in the config", () => {
-        mkdirSync(join(fakeHome, TOTOPO_DIR, GLOBAL_DIR), { recursive: true });
-        writeFileSync(globalConfigPath(), "audio_mode=manual\nfuture_key=keep-me\n");
-
-        writeAudioMode(AUDIO_MODE.automatic);
-
-        const content = readFileSync(globalConfigPath(), "utf8");
-        assert.ok(content.includes("audio_mode=automatic"), "audio_mode should be updated");
-        assert.ok(content.includes("future_key=keep-me"), "unrelated keys should be preserved");
-    });
-
     test("readAutoStartAgent defaults to off when the config file is missing", () => {
         assert.equal(readAutoStartAgent(), AUTO_START.off);
         assert.ok(!existsSync(globalConfigPath()), "reading should not create the file");
@@ -88,12 +56,23 @@ describe("global-config", () => {
         assert.equal(readAutoStartAgent(), AUTO_START.off);
     });
 
-    test("auto-start and audio settings coexist without clobbering each other", () => {
-        writeAudioMode(AUDIO_MODE.automatic);
+    test("writeAutoStartAgent preserves other keys present in the config", () => {
+        mkdirSync(join(fakeHome, TOTOPO_DIR, GLOBAL_DIR), { recursive: true });
+        writeFileSync(globalConfigPath(), "auto_start_agent=off\nfuture_key=keep-me\n");
+
         writeAutoStartAgent(AUTO_START.claude);
 
-        assert.equal(readAudioMode(), AUDIO_MODE.automatic);
+        const content = readFileSync(globalConfigPath(), "utf8");
+        assert.ok(content.includes("auto_start_agent=claude"), "auto_start_agent should be updated");
+        assert.ok(content.includes("future_key=keep-me"), "unrelated keys should be preserved");
+    });
+
+    test("auto-start and web settings coexist without clobbering each other", () => {
+        writeAutoStartAgent(AUTO_START.claude);
+        writeWebEnabled(true);
+
         assert.equal(readAutoStartAgent(), AUTO_START.claude);
+        assert.equal(readWebEnabled(), true);
     });
 
     test("readWebEnabled defaults to false when the config file is missing", () => {

@@ -13,12 +13,10 @@ import {
     LOCK_KEYS,
     listWorkspaceIds,
     readActiveProfile,
-    readAudio,
     readGitMode,
     readLockFile,
     readWebPort,
     writeActiveProfile,
-    writeAudio,
     writeGitMode,
     writeLockFile,
     writeWebPort,
@@ -155,7 +153,8 @@ describe("with isolated home", () => {
             assert.ok(raw.includes(`${LOCK_KEYS.workspaceRoot}=`), "should contain root= key");
             assert.ok(raw.includes(`${LOCK_KEYS.activeProfile}=`), "should contain profile= key");
             assert.ok(raw.includes(`${LOCK_KEYS.gitMode}=`), "should contain git_mode= key");
-            assert.ok(raw.includes(`${LOCK_KEYS.audio}=`), "should contain audio= key");
+            assert.ok(raw.includes(`${LOCK_KEYS.webPort}=`), "should contain web_port= key");
+            assert.ok(!raw.includes("audio="), "should not contain the retired audio= key");
             assert.ok(!raw.includes("last-cli-update="), "should not contain last-cli-update= key");
             await cleanTempDir(tmp);
         });
@@ -198,55 +197,6 @@ describe("with isolated home", () => {
             await cleanTempDir(tmp);
         });
 
-        test("readAudio returns false by default on fresh init", async () => {
-            const tmp = createTempDir();
-            initWorkspaceDir("test-ws", tmp);
-            assert.equal(readAudio("test-ws"), false);
-            await cleanTempDir(tmp);
-        });
-
-        test("readAudio returns false for missing lock", () => {
-            assert.equal(readAudio("nonexistent-ws-id-xyz"), false);
-        });
-
-        test("writeAudio toggles the flag and round-trips", async () => {
-            const tmp = createTempDir();
-            initWorkspaceDir("test-ws", tmp);
-            writeAudio("test-ws", true);
-            assert.equal(readAudio("test-ws"), true);
-            writeAudio("test-ws", false);
-            assert.equal(readAudio("test-ws"), false);
-            await cleanTempDir(tmp);
-        });
-
-        test("writeAudio preserves path, profile, and git mode", async () => {
-            const tmp = createTempDir();
-            initWorkspaceDir("test-ws", tmp, "extended", GIT_MODE.unrestricted);
-            writeAudio("test-ws", true);
-            assert.equal(readAudio("test-ws"), true);
-            assert.equal(readActiveProfile("test-ws"), "extended");
-            assert.equal(readGitMode("test-ws"), GIT_MODE.unrestricted);
-            assert.equal(readLockFile("test-ws"), tmp);
-            await cleanTempDir(tmp);
-        });
-
-        test("writeGitMode and writeActiveProfile preserve audio flag", async () => {
-            const tmp = createTempDir();
-            initWorkspaceDir("test-ws", tmp);
-            writeAudio("test-ws", true);
-            writeGitMode("test-ws", GIT_MODE.strict);
-            writeActiveProfile("test-ws", "extended");
-            assert.equal(readAudio("test-ws"), true);
-            await cleanTempDir(tmp);
-        });
-
-        test("initWorkspaceDir with custom audio flag", async () => {
-            const tmp = createTempDir();
-            initWorkspaceDir("test-ws", tmp, DEFAULT_PROFILE, GIT_MODE.local, true);
-            assert.equal(readAudio("test-ws"), true);
-            await cleanTempDir(tmp);
-        });
-
         test("readWebPort returns null on fresh init and for missing lock", async () => {
             const tmp = createTempDir();
             initWorkspaceDir("test-ws", tmp);
@@ -277,18 +227,16 @@ describe("with isolated home", () => {
         test("writeWebPort preserves all other fields and survives their writes", async () => {
             const tmp1 = createTempDir();
             const tmp2 = createTempDir();
-            initWorkspaceDir("test-ws", tmp1, "extended", GIT_MODE.unrestricted, true);
+            initWorkspaceDir("test-ws", tmp1, "extended", GIT_MODE.unrestricted);
             writeWebPort("test-ws", 3905);
 
             assert.equal(readActiveProfile("test-ws"), "extended");
             assert.equal(readGitMode("test-ws"), GIT_MODE.unrestricted);
-            assert.equal(readAudio("test-ws"), true);
             assert.equal(readLockFile("test-ws"), tmp1);
 
             // Every other writer must carry the web port along.
             writeGitMode("test-ws", GIT_MODE.strict);
             writeActiveProfile("test-ws", "other");
-            writeAudio("test-ws", false);
             writeLockFile("test-ws", tmp2);
             assert.equal(readWebPort("test-ws"), 3905);
 

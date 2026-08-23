@@ -9,14 +9,8 @@ import { existsSync } from "node:fs";
 import { join, relative } from "node:path";
 import { cancel, confirm, isCancel, log, outro, select } from "@clack/prompts";
 import { buildAgentContextDocs, buildAgentMountArgs, injectAgentContext } from "../lib/agent-context.js";
-import { ensureCookieFile, IS_MACOS, isAudioServerRunning, startServer, stopServer } from "../lib/audio-host.js";
 import {
-    AUDIO_COOKIE_CONTAINER_PATH,
-    AUDIO_MODE,
-    AUDIO_PULSE_SERVER,
-    AUDIODRIVER_VALUE,
     AUTO_START,
-    type AudioMode,
     type AutoStartAgent,
     CONTAINER_KEEP_ALIVE,
     CONTAINER_STARTUP,
@@ -24,7 +18,6 @@ import {
     DEFAULT_PROFILE,
     GIT_MODE,
     type GitMode,
-    LABEL_AUDIO,
     LABEL_AUTOSTART,
     LABEL_ENV,
     LABEL_GIT_MODE,
@@ -38,7 +31,7 @@ import {
 } from "../lib/constants.js";
 import { buildDockerfile, buildImageWithTempfile, computeBuildHash } from "../lib/dockerfile-builder.js";
 import { type EnvConfig, envLabel, envRunArgs, envWarnings, validateEnvConfig } from "../lib/env.js";
-import { readAudioMode, readAutoStartAgent, readWebEnabled, readWebRange } from "../lib/global-config.js";
+import { readAutoStartAgent, readWebEnabled, readWebRange } from "../lib/global-config.js";
 import { isImageStale } from "../lib/migrate-to-latest.js";
 import { buildPnpmStoreMountArgs } from "../lib/pnpm-store.js";
 import {
@@ -51,7 +44,7 @@ import {
     portsLabel,
     validatePortsConfig,
 } from "../lib/ports.js";
-import { connectedSessionCount, containerSessionCount, loginShellExecArgs } from "../lib/sessions.js";
+import { containerSessionCount, loginShellExecArgs } from "../lib/sessions.js";
 import { buildShadowMountArgs, ensureShadowsInSync, expandShadowPatterns } from "../lib/shadows.js";
 import type { ProfileConfig } from "../lib/totopo-yaml.js";
 import { readTotopoYaml } from "../lib/totopo-yaml.js";
@@ -67,7 +60,7 @@ import {
     webSessionInfo,
 } from "../lib/webterm.js";
 import type { WorkspaceContext } from "../lib/workspace-identity.js";
-import { readActiveProfile, readAudio, readGitMode, writeActiveProfile } from "../lib/workspace-identity.js";
+import { readActiveProfile, readGitMode, writeActiveProfile } from "../lib/workspace-identity.js";
 
 // --- Working directory resolution ---------------------------------------------------------------------------------------------------------
 // Always open the session where totopo was invoked. The whole workspace root is bind-mounted at
@@ -76,16 +69,6 @@ import { readActiveProfile, readAudio, readGitMode, writeActiveProfile } from ".
 export function resolveWorkdir(workspaceDir: string, cwd: string): string {
     if (cwd === workspaceDir) return CONTAINER_WORKSPACE;
     return `${CONTAINER_WORKSPACE}/${relative(workspaceDir, cwd)}`;
-}
-
-// --- Countdown helper --------------------------------------------------------------------------------------------------------------------
-// Print a message, then tick down one line per second. Used so a transient warning (e.g. the host audio
-// server failed to auto-start) stays on screen long enough to read before the session connects anyway.
-async function countdown(seconds: number, message: string): Promise<void> {
-    for (let remaining = seconds; remaining > 0; remaining--) {
-        log.info(`${message} in ${remaining}...`);
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-    }
 }
 
 // --- Profile selection -------------------------------------------------------------------------------------------------------------------
@@ -129,7 +112,6 @@ interface ContainerInfo {
     profileLabel: string;
     runtimeEnvLabel: string;
     gitModeLabel: string;
-    audioLabel: string;
     autoStartLabel: string;
     portsLabel: string;
     envLabel: string;
@@ -137,19 +119,19 @@ interface ContainerInfo {
 
 // Returns null when the container does not exist (docker inspect exits non-zero).
 function inspectContainer(containerName: string): ContainerInfo | null {
-    const fmt = `{{.State.Status}}|{{index .Config.Labels "${LABEL_SHADOWS}"}}|{{index .Config.Labels "${LABEL_PROFILE}"}}|{{index .Config.Labels "${LABEL_RUNTIME_ENV}"}}|{{index .Config.Labels "${LABEL_GIT_MODE}"}}|{{index .Config.Labels "${LABEL_AUDIO}"}}|{{index .Config.Labels "${LABEL_AUTOSTART}"}}|{{index .Config.Labels "${LABEL_PORTS}"}}|{{index .Config.Labels "${LABEL_ENV}"}}`;
+    const fmt = `{{.State.Status}}|{{index .Config.Labels "${LABEL_SHADOWS}"}}|{{index .Config.Labels "${LABEL_PROFILE}"}}|{{index .Config.Labels "${LABEL_RUNTIME_ENV}"}}|{{index .Config.Labels "${LABEL_GIT_MODE}"}}|{{index .Config.Labels "${LABEL_AUTOSTART}"}}|{{index .Config.Labels "${LABEL_PORTS}"}}|{{index .Config.Labels "${LABEL_ENV}"}}`;
     const result = spawnSync("docker", ["inspect", "--format", fmt, containerName], { encoding: "utf8", stdio: "pipe" });
     if (result.status !== 0) return null;
     const clean = (s: string) => (s === "<no value>" ? "" : s);
-    const [status = "", shadows = "", profile = "", runtimeEnv = "", gitMode = "", audio = "", autoStart = "", ports = "", env = ""] =
-        result.stdout.trim().split("|");
+    const [status = "", shadows = "", profile = "", runtimeEnv = "", gitMode = "", autoStart = "", ports = "", env = ""] = result.stdout
+        .trim()
+        .split("|");
     return {
         status,
         shadowLabel: clean(shadows),
         profileLabel: clean(profile),
         runtimeEnvLabel: clean(runtimeEnv),
         gitModeLabel: clean(gitMode),
-        audioLabel: clean(audio),
         autoStartLabel: clean(autoStart),
         portsLabel: clean(ports),
         envLabel: clean(env),
@@ -171,34 +153,6 @@ function runtimeEnvLabel(): string {
         .sort()
         .join(",");
     return createHash("sha256").update(sorted).digest("hex").slice(0, 12);
-}
-
-// --- Audio state label -------------------------------------------------------------------------------------------------------------------
-// Captures whether the bridge is on AND the host cookie path that gets bind-mounted, so relocating the
-// cookie recreates the container instead of leaving it with a dangling mount. Off keeps the old
-// String(audio) value ("false") so audio-off containers are not needlessly recreated on upgrade.
-export function audioStateLabel(audio: boolean, audioCookiePath: string | undefined): string {
-    if (!audio) return "false";
-    const fingerprint = createHash("sha256")
-        .update(audioCookiePath ?? "")
-        .digest("hex")
-        .slice(0, 12);
-    return `true:${fingerprint}`;
-}
-
-// --- Auto-stop decision (host audio server) ----------------------------------------------------------------------------------------------
-// Whether automatic-mode teardown should stop the shared host audio server now. Deliberately independent
-// of THIS workspace's audio wiring: the server is a single host-wide resource, so the last session to
-// close must stop it even when that session was not itself voice-wired. `serverRunning` and
-// `connectedSessions` are thunks so the `&&` chain keeps its short-circuit - the session scan runs only
-// when the server is actually up (no cost on non-audio exits), and never when off macOS or in manual mode.
-export function shouldStopHostAudioServer(
-    isMacos: boolean,
-    audioMode: AudioMode,
-    serverRunning: () => boolean,
-    connectedSessions: () => number,
-): boolean {
-    return isMacos && audioMode === AUDIO_MODE.automatic && serverRunning() && connectedSessions() === 0;
 }
 
 // --- Stop and remove container -----------------------------------------------------------------------------------------------------------
@@ -234,8 +188,6 @@ export interface StartContainerOpts {
     envConfig: EnvConfig; // Normalized env-file paths + inline vars from validateEnvConfig
     hasGit: boolean;
     gitMode: GitMode;
-    audio: boolean; // Claude Code /voice bridge: inject PulseAudio env + --add-host when true
-    audioCookiePath?: string; // Absolute host path to the PulseAudio cookie; mounted read-only for auth when set
     shadowPatterns: string[]; // Raw patterns from totopo.yaml, used for agent context docs
     workspaceName: string;
     portMappings: PortMapping[]; // Normalized host->container mappings from validatePortsConfig
@@ -267,8 +219,6 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
         envConfig,
         hasGit,
         gitMode,
-        audio,
-        audioCookiePath,
         shadowPatterns,
         workspaceName,
         portMappings,
@@ -307,7 +257,7 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
 
     // --- Auto-start agent (host-global) --------------------------------------------------------------------------------------------------
     // Read from the global config, not opts: the favorite agent is a person-level preference shared across
-    // all workspaces (like the audio mode), so every workspace's container reflects the same value.
+    // all workspaces, so every workspace's container reflects the same value.
     const autoStartAgent = readAutoStartAgent();
 
     // --- Container labels ----------------------------------------------------------------------------------------------------------------
@@ -323,8 +273,6 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
         "--label",
         `${LABEL_GIT_MODE}=${gitMode}`,
         "--label",
-        `${LABEL_AUDIO}=${audioStateLabel(audio, audioCookiePath)}`,
-        "--label",
         `${LABEL_AUTOSTART}=${autoStartAgent}`,
     ];
 
@@ -339,39 +287,17 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
         ...(autoStartAgent !== AUTO_START.off ? ["-e", `TOTOPO_AUTOSTART=${autoStartAgent}`] : []),
     ];
 
-    // --- Audio bridge (Claude Code /voice) ------------------------------------------------------------------------------------------------
-    // When enabled, point SoX 'rec' at the host PulseAudio server. --add-host makes host.docker.internal
-    // resolve on native Linux (it is automatic on Docker Desktop, where the flag is harmless).
-    // When the host cookie exists, mount it read-only and set PULSE_COOKIE so the container can
-    // authenticate; the server requires this shared secret, so only wired containers can connect.
-    const audioCookieArgs =
-        audio && audioCookiePath
-            ? ["-e", `PULSE_COOKIE=${AUDIO_COOKIE_CONTAINER_PATH}`, "-v", `${audioCookiePath}:${AUDIO_COOKIE_CONTAINER_PATH}:ro`]
-            : [];
-    const audioRunArgs = audio
-        ? [
-              "-e",
-              `PULSE_SERVER=${AUDIO_PULSE_SERVER}`,
-              "-e",
-              `AUDIODRIVER=${AUDIODRIVER_VALUE}`,
-              "--add-host",
-              "host.docker.internal:host-gateway",
-              ...audioCookieArgs,
-          ]
-        : [];
-
     // --- Inspect container state ---------------------------------------------------------------------------------------------------------
     const info = inspectContainer(containerName);
     let containerStatus = info?.status ?? null;
 
-    // --- Recreate if shadow, profile, runtime env, git mode, audio, auto-start, or ports changed -----------------------------------------
+    // --- Recreate if shadow, profile, runtime env, git mode, auto-start, or ports changed ------------------------------------------------
     if (info !== null) {
         const expectedShadowLabel = shadowLabel(expandedShadows);
         const shadowChanged = info.shadowLabel !== expectedShadowLabel;
         const profileChanged = info.profileLabel !== activeProfile;
         const runtimeEnvChanged = info.runtimeEnvLabel !== runtimeEnvLabel();
         const gitModeChanged = info.gitModeLabel !== gitMode;
-        const audioChanged = info.audioLabel !== audioStateLabel(audio, audioCookiePath);
         // Treat an absent label (pre-feature container) as "off" so a still-default setting does not force a
         // spurious recreate on the first upgrade - the stale-image prompt handles the mandatory rebuild instead.
         const autoStartChanged = (info.autoStartLabel || AUTO_START.off) !== autoStartAgent;
@@ -380,22 +306,12 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
         // Both sides are "" when a workspace declares no env, so a container without env injection never recreates on this label.
         const envChanged = info.envLabel !== currentEnvLabel;
 
-        if (
-            shadowChanged ||
-            profileChanged ||
-            runtimeEnvChanged ||
-            gitModeChanged ||
-            audioChanged ||
-            autoStartChanged ||
-            portsChanged ||
-            envChanged
-        ) {
+        if (shadowChanged || profileChanged || runtimeEnvChanged || gitModeChanged || autoStartChanged || portsChanged || envChanged) {
             // Describe the change once - reused for the confirm prompt and the recreate log line below.
             let reason: string;
             if (profileChanged) reason = `Profile changed (${info.profileLabel} -> ${activeProfile})`;
             else if (shadowChanged) reason = "Shadow paths changed";
             else if (gitModeChanged) reason = `Git mode changed (${info.gitModeLabel || "<unset>"} -> ${gitMode})`;
-            else if (audioChanged) reason = `Voice/audio ${audio ? "enabled" : "disabled"}`;
             else if (portsChanged) reason = "Ports changed";
             else if (envChanged) reason = "Environment variables changed";
             else if (autoStartChanged) reason = `Auto-start changed (${info.autoStartLabel || AUTO_START.off} -> ${autoStartAgent})`;
@@ -485,7 +401,7 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
         // dropped port recreates the container and rebuilds this. No dedicated label needed for the same reason.
         const webEnvArgs = publishedWebPort !== undefined ? ["-e", `TOTOPO_WEB_URL=http://localhost:${publishedWebPort}`] : [];
 
-        // portEnvArgs come after envArgs/runtimeEnvArgs/audioRunArgs so the published value wins any -e collision.
+        // portEnvArgs come after envArgs/runtimeEnvArgs/webEnvArgs so the published value wins any -e collision.
         const runArgs = [
             "run",
             "-d",
@@ -495,7 +411,6 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
             ...envArgs,
             ...runtimeEnvArgs,
             ...webEnvArgs,
-            ...audioRunArgs,
             ...portEnvArgs(published),
             ...portPublishArgs(published),
             "--security-opt",
@@ -536,15 +451,15 @@ export async function startContainer(opts: StartContainerOpts): Promise<Containe
         const start = spawnSync("docker", ["start", containerName], { stdio });
         if (start.status !== 0) {
             // A resume reuses the bind mounts frozen at create time. When one no longer resolves on the host
-            // - most often the pre-v3.10.0 audio cookie that has since moved (the container still references
-            // the old path) - docker start fails. stderr is inherited, not captured, so do not parse the
-            // daemon error; treat any resume failure as recreate-worthy. Recreating rebinds every mount
-            // against current paths; agent memory, settings, and workspace data live in host bind mounts and
-            // cache dirs outside the container fs, so they survive. Non-interactive callers keep the hard fail.
+            // - a moved or renamed workspace directory, a deleted env file, a relocated cache dir - docker
+            // start fails. stderr is inherited, not captured, so do not parse the daemon error; treat any
+            // resume failure as recreate-worthy. Recreating rebinds every mount against current paths; agent
+            // memory, settings, and workspace data live in host bind mounts and cache dirs outside the
+            // container fs, so they survive. Non-interactive callers keep the hard fail.
             if (quiet) process.exit(start.status ?? 1); // Non-interactive: preserve the original silent hard fail.
             log.warn(
                 "This container could not start - a host path it was created against has likely moved or been removed\n" +
-                    "  (for example the audio cookie relocated in v3.10.0).",
+                    "  (for example the workspace directory was renamed).",
             );
             const recreate = await confirm({
                 message: "Recreate it now? Your agent memory, settings, and workspace data are preserved.",
@@ -683,28 +598,6 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
     // --- Git mode (per-workspace, host-side .lock) ---------------------------------------------------------------------------------------
     const gitMode = readGitMode(ctx.workspaceId) ?? GIT_MODE.local;
 
-    // --- Audio bridge opt-in (per-workspace, host-side .lock) ----------------------------------------------------------------------------
-    const audio = readAudio(ctx.workspaceId);
-
-    // --- Auto-start host audio server (automatic mode, macOS) ----------------------------------------------------------------------------
-    // When wiring is on and the workspace is in automatic mode, bring the host server up before the
-    // container starts so the cookie it rotates is already in place for the read-only mount below
-    // (ensureCookieFile then no-ops). A failure never blocks the session - warn and count down so the
-    // message is readable, then connect anyway.
-    if (IS_MACOS && audio && readAudioMode() === AUDIO_MODE.automatic && !isAudioServerRunning()) {
-        const res = startServer();
-        if (res.ok) log.info("Host audio server started (voice input ready).");
-        else {
-            log.warn(res.message);
-            await countdown(3, "Continuing without the audio server");
-        }
-    }
-
-    // Ensure totopo's dedicated host cookie exists so the read-only mount target is always valid; the
-    // host server rotates it on each cold start. Creating it here (when absent) avoids any need to
-    // recreate the container after the server first starts.
-    const audioCookiePath = audio ? ensureCookieFile() : undefined;
-
     // --- Start container -----------------------------------------------------------------------------------------------------------------
     const containerOpts: StartContainerOpts = {
         containerName,
@@ -717,8 +610,6 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
         envConfig,
         hasGit,
         gitMode,
-        audio,
-        ...(audioCookiePath !== undefined && { audioCookiePath }),
         shadowPatterns,
         workspaceName: ctx.workspaceId,
         portMappings,
@@ -820,20 +711,10 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
         stdio: "inherit",
     });
 
-    // --- Auto-stop host audio server (automatic mode, macOS) -----------------------------------------------------------------------------
-    // Control returns here synchronously when the user exits the shell. The just-exited shell is already
-    // reaped, so connectedSessionCount() === 0 is the all-clear. See shouldStopHostAudioServer for why
-    // the decision ignores this workspace's audio wiring and stays conservative about lingering sessions.
-    if (shouldStopHostAudioServer(IS_MACOS, readAudioMode(), isAudioServerRunning, connectedSessionCount)) {
-        const res = stopServer();
-        if (res.ok) log.info("Host audio server stopped (no active sessions).");
-        else log.warn(res.message);
-    }
-
     // --- Offer to stop this workspace's container (last shell closed) --------------------------------------------------------------------
     // The container itself keeps running (CONTAINER_KEEP_ALIVE is PID 1) after the shell exits. When this was the last
     // shell to it, offer to stop it to free memory. Stop-only (no rm) so the next session resumes fast
-    // via the "exited" -> docker start path. Runs after the global audio auto-stop above; all platforms.
+    // via the "exited" -> docker start path; all platforms.
     // Agent sessions in the web interface are live conversations the shell scan cannot see - they run
     // inside the container, with no host client process - and they end with the container. So when the
     // interface reports any, the prompt says how many and defaults to keeping the container; stopping it

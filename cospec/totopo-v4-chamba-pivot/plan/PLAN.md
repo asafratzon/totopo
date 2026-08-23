@@ -26,7 +26,7 @@ Docker is not available inside the container: every phase verifies by unit tests
 
 ## Stage 1 - totopo v4.0.0 (this repo, `v4.0.0-rc-development`)
 
-- [ ] Phase 1 - Audio retirement
+- [x] Phase 1 - Audio retirement
   - Goal: remove every trace of the voice/audio feature (module, constants, lock flag, global setting, dev wiring, menus, Dockerfile packages, context bullet, README voice sections, tests).
   - Definition of done: no functional audio/pulse/sox references outside webterm's browser dictation and the unrelated chime; `pnpm check` green.
   - Covers: FR-07, FR-08

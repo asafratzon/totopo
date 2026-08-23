@@ -35,7 +35,6 @@ export const LOCK_KEYS = {
     workspaceRoot: "root",
     activeProfile: "profile",
     gitMode: "git_mode",
-    audio: "audio",
     webPort: "web_port",
 } as const;
 
@@ -91,7 +90,6 @@ function parseLockFile(workspaceId: string): LockFile | null {
             workspaceRoot: partial.workspaceRoot,
             activeProfile: partial.activeProfile ?? DEFAULT_PROFILE,
             gitMode: partial.gitMode ?? GIT_MODE.local,
-            audio: partial.audio ?? "false",
             webPort: partial.webPort ?? "",
         };
     } catch {
@@ -119,7 +117,6 @@ export function writeLockFile(workspaceId: string, workspaceRoot: string): void 
         workspaceRoot,
         activeProfile: existing?.activeProfile ?? DEFAULT_PROFILE,
         gitMode: existing?.gitMode ?? GIT_MODE.local,
-        audio: existing?.audio ?? "false",
         webPort: existing?.webPort ?? "",
     });
 }
@@ -151,18 +148,6 @@ export function writeGitMode(workspaceId: string, gitMode: GitMode): void {
     writeLockFileInternal(workspaceId, { ...existing, gitMode });
 }
 
-/** Read the audio (Claude Code /voice) opt-in flag. Defaults to false when unset or lock file is missing. */
-export function readAudio(workspaceId: string): boolean {
-    return parseLockFile(workspaceId)?.audio === "true";
-}
-
-/** Write the audio opt-in flag. No-op if the lock file is missing. Preserves all other fields. */
-export function writeAudio(workspaceId: string, audio: boolean): void {
-    const existing = parseLockFile(workspaceId);
-    if (!existing) return;
-    writeLockFileInternal(workspaceId, { ...existing, audio: String(audio) });
-}
-
 /** Read the sticky web interface host port. Returns null when the lock is missing, unset, or not a positive integer. */
 export function readWebPort(workspaceId: string): number | null {
     const value = parseLockFile(workspaceId)?.webPort;
@@ -192,12 +177,11 @@ export function initWorkspaceDir(
     workspaceRoot: string,
     activeProfile: string = DEFAULT_PROFILE,
     gitMode: GitMode = GIT_MODE.local,
-    audio = false,
 ): void {
     const dir = getWorkspaceDir(workspaceId);
     mkdirSync(join(dir, AGENTS_DIR), { recursive: true });
     mkdirSync(join(dir, SHADOWS_DIR), { recursive: true });
-    writeLockFileInternal(workspaceId, { workspaceRoot, activeProfile, gitMode, audio: String(audio), webPort: "" });
+    writeLockFileInternal(workspaceId, { workspaceRoot, activeProfile, gitMode, webPort: "" });
 }
 
 // --- Listing -----------------------------------------------------------------------------------------------------------------------------

@@ -15,7 +15,6 @@ import { run as doctor } from "../dist/commands/doctor.js";
 import { run as menu } from "../dist/commands/menu.js";
 import { run as onboard } from "../dist/commands/onboard.js";
 import { resetImage, run as settingsMenu, stop } from "../dist/commands/settings.js";
-import { isAudioServerRunning } from "../dist/lib/audio-host.js";
 import { GITHUB_README_URL, repairTotopoYaml } from "../dist/lib/totopo-yaml.js";
 import { deriveContainerName, findTotopoYamlDir, listWorkspaceIds, resolveWorkspace } from "../dist/lib/workspace-identity.js";
 
@@ -172,10 +171,7 @@ while (showMenu) {
     const activeCount = activeNames.length;
     const workspaceRunning = activeNames.some((n) => n === containerName);
 
-    // Host audio server is global and totopo never stops it on its own; surface it in the status box while up.
-    const audioServerRunning = isAudioServerRunning();
-
-    const action = await menu({ ctx: workspace, activeCount, workspaceRunning, audioServerRunning, version });
+    const action = await menu({ ctx: workspace, activeCount, workspaceRunning, version });
 
     switch (action) {
         case "dev":
