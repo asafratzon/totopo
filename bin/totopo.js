@@ -15,6 +15,7 @@ import { run as doctor } from "../dist/commands/doctor.js";
 import { run as menu } from "../dist/commands/menu.js";
 import { run as onboard } from "../dist/commands/onboard.js";
 import { resetImage, run as settingsMenu, stop } from "../dist/commands/settings.js";
+import { detectLegacyShape, tidyV3Leftovers } from "../dist/lib/legacy-check.js";
 import { GITHUB_README_URL, repairTotopoYaml } from "../dist/lib/totopo-yaml.js";
 import { deriveContainerName, findTotopoYamlDir, listWorkspaceIds, resolveWorkspace } from "../dist/lib/workspace-identity.js";
 
@@ -56,16 +57,31 @@ if (!existsSync(new URL("../dist/commands/dev.js", import.meta.url))) {
     process.exit(1);
 }
 
-// --- migrations check --------------------------------------------------------------------------------------------------------------------
+// --- Old-shape check ---------------------------------------------------------------------------------------------------------------------
+// v4 has no migration chain. A layout older than v3.16 is refused here, before anything reads or writes
+// it, with the one instruction that fixes it. A v3.16 layout is tidied in place instead (below).
+const yamlDir = findTotopoYamlDir(cwd);
+const legacy = detectLegacyShape(yamlDir);
+if (legacy) {
+    console.error("");
+    for (const line of legacy.message.split("\n")) console.error(`  ${line}`);
+    console.error("");
+    process.exit(1);
+}
+
+// --- v3.16 tidy-up -----------------------------------------------------------------------------------------------------------------------
+// The one surviving migration: drop the dead audio settings and stamp the workspace shape version.
+// Idempotent, so it runs on every start and reports only when it actually changed something.
 try {
-    const { runMigration } = await import("../dist/lib/migrate-to-latest.js");
-    await runMigration(process.cwd(), false);
+    const tidied = tidyV3Leftovers();
+    if (tidied.tidiedWorkspaces.length > 0 || tidied.removedAudioMode) {
+        log.info("Tidied up settings left over from totopo v3 (voice input is gone in v4).");
+    }
 } catch {
-    // Non-fatal - migration failure should not block startup
+    // Non-fatal - a tidy-up failure must not block startup; the next run tries again.
 }
 
 // --- Auto-repair totopo.yaml if needed ---------------------------------------------------------------------------------------------------
-const yamlDir = findTotopoYamlDir(cwd);
 if (yamlDir) {
     const result = repairTotopoYaml(yamlDir);
     if (result.error) {

@@ -14,6 +14,7 @@ import {
     GIT_MODES,
     type GitMode,
     LOCK_FILE,
+    LOCK_VERSION,
     SHADOWS_DIR,
     TOTOPO_DIR,
     TOTOPO_YAML,
@@ -36,6 +37,7 @@ export const LOCK_KEYS = {
     activeProfile: "profile",
     gitMode: "git_mode",
     webPort: "web_port",
+    version: "version",
 } as const;
 
 /** Parsed representation of a workspace .lock file. All fields are strings. */
@@ -91,17 +93,25 @@ function parseLockFile(workspaceId: string): LockFile | null {
             activeProfile: partial.activeProfile ?? DEFAULT_PROFILE,
             gitMode: partial.gitMode ?? GIT_MODE.local,
             webPort: partial.webPort ?? "",
+            version: partial.version ?? "",
         };
     } catch {
         return null;
     }
 }
 
-/** Write a LockFile to disk, always writing all keys. Creates the workspace dir if needed. */
+/**
+ * Write a LockFile to disk, always writing all keys. Creates the workspace dir if needed.
+ *
+ * The shape version is stamped here rather than taken from the caller, so a lock this totopo writes
+ * always names the shape it was written in - and a key retired from LOCK_KEYS disappears from the file
+ * on the same write. That is the whole mechanism behind the tidy-up in legacy-check.ts.
+ */
 function writeLockFileInternal(workspaceId: string, data: LockFile): void {
     const dir = getWorkspaceDir(workspaceId);
     mkdirSync(dir, { recursive: true });
-    const content = `${LOCK_ENTRIES.map(([field, key]) => `${key}=${data[field]}`).join("\n")}\n`;
+    const stamped: LockFile = { ...data, version: LOCK_VERSION };
+    const content = `${LOCK_ENTRIES.map(([field, key]) => `${key}=${stamped[field]}`).join("\n")}\n`;
     writeFileSync(join(dir, LOCK_FILE), content);
 }
 
@@ -118,6 +128,7 @@ export function writeLockFile(workspaceId: string, workspaceRoot: string): void 
         activeProfile: existing?.activeProfile ?? DEFAULT_PROFILE,
         gitMode: existing?.gitMode ?? GIT_MODE.local,
         webPort: existing?.webPort ?? "",
+        version: LOCK_VERSION,
     });
 }
 
@@ -169,6 +180,23 @@ export function writeWebPort(workspaceId: string, port: number): boolean {
     return true;
 }
 
+/** Read the workspace shape version stamped in the lock. Empty string for a pre-v4 lock, null when there is no lock. */
+export function readLockVersion(workspaceId: string): string | null {
+    return parseLockFile(workspaceId)?.version ?? null;
+}
+
+/**
+ * Rewrite the lock through the canonical writer so it carries the current shape version and only the
+ * keys this totopo still knows. A no-op (returns false) when the lock is already at the current
+ * version or does not exist, which is what makes the tidy-up safe to re-run.
+ */
+export function stampLockVersion(workspaceId: string): boolean {
+    const existing = parseLockFile(workspaceId);
+    if (!existing || existing.version === LOCK_VERSION) return false;
+    writeLockFileInternal(workspaceId, existing);
+    return true;
+}
+
 // --- Workspace directory initialization --------------------------------------------------------------------------------------------------
 
 /** Initialize ~/.totopo/workspaces/<workspace_id>/ with lock file and subdirs. */
@@ -181,7 +209,7 @@ export function initWorkspaceDir(
     const dir = getWorkspaceDir(workspaceId);
     mkdirSync(join(dir, AGENTS_DIR), { recursive: true });
     mkdirSync(join(dir, SHADOWS_DIR), { recursive: true });
-    writeLockFileInternal(workspaceId, { workspaceRoot, activeProfile, gitMode, webPort: "" });
+    writeLockFileInternal(workspaceId, { workspaceRoot, activeProfile, gitMode, webPort: "", version: LOCK_VERSION });
 }
 
 // --- Listing -----------------------------------------------------------------------------------------------------------------------------

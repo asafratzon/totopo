@@ -67,6 +67,20 @@ function writeGlobalConfig(config: Map<string, string>): void {
     writeFileSync(globalConfigPath(), content);
 }
 
+// --- Retired keys ------------------------------------------------------------------------------------------------------------------------
+
+/**
+ * Drop a key this totopo no longer knows, preserving every other key. Returns whether the file changed,
+ * so a caller can stay quiet when there was nothing to remove. The key is passed as a literal by the
+ * one caller that retires it (legacy-check.ts), because a retired name has no constant left to point at.
+ */
+export function removeGlobalConfigKey(key: string): boolean {
+    const config = parseGlobalConfig();
+    if (!config.delete(key)) return false;
+    writeGlobalConfig(config);
+    return true;
+}
+
 // --- Auto-start agent --------------------------------------------------------------------------------------------------------------------
 
 /** Read the agent to auto-start on session entry. Defaults to off when unset, missing, or unrecognized. */

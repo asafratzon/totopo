@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, test } from "node:test";
-import { DEFAULT_PROFILE, GIT_MODE, LOCK_FILE } from "../src/lib/constants.js";
+import { DEFAULT_PROFILE, GIT_MODE, LOCK_FILE, LOCK_VERSION } from "../src/lib/constants.js";
 import {
     checkCollision,
     deriveContainerName,
@@ -15,6 +15,7 @@ import {
     readActiveProfile,
     readGitMode,
     readLockFile,
+    readLockVersion,
     readWebPort,
     writeActiveProfile,
     writeGitMode,
@@ -154,6 +155,7 @@ describe("with isolated home", () => {
             assert.ok(raw.includes(`${LOCK_KEYS.activeProfile}=`), "should contain profile= key");
             assert.ok(raw.includes(`${LOCK_KEYS.gitMode}=`), "should contain git_mode= key");
             assert.ok(raw.includes(`${LOCK_KEYS.webPort}=`), "should contain web_port= key");
+            assert.ok(raw.includes(`${LOCK_KEYS.version}=${LOCK_VERSION}`), "should stamp the workspace shape version");
             assert.ok(!raw.includes("audio="), "should not contain the retired audio= key");
             assert.ok(!raw.includes("last-cli-update="), "should not contain last-cli-update= key");
             await cleanTempDir(tmp);
@@ -194,6 +196,25 @@ describe("with isolated home", () => {
             const tmp = createTempDir();
             initWorkspaceDir("test-ws", tmp, DEFAULT_PROFILE, GIT_MODE.local);
             assert.equal(readGitMode("test-ws"), GIT_MODE.local);
+            await cleanTempDir(tmp);
+        });
+
+        test("readLockVersion returns the current version on fresh init and null for missing lock", async () => {
+            const tmp = createTempDir();
+            initWorkspaceDir("test-ws", tmp);
+            assert.equal(readLockVersion("test-ws"), LOCK_VERSION);
+            assert.equal(readLockVersion("nonexistent-ws-id-xyz"), null);
+            await cleanTempDir(tmp);
+        });
+
+        test("every other writer keeps the version stamped", async () => {
+            const tmp = createTempDir();
+            initWorkspaceDir("test-ws", tmp);
+            writeGitMode("test-ws", GIT_MODE.strict);
+            writeActiveProfile("test-ws", "extended");
+            writeWebPort("test-ws", 3907);
+            writeLockFile("test-ws", tmp);
+            assert.equal(readLockVersion("test-ws"), LOCK_VERSION);
             await cleanTempDir(tmp);
         });
 

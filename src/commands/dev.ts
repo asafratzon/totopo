@@ -29,10 +29,9 @@ import {
     RUNTIME_ENV,
     WEB_CONTAINER_PORT,
 } from "../lib/constants.js";
-import { buildDockerfile, buildImageWithTempfile, computeBuildHash } from "../lib/dockerfile-builder.js";
+import { buildDockerfile, buildImageWithTempfile, computeBuildHash, isImageStale } from "../lib/dockerfile-builder.js";
 import { type EnvConfig, envLabel, envRunArgs, envWarnings, validateEnvConfig } from "../lib/env.js";
 import { readAutoStartAgent, readWebEnabled, readWebRange } from "../lib/global-config.js";
-import { isImageStale } from "../lib/migrate-to-latest.js";
 import { buildPnpmStoreMountArgs } from "../lib/pnpm-store.js";
 import {
     assertHostPortsAvailable,

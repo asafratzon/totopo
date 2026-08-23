@@ -26,6 +26,11 @@ export const LOCK_FILE = ".lock";
 export const GLOBAL_ENV_FILE = ".env"; // legacy global key file; only referenced in migration
 export const GLOBAL_CONFIG_FILE = "config"; // ~/.totopo/global/config - key=value host-global settings
 
+// The workspace shape this totopo writes, stamped into every .lock as `version=`. It is the shape's
+// number, not the package version: it changes only when the on-disk layout does. A lock without it was
+// written by a pre-v4 totopo, which is what legacy-check.ts keys the one surviving tidy-up off.
+export const LOCK_VERSION = "4";
+
 // Workspace ID constraints (must match schema/totopo.schema.json)
 export const WORKSPACE_ID_MIN = 2;
 export const WORKSPACE_ID_MAX = 48;

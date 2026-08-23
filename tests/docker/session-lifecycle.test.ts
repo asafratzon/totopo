@@ -24,10 +24,9 @@ import {
     LABEL_PROFILE,
     LABEL_SHADOWS,
 } from "../../src/lib/constants.js";
-import { buildDockerfile, buildImageWithTempfile, computeBuildHash } from "../../src/lib/dockerfile-builder.js";
+import { buildDockerfile, buildImageWithTempfile, computeBuildHash, isImageStale } from "../../src/lib/dockerfile-builder.js";
 import { envLabel, validateEnvConfig } from "../../src/lib/env.js";
 import { writeAutoStartAgent } from "../../src/lib/global-config.js";
-import { isImageStale } from "../../src/lib/migrate-to-latest.js";
 import { containerSessionCount, loginShellExecArgs } from "../../src/lib/sessions.js";
 import { expandShadowPatterns } from "../../src/lib/shadows.js";
 import {

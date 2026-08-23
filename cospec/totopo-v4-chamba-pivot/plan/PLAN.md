@@ -30,7 +30,7 @@ Docker is not available inside the container: every phase verifies by unit tests
   - Goal: remove every trace of the voice/audio feature (module, constants, lock flag, global setting, dev wiring, menus, Dockerfile packages, context bullet, README voice sections, tests).
   - Definition of done: no functional audio/pulse/sox references outside webterm's browser dictation and the unrelated chime; `pnpm check` green.
   - Covers: FR-07, FR-08
-- [ ] Phase 2 - Migrations out, refuse-check and tidy-up in
+- [x] Phase 2 - Migrations out, refuse-check and tidy-up in
   - Goal: delete `migrate-to-latest.ts`, relocate `isImageStale`, add the cheap old-shape detection that refuses with the "run totopo v3.16.0 once" message (the exact version named, so the user installs the right one: npx totopo@3.16.0), add the version marker to `.lock`, and add the one surviving migration - the v3.16-to-v4 audio tidy-up (drop `audio=` from `.lock`, remove the audio-mode key from the global config, old key names as hardcoded literals per the migration convention).
   - Definition of done: startup runs no migration chain; old-shape fixtures get the refusal and untouched disk; a v3.16-shape fixture opens, is tidied, and is unchanged on a second run; fresh `.lock` carries the version key; `pnpm check` green.
   - Covers: FR-09, FR-10, FR-11, FR-30

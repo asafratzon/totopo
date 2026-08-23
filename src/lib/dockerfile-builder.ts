@@ -173,6 +173,37 @@ export function computeBuildHash(dockerfileContent: string, buildContextDir: str
     return h.digest("hex");
 }
 
+// --- Image staleness detection -----------------------------------------------------------------------------------------------------------
+//
+// Called at session start; returns true if the running container's image is older than the current
+// package and needs a rebuild prompt.
+//
+// Mechanism: at build time, buildImageWithTempfile below stamps every image with a totopo.build-hash
+// label carrying computeBuildHash's fingerprint of the assembled Dockerfile + every baked template
+// file. At session start we recompute the expected hash from current package sources and compare.
+// Any change to templates/Dockerfile, the active profile hook, or any baked template file produces a
+// different hash -> rebuild prompt fires.
+//
+// When shipping a new bake-time artifact:
+//   - Editing an existing template file or the Dockerfile -> auto-detected. No action.
+//   - Adding a NEW templated COPY -> add the filename to BAKED_TEMPLATE_FILES above. The unit test in
+//     tests/dockerfile-builder.test.ts will fail until you do.
+//
+// Cosmetic Dockerfile edits (comment-only, whitespace) DO trigger a rebuild for users on prior
+// images. This is intentional: the Dockerfile and template files are rarely edited, so any change
+// is treated as meaningful. The release skill warns when a release contains diffs to these files
+// that look cosmetic, so the author can decide whether the rebuild cost is worth it.
+
+/** Returns true if the container's stamped totopo.build-hash label does not match the expected hash. */
+export function isImageStale(containerName: string, expectedBuildHash: string): boolean {
+    const result = spawnSync("docker", ["inspect", "--format", `{{ index .Config.Labels "${LABEL_BUILD_HASH}" }}`, containerName], {
+        encoding: "utf8",
+        stdio: "pipe",
+    });
+    if (result.status !== 0) return true;
+    return result.stdout.trim() !== expectedBuildHash;
+}
+
 // --- Build image with temp file ----------------------------------------------------------------------------------------------------------
 
 // Grey ANSI for the inline build percentage on the spinner line.
