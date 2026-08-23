@@ -38,7 +38,7 @@ Docker is not available inside the container: every phase verifies by unit tests
   - Goal: split `public/app.js` into ES modules (terminal, tabs, composer, connection, chime/favicon, clipboard, dictation) loaded via `<script type="module">`, with no behavior change - the platform the stage-2 pane and strip land on.
   - Definition of done: the monolith is gone, modules are each under roughly 600 lines, drift tests still pin the agent lists, `pnpm check` green. Explicitly preserved, none lost: the tab busy light and finished glow, the browser-tab title count and favicon working bar / waiting dot, the chime and its mute, per-session drafts, sent-message history, OSC 52 clipboard, and dictation.
   - Covers: FR-23
-- [ ] Phase 4 - Totopo docs, sweep, and release prep
+- [x] Phase 4 - Totopo docs, sweep, and release prep
   - Goal: the "Coming from v3" README section (v3.16 just works, first run tidies; older shapes run totopo v3.16.0 once), the stage-1 repo sweep for dead names and stale comments, the advanced demo re-record listed as a host step for the user, and the version bumped to the v4.0.0 RC shape for the standard release flow.
   - Definition of done: FR-27's AC holds on a full README read; the stage-1 FR-29 greps are clean (`audio`, `runMigration` - FR-30 and its tests excepted); `pnpm check` green; the host steps (demo, `pnpm release`, smoke tests) are written out for the user.
   - Covers: FR-25, FR-26, FR-27, FR-29 (stage-1 close-out; FR-29 is also standing work in every phase)

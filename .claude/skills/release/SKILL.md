@@ -120,7 +120,7 @@ For each significant change (new feature, behaviour change, bug fix):
 
 If all changes are adequately covered, say so and move on.
 
-## Step 7 - Check for missing migrations
+## Step 7 - Check for on-disk layout changes
 
 Review the changes included in this release and check whether any of them alter the on-disk structure that existing users would have from a previous version. Specifically, look for changes to:
 
@@ -129,7 +129,7 @@ Review the changes included in this release and check whether any of them alter 
 - Container naming conventions (`deriveContainerName`)
 - Any file or directory that totopo writes to the user's machine
 
-If a structural change is found, check `src/lib/migrate-to-latest.ts` for a corresponding migration step in the `MIGRATIONS` registry. If no migration handles the change, **warn the user** and suggest what migration step is needed.
+totopo v4 carries no migration chain: `src/lib/legacy-check.ts` refuses a layout older than v3.16 and tidies a v3.16 one in place. So if a structural change is found, check that `LOCK_VERSION` in `src/lib/constants.ts` was bumped and that `legacy-check.ts` handles the old shape - tidy it if the change is cheap to apply in place, refuse it otherwise. If neither is true, **warn the user** and say what an existing workspace would hit.
 
 If no structural changes are found, say so explicitly and move on.
 

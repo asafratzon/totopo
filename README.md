@@ -56,6 +56,23 @@ A session with more features turned on: [AI CLIs get updated](#ai-clis), `claude
 - [Docker](https://www.docker.com/products/docker-desktop/) - builds and runs the dev container
 - [Node.js](https://nodejs.org/) - required to run `npx totopo`
 
+## Coming from v3
+
+**If you were on v3.16, there is nothing to do.** Run `npx totopo` as usual. The first v4 run drops the settings v4 no longer has, in place, and carries on.
+
+What changes on that run:
+
+- **Voice input is gone.** The host audio server, the **Settings → Voice / audio** menu, and the microphone bridge into the container were removed. The web interface still has browser dictation, which never used any of that.
+- Everything else behaves as it did in v3.16 - same workspaces, same containers, same `totopo.yaml`, same settings.
+
+**If your last totopo was older than v3.16**, run the last v3 release once first:
+
+```bash
+npx totopo@3.16.0
+```
+
+Open its menu, let it finish, and quit - that run brings your setup up to the v3.16 layout. Then go back to `npx totopo`. v4 carries no migrations, so it refuses an older setup instead of guessing: it tells you the same thing and changes nothing on disk.
+
 ## Who this is for
 
 Developers who use `claude`, `codex`, or `opencode` **interactively** - one human pair-programming with one agent.
@@ -286,7 +303,7 @@ To clear memory: `npx totopo` → **Advanced > Clear agent memory**.
 ~/.totopo/
 └── workspaces/
     └── <workspace_id>/
-        ├── .lock       # workspace root path, active profile, and git mode
+        ├── .lock       # workspace root path, active profile, git mode, web port, and layout version
         ├── agents/     # agent session data (persists across rebuilds)
         │   ├── claude/
         │   ├── opencode/

@@ -28,9 +28,11 @@ After editing `src/`, run `pnpm lint:fix` then `pnpm check`. Ask the user to run
 
 ## Migration convention
 
-`src/lib/migrate-to-latest.ts` transforms old structures (A) into the current one (B):
-- **A paths** (source) - hardcode as string literals so the migration still finds the old location if a constant changes later.
+v4 carries no migration chain. `src/lib/legacy-check.ts` does two things at startup: it refuses a layout older than v3.16 and tells the user to run `npx totopo@3.16.0` once, and it tidies a v3.16 layout in place. It is the only place that reads old structures (A) to write the current one (B):
+- **A paths** (source) - hardcode as string literals so the check still finds the old location if a constant changes later.
 - **B paths** (destination) - use constants from `constants.ts`.
+
+When a change moves the on-disk layout, bump `LOCK_VERSION` in `constants.ts` and decide there whether the old shape is tidied or refused.
 
 ## Security boundaries (non-negotiable)
 

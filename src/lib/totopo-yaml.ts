@@ -109,7 +109,7 @@ export function readTotopoYaml(dir: string): TotopoYamlConfig | null {
 
 // --- Write -------------------------------------------------------------------------------------------------------------------------------
 
-// Every published version (rc or release) has a corresponding git tag created by pnpm rc / pnpm rc:promote.
+// Every published version (rc or release) has a corresponding git tag, created by pnpm release.
 // We rely on that tag existing so these URLs resolve correctly for every installed version.
 const { version } = JSON.parse(readFileSync(join(PACKAGE_ROOT, "package.json"), "utf8")) as { version: string };
 export const GITHUB_README_URL = `https://github.com/asafratzon/totopo/blob/v${version}/README.md`;

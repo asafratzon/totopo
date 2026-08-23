@@ -2,7 +2,7 @@
 // check.ts - pre-release health checks
 // Usage: pnpm check
 //
-// Runs before every commit (via .githooks/pre-commit) and before pnpm rc.
+// Runs before every commit (via .githooks/pre-commit) and before pnpm release.
 // Add new checks here as the project grows.
 // =========================================================================================================================================
 

@@ -12,7 +12,6 @@ export const PACKAGE_ROOT = dirname(dirname(dirname(fileURLToPath(import.meta.ur
 // ~/.totopo/ structure
 export const TOTOPO_DIR = ".totopo";
 export const WORKSPACES_DIR = "workspaces";
-export const PROJECTS_DIR = "projects"; // legacy v3-rc-1/rc-2; only referenced in migration
 export const GLOBAL_DIR = "global"; // host-global state not tied to a workspace (the config file)
 
 // Workspace cache subdirectories (under ~/.totopo/workspaces/<id>/)
@@ -23,7 +22,6 @@ export const PNPM_STORE_DIR = "pnpm-store";
 // Filenames
 export const TOTOPO_YAML = "totopo.yaml";
 export const LOCK_FILE = ".lock";
-export const GLOBAL_ENV_FILE = ".env"; // legacy global key file; only referenced in migration
 export const GLOBAL_CONFIG_FILE = "config"; // ~/.totopo/global/config - key=value host-global settings
 
 // The workspace shape this totopo writes, stamped into every .lock as `version=`. It is the shape's
