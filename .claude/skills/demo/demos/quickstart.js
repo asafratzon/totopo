@@ -19,7 +19,7 @@ out(NL, 0.8);
 // container is stopped here, so the state is omitted (only "up" is shown, while
 // running) and no notice line follows - just version and workspace.
 out(`${rail}${NL}`, 0.05);
-out(`${rail}  ${B}totopo v3.15.0${R}${B}${GREY} \u00b7 ${R}${B}my-project${R}${NL}${rail}${NL}`, 0.7);
+out(`${rail}  ${B}totopo v4.0.0${R}${B}${GREY} \u00b7 ${R}${B}my-project${R}${NL}${rail}${NL}`, 0.7);
 
 // 3. Menu, "Open session" selected (single block)
 out(

@@ -8,7 +8,6 @@
 // =========================================================================================================================================
 
 import { spawnSync } from "node:child_process";
-import { CONTAINER_NAME_PREFIX } from "./constants.js";
 
 // The interactive session shell, as argv. Single source of truth: both the connect command and the
 // detector's match needle derive from this, so they cannot drift apart.
@@ -39,21 +38,4 @@ export function sessionMatchNeedle(containerName: string): string {
 export function containerSessionCount(containerName: string): number {
     const r = spawnSync("pgrep", ["-f", sessionMatchNeedle(containerName)], { encoding: "utf8", stdio: "pipe" });
     return (r.stdout ?? "").split("\n").filter(Boolean).length;
-}
-
-// Sum live interactive sessions across ALL totopo containers (delegates to containerSessionCount).
-// The host audio server is shared by every workspace, so automatic-mode auto-stop fires only at 0 - no
-// session anywhere. A non-zero/errored `docker ps` (Docker unavailable) returns 0.
-export function connectedSessionCount(): number {
-    const ps = spawnSync("docker", ["ps", "--filter", `name=${CONTAINER_NAME_PREFIX}`, "--format", "{{.Names}}"], {
-        encoding: "utf8",
-        stdio: "pipe",
-    });
-    if (ps.status !== 0) return 0;
-    const names = (ps.stdout ?? "").trim().split("\n").filter(Boolean);
-    let total = 0;
-    for (const name of names) {
-        total += containerSessionCount(name);
-    }
-    return total;
 }

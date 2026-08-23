@@ -26,20 +26,20 @@ Docker is not available inside the container: every phase verifies by unit tests
 
 ## Stage 1 - totopo v4.0.0 (this repo, `v4.0.0-rc-development`)
 
-- [ ] Phase 1 - Audio retirement
+- [x] Phase 1 - Audio retirement
   - Goal: remove every trace of the voice/audio feature (module, constants, lock flag, global setting, dev wiring, menus, Dockerfile packages, context bullet, README voice sections, tests).
   - Definition of done: no functional audio/pulse/sox references outside webterm's browser dictation and the unrelated chime; `pnpm check` green.
   - Covers: FR-07, FR-08
-- [ ] Phase 2 - Migrations out, refuse-check and tidy-up in
+- [x] Phase 2 - Migrations out, refuse-check and tidy-up in
   - Goal: delete `migrate-to-latest.ts`, relocate `isImageStale`, add the cheap old-shape detection that refuses with the "run totopo v3.16.0 once" message (the exact version named, so the user installs the right one: npx totopo@3.16.0), add the version marker to `.lock`, and add the one surviving migration - the v3.16-to-v4 audio tidy-up (drop `audio=` from `.lock`, remove the audio-mode key from the global config, old key names as hardcoded literals per the migration convention).
   - Definition of done: startup runs no migration chain; old-shape fixtures get the refusal and untouched disk; a v3.16-shape fixture opens, is tidied, and is unchanged on a second run; fresh `.lock` carries the version key; `pnpm check` green.
   - Covers: FR-09, FR-10, FR-11, FR-30
-- [ ] Phase 3 - Webterm frontend module split
+- [x] Phase 3 - Webterm frontend module split
   - Goal: split `public/app.js` into ES modules (terminal, tabs, composer, connection, chime/favicon, clipboard, dictation) loaded via `<script type="module">`, with no behavior change - the platform the stage-2 pane and strip land on.
   - Definition of done: the monolith is gone, modules are each under roughly 600 lines, drift tests still pin the agent lists, `pnpm check` green. Explicitly preserved, none lost: the tab busy light and finished glow, the browser-tab title count and favicon working bar / waiting dot, the chime and its mute, per-session drafts, sent-message history, OSC 52 clipboard, and dictation.
   - Covers: FR-23
-- [ ] Phase 4 - Totopo docs, sweep, and release prep
-  - Goal: the "Coming from v3" README section (v3.16 just works, first run tidies; older shapes run totopo v3.16.0 once), the stage-1 repo sweep for dead names and stale comments, the advanced demo re-record listed as a host step for the user, and the version bumped to the v4.0.0 RC shape for the standard release flow.
+- [x] Phase 4 - Totopo docs, sweep, and release prep
+  - Goal: the "Migrating from v3" README section (v3.16 just works, first run tidies; older shapes run totopo v3.16.0 once), the stage-1 repo sweep for dead names and stale comments, the advanced demo re-recorded (it renders in the container - no Docker needed, since the demos are synthetic), and the version bumped to the v4.0.0 RC shape for the standard release flow.
   - Definition of done: FR-27's AC holds on a full README read; the stage-1 FR-29 greps are clean (`audio`, `runMigration` - FR-30 and its tests excepted); `pnpm check` green; the host steps (demo, `pnpm release`, smoke tests) are written out for the user.
   - Covers: FR-25, FR-26, FR-27, FR-29 (stage-1 close-out; FR-29 is also standing work in every phase)
 

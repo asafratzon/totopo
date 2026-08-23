@@ -24,8 +24,8 @@
 //
 // Before running this script, use the /release skill inside the container to
 // prepare: it helps draft changelog entries, validates test coverage and
-// migrations, and stages the commit. This script handles everything that
-// requires host access (npm publish, git push, GitHub releases).
+// on-disk layout changes, and stages the commit. This script handles
+// everything that requires host access (npm publish, git push, GitHub releases).
 //
 // Changelog notes must be present in scripts/changelog.yaml BEFORE running.
 // See CONTRIBUTING.md for the changelog.yaml format.

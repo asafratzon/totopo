@@ -59,7 +59,7 @@ Use the `/release` skill inside the container to prepare, then run `pnpm release
 
 #### Release flows
 
-**Release candidate** - publish a `-rc-N` version under the `rc` dist-tag for testing with `npx totopo@rc`. RC development happens on a dedicated branch (e.g. `v3.1.0-rc-development`), not on `main`.
+**Release candidate** - publish a `-rc-N` version under the `rc` dist-tag for testing with `npx totopo@rc`. RC development happens on a dedicated branch (e.g. `v4.0.0-rc-development`), not on `main`.
 
 **Promote rc to stable** - squash RC entries, regenerate CHANGELOG.md, squash-merge the RC branch into `main`, publish as `latest`, and remove the `rc` dist-tag.
 

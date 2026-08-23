@@ -7,6 +7,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [4.0.0] - 2026-08-23
+
+### Changed
+
+- Voice input is gone. The host audio server, the Settings > Voice / audio menu and the microphone bridge into the container were removed - they existed only because Claude Code's hold-SPACE dictation records from a microphone and a container has none. macOS already dictates into any focused window with the microphone key (F5), a terminal running an agent included, and the web interface keeps its own dictate button. The first v4 run drops the leftover voice settings from this machine and says so in one line, and the image no longer installs the audio packages, so existing containers are offered a rebuild on next session start.
+- Upgrading is one step instead of a chain: a workspace last used with v3.16 just works, and anything older is left untouched and asked to run `npx totopo@3.16.0` once first.
+
+---
+
 ## [3.16.0] - 2026-07-28
 
 ### Added

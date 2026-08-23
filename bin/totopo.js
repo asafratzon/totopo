@@ -15,7 +15,7 @@ import { run as doctor } from "../dist/commands/doctor.js";
 import { run as menu } from "../dist/commands/menu.js";
 import { run as onboard } from "../dist/commands/onboard.js";
 import { resetImage, run as settingsMenu, stop } from "../dist/commands/settings.js";
-import { isAudioServerRunning } from "../dist/lib/audio-host.js";
+import { detectLegacyShape, tidyV3Leftovers } from "../dist/lib/legacy-check.js";
 import { GITHUB_README_URL, repairTotopoYaml } from "../dist/lib/totopo-yaml.js";
 import { deriveContainerName, findTotopoYamlDir, listWorkspaceIds, resolveWorkspace } from "../dist/lib/workspace-identity.js";
 
@@ -57,16 +57,38 @@ if (!existsSync(new URL("../dist/commands/dev.js", import.meta.url))) {
     process.exit(1);
 }
 
-// --- migrations check --------------------------------------------------------------------------------------------------------------------
+// --- Old-shape check ---------------------------------------------------------------------------------------------------------------------
+// v4 has no migration chain. A layout older than v3.16 is refused here, before anything reads or writes
+// it, with the one instruction that fixes it. A v3.16 layout is tidied in place instead (below).
+// Not wrapped, unlike the tidy-up below: this is a gate, and a gate that fails open would let v4 write
+// into a layout it cannot read. Every fs call inside is guarded individually, so there is nothing to
+// catch here that would not be a bug worth seeing.
+const yamlDir = findTotopoYamlDir(cwd);
+const legacy = detectLegacyShape(yamlDir);
+if (legacy) {
+    console.error("");
+    for (const line of legacy.message.split("\n")) console.error(`  ${line}`);
+    console.error("");
+    process.exit(1);
+}
+
+// --- v3.16 tidy-up -----------------------------------------------------------------------------------------------------------------------
+// The one surviving migration: drop the dead audio settings and stamp the workspace shape version.
+// Idempotent, so it runs on every start and reports only when it actually changed something.
+// The voice line is tied to the audio setting actually being removed, because the lock rewrite itself is
+// generic: it brings any older shape forward, so a future version must not inherit a message about voice.
 try {
-    const { runMigration } = await import("../dist/lib/migrate-to-latest.js");
-    await runMigration(process.cwd(), false);
+    const tidied = tidyV3Leftovers();
+    if (tidied.removedAudioMode) {
+        log.info("Tidied up settings left over from totopo v3 (voice input is gone in v4).");
+    } else if (tidied.tidiedWorkspaces.length > 0) {
+        log.info("Brought this host's workspace settings up to date.");
+    }
 } catch {
-    // Non-fatal - migration failure should not block startup
+    // Non-fatal - a tidy-up failure must not block startup; the next run tries again.
 }
 
 // --- Auto-repair totopo.yaml if needed ---------------------------------------------------------------------------------------------------
-const yamlDir = findTotopoYamlDir(cwd);
 if (yamlDir) {
     const result = repairTotopoYaml(yamlDir);
     if (result.error) {
@@ -172,10 +194,7 @@ while (showMenu) {
     const activeCount = activeNames.length;
     const workspaceRunning = activeNames.some((n) => n === containerName);
 
-    // Host audio server is global and totopo never stops it on its own; surface it in the status box while up.
-    const audioServerRunning = isAudioServerRunning();
-
-    const action = await menu({ ctx: workspace, activeCount, workspaceRunning, audioServerRunning, version });
+    const action = await menu({ ctx: workspace, activeCount, workspaceRunning, version });
 
     switch (action) {
         case "dev":

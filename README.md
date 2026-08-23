@@ -47,9 +47,33 @@ For a deeper look at how totopo works and how to configure it, see the sections 
 
 ### Advanced Session
 
-A session with more features turned on: the host audio server for [voice input](#voice-mode-microphone) starts automatically, [AI CLIs get updated](#ai-clis), `claude` launches via [auto-start](#auto-start-agent), and exiting shuts everything down:
+A session with more features turned on: [AI CLIs get updated](#ai-clis), `claude` launches via [auto-start](#auto-start-agent), and exiting shuts everything down:
 
 ![totopo advanced demo](.github/assets/advanced.gif)
+
+## Web agent interface
+
+An opt-in browser front-end for the agents in the container.
+It relays the real agent TUI - your subscription, no API key, same sandbox - and adds what a terminal cannot: every session on one page, images, and dictation.
+Turn it on under **Settings → Web interface** (off by default), then run `webterm claude` (or `opencode` / `codex`) in the container to start it and print its URL - the agent you name is the one new sessions start with, and the browser can pick another per session.
+With [auto-start](#auto-start-agent) on it comes up by itself and the greeting shows the URL.
+
+![totopo web interface](.github/assets/webterm.png)
+
+- **Every session in one page.** The tab bar lists every session running in the container, up to 8. Click to switch, `+ New session` to start one, double-click to rename, drag to reorder.
+- **Several agents at once.** One server runs claude, opencode and codex - one agent per session - so the bar can hold a `claude 1` tab next to a `codex 2` tab, each in its own directory. `+ New session` starts the usual one; the chevron beside it opens a small panel that asks which agent and which directory. `webterm <agent>` in the container moves which one is usual, without ending anything.
+- **Sessions start where you did.** Run `npx totopo` inside `apps/api` and the browser's agent works on `apps/api`, the same directory a terminal session lands in. The chevron beside `+ New session` opens one somewhere else, and each session keeps its own for life.
+- **Sessions outlive the browser.** They belong to the container, so a closed tab, dropped wifi or a slept laptop ends nothing, and opening the URL anywhere shows them all. One window drives a session at a time; another can take it over.
+- **Tabs show what each agent is doing.** A light runs round a tab while its agent works, and the tab stays lit when one finishes, until you go and look. The browser tab shows the same from behind another window: the title counts the sessions waiting, and the icon carries a white bar sweeping along its bottom edge while an agent works and a green dot in its corner while one waits.
+- **A chime when an agent finishes something you were not there for.** Ten seconds after a session finishes, if nobody has touched it since - no key, no click, no scroll - it sounds once. Touching it in those ten seconds is what calls the sound off, so the sessions you are actually working in stay quiet. The bell in the tab bar mutes it, and the choice is remembered.
+- **Images and dictation.** Paste, drop or upload an image and the agent gets its path; dictate instead of typing.
+- **Drafts stay with their session.** A half-written message, attachments included, waits until you send it or the session ends.
+- **Stop the container from the page.** The power button at the right of the tab bar stops it - every session in it, browser and terminal alike - after a prompt that names what ends.
+- **Its own sticky host port.** One loopback-only port per workspace from a range (default `3900-3999`), kept host-side and never in `totopo.yaml`, so the port survives restarts and rebuilds. Container port `3899` is reserved for the relay.
+- **A key in the URL.** The printed URL ends in `/?k=<key>`, and the relay rejects anything without it - the page, the socket, uploads and the status probe alike. The key is created when the interface starts and never stored on the host, so it dies with the container. Reaching the port is not enough to drive your agent.
+  If the key is no longer the live one, or the container is gone, the page says so instead of looking usable.
+- **Same sandbox as the terminal.** Loopback-only, key-gated, origin-checked, non-root.
+- **It never blocks a session.** If no port is free or the server does not come up, totopo says so and opens the session without it.
 
 ## Requirements
 
@@ -99,7 +123,7 @@ On every run, totopo shows the workspace menu:
 
 - **Open session** - start or resume the dev container and connect
 - **Stop container** - stop the running container
-- **Settings** - git mode, shadow paths, voice, auto-start agent, web interface, rebuild, reset config
+- **Settings** - git mode, shadow paths, web interface, auto-start agent, rebuild container, clean rebuild, reset config
 - **Advanced** - multi-workspace management (stop containers, clear memory, uninstall)
 
 ### Working directory
@@ -284,25 +308,17 @@ To clear memory: `npx totopo` → **Advanced > Clear agent memory**.
 
 ```
 ~/.totopo/
+├── global/
+│   └── config          # host-global settings shared by every workspace (auto-start agent, web interface)
 └── workspaces/
     └── <workspace_id>/
-        ├── .lock       # workspace root path, active profile, and git mode
+        ├── .lock       # workspace root path, active profile, git mode, web port, and layout version
         ├── agents/     # agent session data (persists across rebuilds)
         │   ├── claude/
         │   ├── opencode/
         │   └── codex/
         └── shadows/    # container-local shadow path storage
 ```
-
-## Voice Mode (microphone)
-
-Claude Code's `/voice` records from a mic via SoX, but a container has none (on Docker Desktop the Linux VM has no device passthrough). totopo bridges your host mic in over a local PulseAudio server - **opt-in per workspace** from **Settings → Voice / audio**.
-
-**macOS (automated):** in that menu, **Enable wiring**, then **Install pulseaudio → Start host server → Test microphone** (approve the mic prompt for your terminal under **System Settings → Privacy & Security → Microphone**). Open a session and run `/voice`. The main menu reminds you while the server runs - stop it there when done. For hands-off control, turn **Auto start/stop** on in the same menu: totopo then starts the server when a voice-enabled session opens and stops it once your last session exits, so you never start or stop it by hand.
-
-**Linux / Windows (manual):** automation is macOS-only. **Enable wiring**, then run your own PulseAudio server reachable at TCP `4713` (load `module-native-protocol-tcp`). It must accept totopo's cookie at `~/.totopo/global/pulse-cookie` (mounted read-only into the container), or load the module with `auth-anonymous=1`. On Windows the source is typically the WSLg PulseAudio server.
-
-> **Security:** while running, the server exposes your mic on a local TCP port, gated by an `auth-ip-acl` (private networks only) and - the real gate - a **dedicated, rotating cookie**: totopo-owned (not your general PulseAudio credential), mounted read-only, regenerated on every server start, so a leaked cookie dies on the next restart. Still, run the server only while you need voice and stop it after. A deliberate widening of totopo's boundary - see [what totopo protects against](#what-totopo-protects-against).
 
 ## Auto-start agent
 
@@ -315,29 +331,35 @@ When the [web agent interface](#web-agent-interface) is enabled, the same settin
 With auto-start on, the first session after a container starts resumes your most recent conversation; later sessions start fresh.
 For claude, totopo picks the newest conversation that actually has messages and resumes it by id; opencode and codex use their own `--continue` / `resume --last` flags.
 
-## Web agent interface
+## Migrating from v3
 
-An opt-in browser front-end for the agents in the container.
-It relays the real agent TUI - your subscription, no API key, same sandbox - and adds what a terminal cannot: every session on one page, images, and dictation.
-Turn it on under **Settings → Web interface** (off by default), then run `webterm claude` (or `opencode` / `codex`) in the container to start it and print its URL - the agent you name is the one new sessions start with, and the browser can pick another per session.
-With [auto-start](#auto-start-agent) on it comes up by itself and the greeting shows the URL.
+**If you were on v3.16, there is nothing to do.**
+Run `npx totopo` as usual.
+The first v4 run removes the voice settings from every workspace on this machine, says so in one line, and carries on.
 
-![totopo web interface](.github/assets/webterm.png)
+What changes on that first run:
 
-- **Every session in one page.** The tab bar lists every session running in the container, up to 8. Click to switch, `+ New session` to start one, double-click to rename, drag to reorder.
-- **Several agents at once.** One server runs claude, opencode and codex - one agent per session - so the bar can hold a `claude 1` tab next to a `codex 2` tab, each in its own directory. `+ New session` starts the usual one; the chevron beside it opens a small panel that asks which agent and which directory. `webterm <agent>` in the container moves which one is usual, without ending anything.
-- **Sessions start where you did.** Run `npx totopo` inside `apps/api` and the browser's agent works on `apps/api`, the same directory a terminal session lands in. The chevron beside `+ New session` opens one somewhere else, and each session keeps its own for life.
-- **Sessions outlive the browser.** They belong to the container, so a closed tab, dropped wifi or a slept laptop ends nothing, and opening the URL anywhere shows them all. One window drives a session at a time; another can take it over.
-- **Tabs show what each agent is doing.** A light runs round a tab while its agent works, and the tab stays lit when one finishes, until you go and look. The browser tab shows the same from behind another window: the title counts the sessions waiting, and the icon carries a white bar sweeping along its bottom edge while an agent works and a green dot in its corner while one waits.
-- **A chime when an agent finishes something you were not there for.** Ten seconds after a session finishes, if nobody has touched it since - no key, no click, no scroll - it sounds once. Touching it in those ten seconds is what calls the sound off, so the sessions you are actually working in stay quiet. The bell in the tab bar mutes it, and the choice is remembered.
-- **Images and dictation.** Paste, drop or upload an image and the agent gets its path; dictate instead of typing.
-- **Drafts stay with their session.** A half-written message, attachments included, waits until you send it or the session ends.
-- **Stop the container from the page.** The power button at the right of the tab bar stops it - every session in it, browser and terminal alike - after a prompt that names what ends.
-- **Its own sticky host port.** One loopback-only port per workspace from a range (default `3900-3999`), kept host-side and never in `totopo.yaml`, so the port survives restarts and rebuilds. Container port `3899` is reserved for the relay.
-- **A key in the URL.** The printed URL ends in `/?k=<key>`, and the relay rejects anything without it - the page, the socket, uploads and the status probe alike. The key is created when the interface starts and never stored on the host, so it dies with the container. Reaching the port is not enough to drive your agent.
-  If the key is no longer the live one, or the container is gone, the page says so instead of looking usable.
-- **Same sandbox as the terminal.** Loopback-only, key-gated, origin-checked, non-root.
-- **It never blocks a session.** If no port is free or the server does not come up, totopo says so and opens the session without it.
+- **Voice input is gone.** The host audio server, the **Settings → Voice / audio** menu, and the microphone bridge into the container were removed.
+  It existed for one reason: Claude Code's hold-SPACE dictation needs the microphone, and a terminal inside a container does not have one, so totopo bridged the host mic in over a local audio server.
+  It was macOS-only and a lot of moving parts for that.
+  macOS already dictates anywhere, including a terminal running a totopo session - press the microphone key (F5) and talk (see [Troubleshooting](#troubleshooting)), so the feature was not needed.
+  The web interface still has browser dictation, which never used any of that.
+- **One container rebuild.** The container image changed, so the first session offers a rebuild and you should take it.
+  It takes a few minutes and leaves agent memory, settings and your data alone.
+- Everything else behaves as it did in v3.16 - same workspaces, same `totopo.yaml`, same settings.
+
+**If your setup predates v3.16**, run the last v3 release once first:
+
+```bash
+npx totopo@3.16.0
+```
+
+Run it from the project directory you were using, open its menu, let it finish, and quit.
+That run brings your setup up to the v3.16 layout.
+Then go back to `npx totopo`.
+
+v4 carries no migrations, so it refuses an older setup instead of guessing: it prints the same instruction and changes nothing on disk.
+It goes by what it finds rather than by a version number, so a `totopo.yaml` still carrying a key v3 retired (`project_id`, `env_file`, `schema_version`) gets the same refusal - remove the key, or let the v3 run do it.
 
 ## Troubleshooting
 
@@ -345,7 +367,7 @@ With [auto-start](#auto-start-agent) on it comes up by itself and the greeting s
 
 **Single machine** - `~/.totopo/` is local. Switching machines requires re-running setup in each workspace.
 
-**Voice mode / audio** - `/voice` needs a microphone, which a container does not have by default. Enable it under **Settings → Voice / audio**; see [Voice Mode](#voice-mode-microphone).
+**Dictation in an agent session** - Claude Code's hold-SPACE dictation does not work in a totopo session: it records from a microphone, and the container has none. On macOS use the system dictation instead - press the microphone key (F5, or whatever you have it mapped to under **System Settings → Keyboard → Dictation**) and talk. It types into the focused window, so it works in a terminal running an agent, in `claude`'s own input box, and in the [web interface](#web-agent-interface) too. The web interface also has its own dictate button, which uses the browser's speech recognition.
 
 **Shift+Enter not working in VS Code terminal** - add this to your VS Code keybindings (`Cmd+Shift+P` → "Open Keyboard Shortcuts (JSON)"):
 
@@ -371,8 +393,6 @@ Totopo makes everyday agent mistakes safer. It is not built to stop a determined
 - Secrets you didn't shadow. A `.env` tracked in git is visible unless you list it in `shadow_paths`.
 - Container escapes. Totopo uses a non-root user and `no-new-privileges`, but no capability drops or seccomp profiles. For stronger isolation, use a microVM sandbox.
 - Edits to your working tree. The workspace is bind-mounted, so agent changes land on your real files. Commit often.
-
-**Voice mode widens this boundary** - enabling the mic bridge runs a host PulseAudio server that exposes your microphone over a local TCP port (cookie- and ACL-gated) for as long as it runs. Opt in only while dictating, and stop the server when done (or let automatic mode handle it on macOS); see [Voice Mode](#voice-mode-microphone).
 
 ## Disclaimer
 

@@ -24,13 +24,15 @@ After editing `src/`, run `pnpm lint:fix` then `pnpm check`. Ask the user to run
 - **Comment lines start with a capital letter**
 - **Biome formatting:** 140 char line width, 4-space indent, double quotes
 - **TypeScript strict mode** with `exactOptionalPropertyTypes` and `noUncheckedIndexedAccess`
-- **Comment divider lines** must be exactly 141 chars (prefix `// ` + 138 `=` or `-`); enforced by `scripts/check.ts`
+- **Comment divider lines** must be exactly 140 chars (prefix `// ` + 137 `=` or `-`); enforced by `scripts/check.ts` for `src/`, `bin/`, `scripts/` and `tests/`
 
 ## Migration convention
 
-`src/lib/migrate-to-latest.ts` transforms old structures (A) into the current one (B):
-- **A paths** (source) - hardcode as string literals so the migration still finds the old location if a constant changes later.
+v4 carries no migration chain. `src/lib/legacy-check.ts` does two things at startup: it refuses a layout older than v3.16 and tells the user to run `npx totopo@3.16.0` once, and it tidies a v3.16 layout in place. It is the only place that reads old structures (A) to write the current one (B):
+- **A paths** (source) - hardcode as string literals so the check still finds the old location if a constant changes later.
 - **B paths** (destination) - use constants from `constants.ts`.
+
+When a change moves the on-disk layout, bump `LOCK_VERSION` in `constants.ts` and decide in `legacy-check.ts` whether the old shape is tidied or refused.
 
 ## Security boundaries (non-negotiable)
 
@@ -54,4 +56,4 @@ Skills live in `.claude/skills/`. `.agents/skills/` contains symlinks - edit onl
 
 ## Release process
 
-RC development happens on a dedicated branch (e.g. `v3.1.0-rc-development`), not on `main`. `main` always points to the latest stable release. The source of truth for release notes is `scripts/changelog.yaml` (`CHANGELOG.md` is generated from it). RC entries are cumulative - describe the full release, not delta from previous RC. Use the `/release` skill to prepare; publishing and git push happen on the host via `pnpm release`.
+RC development happens on a dedicated branch (e.g. `v4.0.0-rc-development`), not on `main`. `main` always points to the latest stable release. The source of truth for release notes is `scripts/changelog.yaml` (`CHANGELOG.md` is generated from it). RC entries are cumulative - describe the full release, not delta from previous RC. Use the `/release` skill to prepare; publishing and git push happen on the host via `pnpm release`.

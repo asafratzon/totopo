@@ -1,18 +1,15 @@
 // =========================================================================================================================================
-// src/commands/settings.ts - Settings submenu: git mode, shadow paths, voice, auto-start, rebuild, reset config
+// src/commands/settings.ts - Settings submenu: git mode, shadow paths, web interface, auto-start, rebuild, reset config
 // =========================================================================================================================================
 
 import { spawnSync } from "node:child_process";
 import { relative } from "node:path";
 import { cancel, confirm, isCancel, log, multiselect, note, outro, path, select, text } from "@clack/prompts";
-import { getStatus, IS_MACOS, installPulse, startServer, stopServer, testMic } from "../lib/audio-host.js";
-import { AUDIO_MODE, AUDIO_TCP_PORT, AUTO_START, type AutoStartAgent, GIT_MODE, type GitMode } from "../lib/constants.js";
+import { AUTO_START, type AutoStartAgent, GIT_MODE, type GitMode } from "../lib/constants.js";
 import {
-    readAudioMode,
     readAutoStartAgent,
     readWebEnabled,
     readWebRange,
-    writeAudioMode,
     writeAutoStartAgent,
     writeWebEnabled,
     writeWebRange,
@@ -22,7 +19,7 @@ import { countPatternHits } from "../lib/shadows.js";
 import { buildDefaultTotopoYaml, readTotopoYaml, writeTotopoYaml } from "../lib/totopo-yaml.js";
 import { assignWebPortsToAllWorkspaces, readWebKey, reassignOutOfRangeWebPorts } from "../lib/webterm.js";
 import type { WorkspaceContext } from "../lib/workspace-identity.js";
-import { readAudio, readGitMode, readWebPort, writeAudio, writeGitMode } from "../lib/workspace-identity.js";
+import { readGitMode, readWebPort, writeGitMode } from "../lib/workspace-identity.js";
 
 // --- Shadow paths menu -------------------------------------------------------------------------------------------------------------------
 async function shadowPathsMenu(ctx: WorkspaceContext): Promise<void> {
@@ -195,99 +192,6 @@ async function gitModeMenu(ctx: WorkspaceContext): Promise<void> {
     writeGitMode(ctx.workspaceId, choice);
     log.success(`Git mode set to ${choice}.`);
     await promptStopContainer(ctx);
-}
-
-// --- Voice / audio menu ------------------------------------------------------------------------------------------------------------------
-async function audioMenu(ctx: WorkspaceContext): Promise<void> {
-    while (true) {
-        const wiring = readAudio(ctx.workspaceId);
-        const mode = readAudioMode();
-        const status = getStatus();
-
-        const serverLine = !status.installed ? "not installed" : status.running ? `running on TCP ${AUDIO_TCP_PORT}` : "installed, stopped";
-        // The server-control mode only matters where totopo manages the server (macOS).
-        const modeLine = IS_MACOS ? `\nmode:         ${mode}` : "";
-        note(
-            `wiring:       ${wiring ? "enabled" : "disabled"}  (this workspace)\n` +
-                `host server:  ${serverLine}` +
-                modeLine +
-                (status.version ? `\nversion:      ${status.version}` : ""),
-            "Voice / audio",
-        );
-
-        log.message(
-            "Claude Code /voice needs a microphone, which the container does not have.\n" +
-                "Enable wiring (per-workspace) and run a host PulseAudio server that streams your mic in.\n" +
-                "The server exposes your mic over a local TCP port while it runs, so keep it up only while you need voice.",
-        );
-
-        if (!IS_MACOS) {
-            log.info(
-                "Host server control is automated on macOS only. On Linux/Windows, start a PulseAudio server on the host manually - see the README.",
-            );
-        }
-
-        const options: { value: string; label: string; hint?: string }[] = [
-            { value: "toggle", label: wiring ? "Disable wiring" : "Enable wiring", hint: "PulseAudio env for this workspace's container" },
-        ];
-        if (IS_MACOS) {
-            options.push({
-                value: "mode",
-                label: `Auto start/stop: ${mode === AUDIO_MODE.automatic ? "on" : "off"}`,
-                hint: "auto-start on session, stop on last exit",
-            });
-            if (!status.installed) options.push({ value: "install", label: "Install pulseaudio", hint: "via Homebrew" });
-            if (status.installed && !status.running)
-                options.push({ value: "start", label: "Start host server", hint: `TCP ${AUDIO_TCP_PORT}` });
-            if (status.running) {
-                options.push({ value: "test", label: "Test microphone", hint: "record 3s and check capture" });
-                options.push({ value: "stop", label: "Stop host server" });
-            }
-        }
-        options.push({ value: "back", label: "← Back" });
-
-        const action = await select({ message: "Voice / audio:", options });
-        if (isCancel(action) || action === "back") return;
-
-        if (action === "toggle") {
-            const next = !wiring;
-            writeAudio(ctx.workspaceId, next);
-            log.success(`Voice/audio wiring ${next ? "enabled" : "disabled"} for this workspace.`);
-            await promptStopContainer(ctx);
-            continue;
-        }
-
-        if (action === "mode") {
-            // The host server is a single shared resource, so this mode is host-global. It only changes
-            // server lifecycle behavior, not container config, so no rebuild prompt.
-            const next = mode === AUDIO_MODE.automatic ? AUDIO_MODE.manual : AUDIO_MODE.automatic;
-            writeAudioMode(next);
-            log.success(
-                next === AUDIO_MODE.automatic
-                    ? "Automatic mode on - opening a session starts the host audio server; exiting stops it when no other session is connected."
-                    : "Automatic mode off - start and stop the host audio server yourself.",
-            );
-            continue;
-        }
-
-        let result: { ok: boolean; message: string };
-        if (action === "install") {
-            result = installPulse();
-        } else if (action === "start") {
-            result = startServer();
-        } else if (action === "stop") {
-            result = stopServer();
-        } else {
-            log.info("Recording 3 seconds - speak now...");
-            result = testMic();
-        }
-
-        if (result.ok) {
-            log.success(result.message);
-        } else {
-            log.warn(result.message);
-        }
-    }
 }
 
 // --- Web agent interface menu ------------------------------------------------------------------------------------------------------------
@@ -486,7 +390,6 @@ export async function run(ctx: WorkspaceContext): Promise<"back" | "rebuild" | "
         const options: { value: string; label: string; hint?: string }[] = [
             { value: "git-mode", label: "Git mode", hint: `current: ${currentGitMode}` },
             { value: "shadow-paths", label: "Shadow paths", hint: "manage shadow patterns" },
-            { value: "audio", label: "Voice / audio", hint: "Claude Code /voice mic setup" },
             { value: "web", label: "Web interface", hint: readWebEnabled() ? "enabled" : "browser front-end for agents" },
             { value: "auto-start", label: "Auto-start agent", hint: `current: ${readAutoStartAgent()}` },
             { value: "rebuild", label: "Rebuild container", hint: "force a fresh image build" },
@@ -507,9 +410,6 @@ export async function run(ctx: WorkspaceContext): Promise<"back" | "rebuild" | "
                 break;
             case "shadow-paths":
                 await shadowPathsMenu(ctx);
-                break;
-            case "audio":
-                await audioMenu(ctx);
                 break;
             case "web":
                 await webInterfaceMenu(ctx);

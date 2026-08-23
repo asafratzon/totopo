@@ -2,7 +2,7 @@
 // check.ts - pre-release health checks
 // Usage: pnpm check
 //
-// Runs before every commit (via .githooks/pre-commit) and before pnpm rc.
+// Runs before every commit (via .githooks/pre-commit) and before pnpm release.
 // Add new checks here as the project grows.
 // =========================================================================================================================================
 
@@ -19,7 +19,7 @@ const fail = (label: string, detail: string) => {
     errors++;
 };
 
-console.log("\n\x1b[1mtotopo — pre-release checks\x1b[0m\n");
+console.log("\n\x1b[1mtotopo - pre-release checks\x1b[0m\n");
 
 // =========================================================================================================================================
 // Helpers: file collection

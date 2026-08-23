@@ -34,7 +34,7 @@ import {
     webtermExecArgs,
 } from "../src/lib/webterm.js";
 import { initWorkspaceDir, readWebPort, writeWebPort } from "../src/lib/workspace-identity.js";
-import { cleanTempDir, createTempDir, overrideEnv } from "./helpers.js";
+import { blockAfter, cleanTempDir, createTempDir, overrideEnv, readWebtermClient } from "./helpers.js";
 
 const TEMPLATES_DIR = join(import.meta.dirname, "..", "templates");
 const SRC_DIR = join(import.meta.dirname, "..", "src");
@@ -433,9 +433,9 @@ describe("the key the URL carries", () => {
     });
 
     test("the client sends its key on everything the server gates", () => {
-        const app = readFileSync(join(TEMPLATES_DIR, "webterm", "public", "app.js"), "utf8");
+        const app = readWebtermClient();
         assert.ok(app.includes('new URLSearchParams(location.search).get("k")'), "the window takes its key from its URL");
-        assert.ok(/const wsUrl = .*\/ws\$\{KEY_QUERY\}/.test(app), "the socket must carry the key");
+        assert.match(blockAfter(app, "function wsUrl"), /\/ws\$\{KEY_QUERY\}`/, "the socket must carry the key");
         assert.ok(/fetch\(`\/upload\$\{KEY_QUERY\}`/.test(app), "uploads must carry the key");
         assert.ok(/fetch\(`\/status\$\{KEY_QUERY\}`/.test(app), "the probe that tells a stale key from a dead container must carry it");
     });
@@ -457,8 +457,38 @@ describe("the key the URL carries", () => {
 
 // ---- A page that cannot do anything says so ---------------------------------------------------------------------------------------------
 
+// ---- The page's module graph ------------------------------------------------------------------------------------------------------------
+
+describe("the page's module graph", () => {
+    const CLIENT_DIR = join(TEMPLATES_DIR, "webterm", "public", "app");
+
+    test("index.html loads the entry module", () => {
+        const html = readFileSync(join(TEMPLATES_DIR, "webterm", "public", "index.html"), "utf8");
+        // The drift tests below read the client's source, so nothing else would notice a page that loads
+        // no script at all, or one that points at a file that no longer exists.
+        assert.ok(/<script type="module" src="\/app\/main\.js">/.test(html), "the page must load /app/main.js as a module");
+    });
+
+    test("every module is reachable from the entry", () => {
+        const reached = new Set<string>();
+        const walk = (name: string): void => {
+            if (reached.has(name)) return;
+            reached.add(name);
+            const source = readFileSync(join(CLIENT_DIR, name), "utf8");
+            for (const match of source.matchAll(/["']\.\/([\w-]+\.js)["']/g)) walk(String(match[1]));
+        };
+        walk("main.js");
+
+        // Several modules exist for what they do when they load - the microphone button, the chevron panel's
+        // Escape key, the workspace colour. A module the entry cannot reach is simply not on the page, and
+        // without this test that happens silently.
+        const onDisk = readdirSync(CLIENT_DIR).filter((name) => name.endsWith(".js"));
+        assert.deepEqual([...reached].sort(), onDisk.sort(), "every module must be reachable from main.js");
+    });
+});
+
 describe("the curtain", () => {
-    const APP = readFileSync(join(TEMPLATES_DIR, "webterm", "public", "app.js"), "utf8");
+    const APP = readWebtermClient();
 
     test("the page goes inert the moment the socket does", () => {
         const html = readFileSync(join(TEMPLATES_DIR, "webterm", "public", "index.html"), "utf8");
@@ -513,10 +543,14 @@ describe("stop the container", () => {
     });
 
     test("the container is only stopped after a card that names what it ends", () => {
-        const app = readFileSync(join(TEMPLATES_DIR, "webterm", "public", "app.js"), "utf8");
+        const app = readWebtermClient();
         // The click opens the card; only the card's own button sends the frame.
         assert.ok(app.includes('button.addEventListener("click", stopCard)'), "the power button must ask first");
-        assert.ok(/stopCard[\s\S]*?run: \(\) => sendFrame\(\{ t: "stop" \}\)/.test(app), "only the confirmed card may send the stop frame");
+        assert.match(
+            blockAfter(app, "function stopCard"),
+            /run: \(\) => sendFrame\(\{ t: "stop" \}\)/,
+            "only the confirmed card may send the stop frame",
+        );
     });
 
     test("the server announces the stop before it signals, and reports one that did not take", () => {
@@ -532,7 +566,7 @@ describe("stop the container", () => {
 // ---- The two boxes on the page agree about the keyboard ---------------------------------------------------------------------------------
 
 describe("composing a message", () => {
-    const APP = readFileSync(join(TEMPLATES_DIR, "webterm", "public", "app.js"), "utf8");
+    const APP = readWebtermClient();
 
     test("Shift+Enter is a newline in the terminal as well as in the composer", () => {
         // A terminal has no Shift+Enter: Enter is a carriage return whatever else is held. ESC then CR is what the
@@ -564,7 +598,7 @@ describe("composing a message", () => {
 // ---- The sound an alert makes -----------------------------------------------------------------------------------------------------------
 
 describe("the finish chime", () => {
-    const APP = readFileSync(join(TEMPLATES_DIR, "webterm", "public", "app.js"), "utf8");
+    const APP = readWebtermClient();
 
     test("it waits after the alert, long enough to be answered and no longer", () => {
         // The hold is the entire presence test: an alert still standing at the end of it is one nobody came back to.
@@ -807,7 +841,7 @@ describe("the agents one server will run", () => {
         // Which agent and which directory are the only two things that make a session and neither can be changed
         // later, so they are one question. Two controls could not say "codex, over there" at all, which is the
         // hole this closed; a frame that carried only one of them would reopen it.
-        const app = readFileSync(join(TEMPLATES_DIR, "webterm", "public", "app.js"), "utf8");
+        const app = readWebtermClient();
         assert.ok(/sendFrame\(\{ t: "new", cwd: field\.value\.trim\(\), agent: state\.agent \}\)/.test(app));
         // And the plain button stays one click: no cwd, no agent, both defaulted by the server.
         assert.ok(/add\.addEventListener\("click", \(\) => sendFrame\(\{ t: "new" \}\)\)/.test(app));

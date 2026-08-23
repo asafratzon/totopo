@@ -1,6 +1,6 @@
 ---
 name: demo
-description: Create or update the animated terminal demos (GIFs) embedded in the README. Use whenever the README demo needs to reflect UI changes, a new totopo version, or when a new demo GIF is requested (e.g. showing a specific feature like voice mode, auto-start, git modes, or shadow paths). Triggers include "update the demo", "record a demo", "the demo GIF is outdated", or any release that changes visible CLI output.
+description: Create or update the animated terminal demos (GIFs) embedded in the README. Use whenever the README demo needs to reflect UI changes, a new totopo version, or when a new demo GIF is requested (e.g. showing a specific feature like the web interface, auto-start, git modes, or shadow paths). Triggers include "update the demo", "record a demo", "the demo GIF is outdated", or any release that changes visible CLI output.
 ---
 
 # README terminal demos
@@ -18,8 +18,8 @@ repo root under `.github/assets/` (paths starting with `.github/` are repo-root-
 - `demos/lib.js` - shared engine: ANSI constants, the aligned block cursor,
   `createCast()` with `out()`/`type()`/`save()`. Scenario files import this.
 - `demos/quickstart.js` - the basic scenario (open a session, start claude by hand).
-- `demos/advanced.js` - the advanced scenario (audio server, AI CLI update
-  spinner, agent auto-start, exit + auto-shutdown flow).
+- `demos/advanced.js` - the advanced scenario (AI CLI update spinner, agent
+  auto-start, exit + auto-shutdown flow).
 - `demos/add-window.py` - wraps a GIF in a macOS-style window (title bar,
   traffic lights, transparent rounded corners). Needs Pillow (provisioned by
   `render.sh`, below). Rarely needs changes.
@@ -80,5 +80,5 @@ repo root under `.github/assets/` (paths starting with `.github/` are repo-root-
 - Human typing pace: 40–80 ms per keystroke, pauses before "output" appears.
 - Menu redraws (select → collapsed) use cursor-up + clear: `\u001b[NA\u001b[0J`.
 - The quickstart demo shows only the core flow; feature-specific content
-  (audio server, CLI updates, auto-start, auto-shutdown) lives in `advanced.js`.
+  (CLI updates, auto-start, auto-shutdown) lives in `advanced.js`.
   Further features (ports, shadow paths, git modes) belong in new demo GIFs.

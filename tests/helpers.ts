@@ -1,9 +1,46 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { safeRmSync } from "../src/lib/safe-rm.js";
+
+const WEBTERM_CLIENT_DIR = join(import.meta.dirname, "..", "templates", "webterm", "public", "app");
+
+/**
+ * The webterm page's source, every module concatenated in filename order.
+ *
+ * The page is split into ES modules, and the drift tests below match its text rather than run it (it needs a
+ * browser). Reading the whole client keeps those tests about what the page does instead of which file a
+ * function happens to live in, so moving one between modules never fails a test on its own.
+ */
+export function readWebtermClient(): string {
+    return readdirSync(WEBTERM_CLIENT_DIR)
+        .filter((name) => name.endsWith(".js"))
+        .sort()
+        .map((name) => readFileSync(join(WEBTERM_CLIENT_DIR, name), "utf8"))
+        .join("\n");
+}
+
+/**
+ * The body of the block that follows a marker, found by matching braces.
+ *
+ * The drift tests read every module as one string, so a lazy regex looking for a closing brace can run out
+ * of the function it was reading and into the next module, and pass for the wrong reason. Counting braces
+ * ends where the block ends, wherever the function lives and however deeply it is nested.
+ */
+export function blockAfter(source: string, marker: string): string {
+    const start = source.indexOf(marker);
+    if (start === -1) return "";
+    const open = source.indexOf("{", start + marker.length);
+    if (open === -1) return "";
+    let depth = 0;
+    for (let i = open; i < source.length; i++) {
+        if (source[i] === "{") depth++;
+        else if (source[i] === "}" && --depth === 0) return source.slice(open + 1, i);
+    }
+    return "";
+}
 
 export function createTempDir(): string {
     return mkdtempSync(join(tmpdir(), "totopo-test-"));

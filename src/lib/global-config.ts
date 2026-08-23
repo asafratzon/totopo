@@ -1,18 +1,15 @@
 // =========================================================================================================================================
 // src/lib/global-config.ts - Host-global settings store (not tied to any workspace)
 // Lives at ~/.totopo/global/config as key=value lines, mirroring the per-workspace .lock idiom.
-// The host audio server is a single shared resource, so its control mode is global, not per-workspace.
+// Settings live here when they are host-wide rather than per-workspace.
 // =========================================================================================================================================
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import {
-    AUDIO_MODE,
-    AUDIO_MODES,
     AUTO_START,
     AUTO_START_AGENTS,
-    type AudioMode,
     type AutoStartAgent,
     GLOBAL_CONFIG_FILE,
     GLOBAL_DIR,
@@ -25,7 +22,6 @@ import { formatWebRange, parseWebRange, type WebRange } from "./ports.js";
 
 /** Field names mapped to the keys written in the global config file. */
 export const GLOBAL_CONFIG_KEYS = {
-    audioMode: "audio_mode",
     autoStartAgent: "auto_start_agent",
     webEnabled: "web_enabled",
     webRange: "web_range",
@@ -71,19 +67,18 @@ function writeGlobalConfig(config: Map<string, string>): void {
     writeFileSync(globalConfigPath(), content);
 }
 
-// --- Audio mode --------------------------------------------------------------------------------------------------------------------------
+// --- Retired keys ------------------------------------------------------------------------------------------------------------------------
 
-/** Read the host audio server control mode. Defaults to manual when unset, missing, or unrecognized. */
-export function readAudioMode(): AudioMode {
-    const value = parseGlobalConfig().get(GLOBAL_CONFIG_KEYS.audioMode);
-    return value !== undefined && (AUDIO_MODES as readonly string[]).includes(value) ? (value as AudioMode) : AUDIO_MODE.manual;
-}
-
-/** Write the host audio server control mode. Creates the config file on demand and preserves all other keys. */
-export function writeAudioMode(audioMode: AudioMode): void {
+/**
+ * Drop a key this totopo no longer knows, preserving every other key. Returns whether the file changed,
+ * so a caller can stay quiet when there was nothing to remove. The key is passed as a literal by the
+ * one caller that retires it (legacy-check.ts), because a retired name has no constant left to point at.
+ */
+export function removeGlobalConfigKey(key: string): boolean {
     const config = parseGlobalConfig();
-    config.set(GLOBAL_CONFIG_KEYS.audioMode, audioMode);
+    if (!config.delete(key)) return false;
     writeGlobalConfig(config);
+    return true;
 }
 
 // --- Auto-start agent --------------------------------------------------------------------------------------------------------------------
