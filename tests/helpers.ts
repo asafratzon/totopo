@@ -1,9 +1,26 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { safeRmSync } from "../src/lib/safe-rm.js";
+
+const WEBTERM_CLIENT_DIR = join(import.meta.dirname, "..", "templates", "webterm", "public", "app");
+
+/**
+ * The webterm page's source, every module concatenated in filename order.
+ *
+ * The page is split into ES modules, and the drift tests below match its text rather than run it (it needs a
+ * browser). Reading the whole client keeps those tests about what the page does instead of which file a
+ * function happens to live in, so moving one between modules never fails a test on its own.
+ */
+export function readWebtermClient(): string {
+    return readdirSync(WEBTERM_CLIENT_DIR)
+        .filter((name) => name.endsWith(".js"))
+        .sort()
+        .map((name) => readFileSync(join(WEBTERM_CLIENT_DIR, name), "utf8"))
+        .join("\n");
+}
 
 export function createTempDir(): string {
     return mkdtempSync(join(tmpdir(), "totopo-test-"));

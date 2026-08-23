@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, mock, test } from "node:test";
 import { pathToFileURL } from "node:url";
+import { readWebtermClient } from "./helpers.js";
 
 // The registry ships inside the image as plain JS (the container runs it with the baked node-pty), so it
 // is loaded here the same way the server loads it. The PTY is injected, which is what makes it testable:
@@ -1121,11 +1121,11 @@ describe("the working state", () => {
 // ---- Cross-file literal sync -------------------------------------------------------------------------------------------------------------
 
 describe("the palette the browser draws matches the indexes the registry hands out", () => {
-    const app = readFileSync(join(WEBTERM_DIR, "public", "app.js"), "utf8");
+    const app = readWebtermClient();
 
-    test("app.js defines one colour more than PALETTE_SIZE", () => {
+    test("the client defines one colour more than PALETTE_SIZE", () => {
         const match = /const PALETTE = \[([^\]]*)\]/.exec(app);
-        assert.ok(match, "app.js must define PALETTE");
+        assert.ok(match, "the client must define PALETTE");
         const colors = (match?.[1] ?? "").match(/"#[0-9a-f]{3,8}"/gi) ?? [];
         // The workspace takes one slot from the palette and sessions rotate through the rest, so the list has
         // to be one longer than the counter the registry rotates: colorIndex is (seq - 1) % PALETTE_SIZE, and
@@ -1146,11 +1146,11 @@ describe("the palette the browser draws matches the indexes the registry hands o
 // matters most. Title and favicon are the only two things a hidden window can say, so both have to be driven
 // by the same session state the tabs are. Checked as text: painting the icon needs a DOM and a canvas.
 describe("the browser tab repeats what the bar says", () => {
-    const app = readFileSync(join(WEBTERM_DIR, "public", "app.js"), "utf8");
+    const app = readWebtermClient();
 
     test("the title counts the sessions that are waiting", () => {
         const body = /function refreshBrowserTab\(\) \{([\s\S]*?)\n\}/.exec(app)?.[1] ?? "";
-        assert.ok(body, "app.js must define refreshBrowserTab");
+        assert.ok(body, "the client must define refreshBrowserTab");
         assert.match(body, /sessions\.filter\(\(entry\) => entry\.attention\)/, "the same flag the tabs light up from");
         assert.match(body, /document\.title = waiting\.length > 0/);
         // The workspace name and nothing else: a tab strip gives you a few characters, and the icon is what
@@ -1163,7 +1163,7 @@ describe("the browser tab repeats what the bar says", () => {
         // A drawing call this browser lacks must not take the frame handler down with it.
         assert.match(app, /try \{\s*drawIcon\(ctx, badgeColor, badgeColor === DONE_COLOR && pulseDim\(\), sweepAt\(\)\);\s*\} catch \{/);
         const body = /function drawIcon\(ctx, badgeColor, dim, sweep\) \{([\s\S]*?)\n\}/.exec(app)?.[1] ?? "";
-        assert.ok(body, "app.js must define drawIcon");
+        assert.ok(body, "the client must define drawIcon");
         assert.match(body, /if \(badgeColor\) \{/, "one mark, drawn when there is something to say");
     });
 
@@ -1182,7 +1182,7 @@ describe("the browser tab repeats what the bar says", () => {
         // From another browser tab, "they are on it" and "one of them wants you" are different things to know,
         // and a 16px icon has room for one mark - so it is one mark in two shapes, waiting outranking working.
         const body = /function dotColor\(\) \{([\s\S]*?)\n\}/.exec(app)?.[1] ?? "";
-        assert.ok(body, "app.js must define dotColor");
+        assert.ok(body, "the client must define dotColor");
         assert.match(
             body,
             /entry\.attention\)\) return DONE_COLOR;\s*\n\s*if \(sessions\.some\(\(entry\) => entry\.working\)\) return BUSY_COLOR/,
@@ -1200,7 +1200,7 @@ describe("the browser tab repeats what the bar says", () => {
 
     test("the icon keeps moving until the session is visited", () => {
         const body = /function tickIcon\(\) \{([\s\S]*?)\n\}/.exec(app)?.[1] ?? "";
-        assert.ok(body, "app.js must define tickIcon");
+        assert.ok(body, "the client must define tickIcon");
         // The clock reads the state itself, so visiting the session stops it wherever the visit happened.
         assert.match(body, /if \(!dotColor\(\)\) \{/);
         assert.match(body, /iconTimer = setTimeout\(tickIcon, ICON_TICK_MS\)/, "and otherwise keeps going");
@@ -1233,7 +1233,7 @@ describe("the browser tab repeats what the bar says", () => {
         // Sent only when the session in front of you is actually waiting on you, which is what keeps a scroll from
         // being a frame. Nothing else is listening for it.
         const body = /function noteSeen\(\) \{([\s\S]*?)\n\}/.exec(app)?.[1] ?? "";
-        assert.ok(body, "app.js must define noteSeen");
+        assert.ok(body, "the client must define noteSeen");
         assert.match(body, /if \(!entry\?\.attention\) return;/);
         assert.match(body, /sendFrame\(\{ t: "seen" \}\)/);
         // And focus is not what any of this reads any more: it varies by browser, has to be re-reported on every
@@ -1266,11 +1266,11 @@ describe("the browser tab repeats what the bar says", () => {
 // does - and a dead screen looks exactly like a live one, so the page has to say it. Checked as text: the page
 // needs a DOM and a terminal.
 describe("a session that goes away takes its screen with it", () => {
-    const app = readFileSync(join(WEBTERM_DIR, "public", "app.js"), "utf8");
+    const app = readWebtermClient();
     const body = /function applySessions\(msg\) \{([\s\S]*?)\n\}/.exec(app)?.[1] ?? "";
 
     test("the terminal is replaced when the session it was showing is not in the bar any more", () => {
-        assert.ok(body, "app.js must define applySessions");
+        assert.ok(body, "the client must define applySessions");
         assert.match(body, /const gone = shownSid !== null && !sessions\.some\(\(entry\) => entry\.id === shownSid\)/);
         // Also when this window never had one: a window that connects while every session is driven elsewhere
         // lands on nothing, and an empty terminal explains nothing.
@@ -1279,7 +1279,7 @@ describe("a session that goes away takes its screen with it", () => {
 
     test("the message says what to do about it", () => {
         const message = /function idleMessage\(\) \{([\s\S]*?)\n\}/.exec(app)?.[1] ?? "";
-        assert.ok(message, "app.js must define idleMessage");
+        assert.ok(message, "the client must define idleMessage");
         assert.match(message, /sessions\.length === 0/, "starting one and taking one over are different ways out");
         assert.match(app, /function showMessage\(line\) \{\n {4}if \(line === shownMessage\) return;/, "repainted only when it changes");
     });
@@ -1294,7 +1294,7 @@ describe("a session that goes away takes its screen with it", () => {
         // The takeover card offers it back, so the screen behind the card is the session it is talking about.
         // That is why the check is "gone from the bar" rather than "not attached here".
         const taken = /msg\.t === "taken"([\s\S]*?)else if/.exec(app)?.[1] ?? "";
-        assert.ok(taken, "app.js must handle the taken frame");
+        assert.ok(taken, "the client must handle the taken frame");
         assert.doesNotMatch(taken, /shownSid = null/);
     });
 });
@@ -1306,18 +1306,18 @@ describe("a session that goes away takes its screen with it", () => {
 // clipboard on every attach and made each session tab look like it had a clipboard of its own. The page
 // needs a DOM, so the wiring is checked as text; the parse ordering it relies on is xterm's own.
 describe("replayed output cannot write the clipboard", () => {
-    const app = readFileSync(join(WEBTERM_DIR, "public", "app.js"), "utf8");
+    const app = readWebtermClient();
 
     test("the replay frame goes through writeReplay", () => {
         const branch = /msg\.t === "replay"([\s\S]*?)else if/.exec(app)?.[1] ?? "";
-        assert.ok(branch, "app.js must handle the replay frame");
+        assert.ok(branch, "the client must handle the replay frame");
         assert.match(branch, /writeReplay\(msg\.data\)/);
         assert.doesNotMatch(branch, /term\.write\(/, "a replay written straight to the terminal re-runs its OSC 52");
     });
 
     test("writeReplay holds the gate until the replay has been parsed", () => {
         const body = /function writeReplay\(data\) \{([\s\S]*?)\n\}/.exec(app)?.[1] ?? "";
-        assert.ok(body, "app.js must define writeReplay");
+        assert.ok(body, "the client must define writeReplay");
         assert.match(body, /pendingReplays\+\+/);
         // Released in term.write's callback, which xterm runs once that chunk is parsed and before it
         // parses anything written after it - so live output during a replay still copies.
@@ -1325,8 +1325,8 @@ describe("replayed output cannot write the clipboard", () => {
     });
 
     test("the OSC 52 handler ignores a replay, and any window that is not in front", () => {
-        const handler = /registerOscHandler\(52,([\s\S]*?)\n\}\);/.exec(app)?.[1] ?? "";
-        assert.ok(handler, "app.js must handle OSC 52");
+        const handler = /registerOscHandler\(52,([\s\S]*?)\n {4}\}\);/.exec(app)?.[1] ?? "";
+        assert.ok(handler, "the client must handle OSC 52");
         assert.match(handler, /if \(pendingReplays > 0\) return true;/);
         assert.match(handler, /document\.hasFocus\(\)/);
     });

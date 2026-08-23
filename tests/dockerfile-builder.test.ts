@@ -181,14 +181,14 @@ describe("computeBuildHash", () => {
     test("changing a file inside a baked template dir changes the hash", async () => {
         const fixtureDir = createTempDir();
         try {
-            mkdirSync(join(fixtureDir, "webterm", "public"), { recursive: true });
+            mkdirSync(join(fixtureDir, "webterm", "public", "app"), { recursive: true });
             writeFileSync(join(fixtureDir, "webterm", "server.js"), "// server\n");
-            writeFileSync(join(fixtureDir, "webterm", "public", "app.js"), "// app\n");
+            writeFileSync(join(fixtureDir, "webterm", "public", "app", "main.js"), "// app\n");
 
             const content = buildDockerfile(BASE_TEMPLATE);
             const baseline = computeBuildHash(content, fixtureDir);
 
-            writeFileSync(join(fixtureDir, "webterm", "public", "app.js"), "// app drift\n");
+            writeFileSync(join(fixtureDir, "webterm", "public", "app", "main.js"), "// app drift\n");
             assert.notEqual(computeBuildHash(content, fixtureDir), baseline);
         } finally {
             await cleanTempDir(fixtureDir);

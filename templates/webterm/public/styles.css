@@ -10,7 +10,7 @@
     --bad: #f85149;
     /* A touch lighter than pure black so the terminal does not read as a void. */
     --term-bg: #12161d;
-    /* This workspace's colour, replaced by app.js from the palette before anything is drawn. Everything that
+    /* This workspace's colour, replaced by app/theme.js from the palette before anything is drawn. Everything that
        says "you are in this window" is this one hue: the composer border, the terminal edge, the active tab's
        edge, and the buttons. The value here is only what shows if the script never runs. */
     --ws: #2fe58a;
@@ -166,7 +166,7 @@ body {
     offset-path: border-box;
     offset-rotate: auto;
     offset-anchor: 50% 0%;
-    /* One lap. TRACE_MS in app.js must match: it hands each new light a negative delay from the wall clock,
+    /* One lap. TRACE_MS in app/tabs.js must match: it hands each new light a negative delay from the wall clock,
        so a bar rebuilt mid-lap carries on instead of jumping back to the start. */
     animation: orbit 4s linear infinite;
 }
@@ -221,7 +221,7 @@ body {
         0 0 18px color-mix(in srgb, var(--sc) 55%, transparent);
 }
 
-/* ARRIVAL_MS in app.js must match the total (4 x 0.34s), and is fed in as a negative delay so a re-render
+/* ARRIVAL_MS in app/tabs.js must match the total (4 x 0.34s), and is fed in as a negative delay so a re-render
    mid-flash neither restarts it nor cuts it short. */
 .tab.attention.arriving {
     animation:

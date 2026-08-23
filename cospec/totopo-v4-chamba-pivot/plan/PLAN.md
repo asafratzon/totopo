@@ -34,7 +34,7 @@ Docker is not available inside the container: every phase verifies by unit tests
   - Goal: delete `migrate-to-latest.ts`, relocate `isImageStale`, add the cheap old-shape detection that refuses with the "run totopo v3.16.0 once" message (the exact version named, so the user installs the right one: npx totopo@3.16.0), add the version marker to `.lock`, and add the one surviving migration - the v3.16-to-v4 audio tidy-up (drop `audio=` from `.lock`, remove the audio-mode key from the global config, old key names as hardcoded literals per the migration convention).
   - Definition of done: startup runs no migration chain; old-shape fixtures get the refusal and untouched disk; a v3.16-shape fixture opens, is tidied, and is unchanged on a second run; fresh `.lock` carries the version key; `pnpm check` green.
   - Covers: FR-09, FR-10, FR-11, FR-30
-- [ ] Phase 3 - Webterm frontend module split
+- [x] Phase 3 - Webterm frontend module split
   - Goal: split `public/app.js` into ES modules (terminal, tabs, composer, connection, chime/favicon, clipboard, dictation) loaded via `<script type="module">`, with no behavior change - the platform the stage-2 pane and strip land on.
   - Definition of done: the monolith is gone, modules are each under roughly 600 lines, drift tests still pin the agent lists, `pnpm check` green. Explicitly preserved, none lost: the tab busy light and finished glow, the browser-tab title count and favicon working bar / waiting dot, the chime and its mute, per-session drafts, sent-message history, OSC 52 clipboard, and dictation.
   - Covers: FR-23
