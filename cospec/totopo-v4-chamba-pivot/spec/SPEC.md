@@ -1,4 +1,4 @@
-# v4 - web-first totopo
+# Totopo v4 cleanup and the chamba pivot
 
 > **For the implementing agent - read this first.** This spec was written during planning with limited knowledge of the code.
 > Before building anything, review it carefully against the actual codebase and **plan first** (in plan mode, where your environment has one).
@@ -6,12 +6,26 @@
 
 ## Goal
 
-Ship totopo v4: the web interface becomes the primary way to use totopo, the audio server and the migration layer are removed outright, and the web interface gains two new pieces - the web pane, where agents publish readable HTML pages (with a feedback channel back), and a status strip that renders Claude's status data as a web component below the terminal.
-The major-version boundary is used deliberately: no backward compatibility, no migrations, and a cleanup wherever the old shape shows.
+Ship the web-first direction as two products in two stages (revised with the user on 2026-08-23).
+Stage 1, **totopo v4.0.0**, is a cleanup-only major in this repo: the audio server and the migration layer are removed outright, and the webterm frontend is split into modules - totopo stays a terminal-first tool, its web interface and settings unchanged in behavior.
+Stage 2, **chamba 0.4.0**, is the pivot, built on top of the totopo v4 base in the separate chamba repo: everything is renamed totopo -> chamba, the web interface becomes the default with the browser opening on session start, and it gains the web pane (published HTML pages with a feedback channel back) and the status strip.
+The two tools coexist: totopo keeps its terminal-first identity, chamba is the web-first one, and a workspace can be managed by either.
+
+## Products and stages
+
+- **Stage 1 - totopo v4.0.0**, executed in this repo on `v4.0.0-rc-development`: audio retirement (FR-07, FR-08), migrations out with the refuse-check and the single audio tidy-up (FR-09, FR-10, FR-11, FR-30), the frontend module split (FR-23), totopo's own doc pass and demo re-record (FR-25, FR-27), released as v4.0.0 through the standard RC process (FR-26).
+  The repo-wide cleanup rule (FR-29) applies to everything this stage touches.
+- **The checkpoint** between the stages is a user step, not a phase.
+  The user tests the RC on the host, releases it, then force-pushes the branch to `https://github.com/asafratzon/chamba` as its new `main` (a one-off push by URL from the host; no remote is added to this repo, and no extra branch is created here), and switches to the local chamba clone (`git fetch` + `git reset --hard origin/main` there, since the histories are unrelated).
+  Totopo's RC-to-stable promotion continues in this repo independently; a fix landed here after the push reaches chamba only by hand-cherry-pick.
+- **Stage 2 - chamba 0.4.0**, executed in the chamba repo directly on its `main`: the rename sweep and release simplification first (FR-31, FR-32, FR-33, FR-34), then web by default (FR-01..FR-06), the web pane and feedback channel (FR-12..FR-19, FR-28), the status strip (FR-20..FR-22), agent awareness, and chamba's minimal docs (FR-24).
+  Chamba has no old shapes to meet - FR-10 and FR-30 do not exist on this side - and it is a private personal tool: no tags, no RC process, no public-facing docs baggage.
+
+Every requirement below is tagged with its stage in its group heading (or on the requirement itself where a group is mixed).
 
 ## North star
 
-The ideal: the web interface is totopo.
+The ideal (written when this was one product; it is now chamba's north star, while totopo keeps the terminal-first identity): the web interface is the product.
 One command gives one address, and the browser tab is the whole workspace - agents, sessions, files, settings.
 The terminal stream carries the rhythm of the work, and anything worth reading lifts itself out of the stream into a proper document: the agent publishes long answers, plans, and explanations as real HTML beside the terminal, navigable at the reader's own pace, with earlier ones a flip away.
 The status line is not in the terminal at all: its data is state, and the page renders it as a crisp live strip beside the composer - context bar, energy bar, model, git - per session, never garbled by a TUI redraw.
@@ -20,7 +34,7 @@ And v4 owes nothing to the past: no migrations, no compatibility branches, a cod
 The raw terminal stays as a service hatch, not a product surface.
 
 Chosen: almost all of the ideal survives.
-The web pane is a document viewer over per-session HTML files on disk, not a live canvas: pages the user reads (plus forms that submit back), never agent-written code running inside the totopo page.
+The web pane is a document viewer over per-session HTML files on disk, not a live canvas: pages the user reads (plus forms that submit back), never agent-written code running inside the chamba page.
 Live app previews and interactive widgets are deferred, because running agent-generated code in the UI reopens the isolation questions the product exists to close; a later version can add a sandboxed canvas without undoing this.
 The status strip is a mirror of the status data Claude Code already emits (the per-session snapshots the statusline script writes), not a live probe - exactly as fresh as the terminal status line was.
 Settings stay in the terminal menu: they are host-side operations the container's web server cannot perform, so the browser does not pretend to own them.
@@ -29,15 +43,15 @@ What shaped the candidates: Jupyter's outputs-beside-code, AI chat artifact pane
 
 ## Scope
 
-Five work areas, confirmed with the user on 2026-08-22:
+Five work areas, confirmed with the user on 2026-08-22, recut across the two stages on 2026-08-23:
 
-1. **Web interface by default** - no toggle, server starts with the container, opening a session opens the browser.
-2. **Audio retirement** - all voice/audio code removed; macOS dictation (F5) covers the need.
-3. **Migrations removed** - `migrate-to-latest.ts` deleted; a cheap detection check refuses old shapes with a clear message, and one single migration survives: current v3 (v3.16) workspaces are tidied to v4 in place on first contact.
-4. **Web pane** - agents publish standalone HTML pages into a per-session pane in the web interface, with history and a feedback channel back to the agent.
-5. **Status strip** - Claude's status data rendered as a web component above the composer; the terminal status line stops rendering everywhere.
+1. **Web interface by default** (stage 2, chamba) - no toggle, server starts with the container, opening a session opens the browser.
+2. **Audio retirement** (stage 1, totopo) - all voice/audio code removed; macOS dictation (F5) covers the need.
+3. **Migrations removed** (stage 1, totopo) - `migrate-to-latest.ts` deleted; a cheap detection check refuses old shapes with a clear message, and one single migration survives: current v3 (v3.16) workspaces get their obsolete audio settings tidied in place on first contact.
+4. **Web pane** (stage 2, chamba) - agents publish standalone HTML pages into a per-session pane in the web interface, with history and a feedback channel back to the agent.
+5. **Status strip** (stage 2, chamba) - Claude's status data rendered as a web component above the composer; chamba's terminal status line stops rendering, while totopo keeps its terminal status line untouched (to each his own, per the user).
 
-Plus the cleanup that follows: README rewritten web-first, demo GIFs re-recorded, settings menu slimmed, agent context updated, and the webterm frontend split into modules.
+Plus, added in the recut: the rename sweep totopo -> chamba, chamba's release simplification, and coexistence of the two tools (stage 2); the frontend module split, totopo's doc pass, and demo re-record (stage 1); the repo cleanup rule applies in both stages.
 
 ### Non-goals
 
@@ -48,10 +62,13 @@ Plus the cleanup that follows: README rewritten web-first, demo GIFs re-recorded
 - No status strip for codex and opencode sessions (no data source exists); nothing fake is shown.
 - No migration of any pre-v4 structure, and no compatibility branches for old layouts, lock formats, or yaml shapes.
 - Webterm's browser-side dictation (Web Speech API, the mic button) is unrelated to the audio server and stays.
+- No behavior change in totopo beyond the cleanup: totopo keeps `web_enabled`, the auto-start setting, the `webterm` start step, the printed URL, and its terminal status line exactly as today. Everything web-first is chamba's.
+- No migration or version detection in chamba: every chamba workspace onboards fresh, and chamba does not read `totopo.yaml`.
+- No deeper chamba simplifications in 0.4.0 (docker volumes instead of host dirs, dropping the shell interface, and similar): the first release is this spec plus the rename, verifiable against a known-good base; the playground opens after it.
 
 ## Requirements
 
-### Web by default
+### Web by default (stage 2 - chamba)
 
 - **FR-01**: The `web_enabled` setting is deleted; the web interface has no off switch anywhere (config, menu, code paths).
   AC: no `web_enabled` key is read or written anywhere; the Settings menu has no Web interface toggle; the web port is resolved on every session start.
@@ -64,27 +81,27 @@ Plus the cleanup that follows: README rewritten web-first, demo GIFs re-recorded
 - **FR-05**: The `webterm <agent>` command remains only to switch which agent new web sessions start with, and that choice survives container restarts (recorded host-side or in the workspace cache, not only in the container's `/tmp` state file), because it also names the agent whose conversation the unconditional resume marker resumes.
   AC: running `webterm codex` in the container changes the default agent for new sessions without restarting the server or ending existing sessions, and the choice still holds after a container recreate.
 - **FR-06**: The auto-start-agent setting is deleted, along with its menu entry, env var, container label, and `.bashrc` branches.
-  AC: no `auto_start_agent` key, `TOTOPO_AUTOSTART` env var, or autostart label exists; a terminal session always lands in a shell.
+  AC: no `auto_start_agent` key, autostart env var (under its post-rename name), or autostart label exists; a terminal session always lands in a shell.
 
-### Audio retirement
+### Audio retirement (stage 1 - totopo)
 
 - **FR-07**: All audio server code is removed: `audio-host.ts`, the audio constants, the `.lock` audio flag, the `audio_mode` global setting, the dev.ts wiring, the menu notice, the settings submenu, and the SoX/PulseAudio packages in the Dockerfile.
-  AC: `grep -ri "pulse\|sox\|audio" src/ templates/ bin/` returns no functional hits (webterm's browser dictation and unrelated `AudioContext` chime code excepted); all tests pass.
+  AC: `grep -ri "pulse\|sox\|audio" src/ templates/ bin/` returns no functional hits, with three exceptions: webterm's browser dictation, the unrelated `AudioContext` chime code, and the FR-30 tidy-up plus its tests, where the old `audio` key names are deliberate hardcoded literals per the migration convention (the same carve-out FR-29's stage-1 AC carries); all tests pass.
 - **FR-08**: User-facing docs and injected agent context no longer mention voice/audio setup.
   AC: README has no Voice Mode section, troubleshooting entry, or security paragraph about the mic bridge; `templates/context/baseline.md` has no voice bullet.
 
-### Migrations removed, one survivor
+### Migrations removed, one survivor (stage 1 - totopo)
 
 - **FR-09**: `src/lib/migrate-to-latest.ts` is deleted and `bin/totopo.js` no longer calls `runMigration`. `isImageStale` survives by moving to a live module.
   AC: the file is gone, startup runs no migration, and the stale-image prompt still works.
-- **FR-10**: totopo v4 detects a pre-v4 workspace shape cheaply and refuses with a message telling the user to run totopo v3 once, then return to v4.
+- **FR-10**: totopo v4 detects a pre-v4 workspace shape cheaply and refuses with a message telling the user to run totopo v3.16.0 once (named exactly, e.g. `npx totopo@3.16.0` - the last v3 with the full migration chain), then return to v4.
   AC: a workspace with a v2 `~/.totopo/projects/` dir, a `meta.json` hash dir, an RC-era `.lock` (first line without `=`), or a `totopo.yaml` containing `project_id:`/`env_file:`/`schema_version:` gets the refusal message and no changes on disk; a v3-current workspace passes.
 - **FR-11**: v4 writes an explicit version marker into `.lock` so future majors do not have to infer shapes.
   AC: a fresh or adopted workspace's `.lock` carries a version key, and `parseLockFile` reads it.
-- **FR-30**: One single migration survives, from current v3 (v3.16) to v4 (decided at the quality review gate, 2026-08-22): on first v4 contact with a workspace that passes the FR-10 check, v4 tidies the dead leftovers in place - the `audio=` key is dropped from `.lock` when the version marker is stamped, and the `web_enabled` and `auto_start_agent` keys are removed from the host-global config. Nothing else changes, there is no migration framework, and the lock parser tolerates unknown keys so the step is safe to re-run. The migration convention holds: the old key names are hardcoded string literals, the destinations use constants.
-  AC: a v3.16 workspace opens in v4 with no manual step; after the first run its `.lock` has the version key and no `audio` key, the global config has no `web_enabled`/`auto_start_agent`, and everything else is byte-identical; running v4 again changes nothing.
+- **FR-30**: One single migration survives, from current v3 (v3.16) to v4 (decided at the quality review gate, 2026-08-22; narrowed to audio-only in the 2026-08-23 recut, since totopo now keeps `web_enabled` and auto-start): on first v4 contact with a workspace that passes the FR-10 check, v4 tidies the dead audio leftovers in place - the `audio=` key is dropped from `.lock` when the version marker is stamped, and the audio-mode key is removed from the host-global config. Nothing else changes, there is no migration framework, and the lock parser tolerates unknown keys so the step is safe to re-run. The migration convention holds: the old key names are hardcoded string literals, the destinations use constants.
+  AC: a v3.16 workspace opens in v4 with no manual step; after the first run its `.lock` has the version key and no `audio` key, the global config has no audio-mode key, and everything else is byte-identical; running v4 again changes nothing.
 
-### Web pane
+### Web pane (stage 2 - chamba)
 
 - **FR-12**: A CLI helper inside the container (`webpane`) publishes a standalone HTML file as a page of the calling session's pane, usable by any process (claude, codex, opencode, a shell).
   AC: running the helper with an HTML file inside a webterm session makes the page appear in that session's pane without a refresh.
@@ -94,47 +111,62 @@ Plus the cleanup that follows: README rewritten web-first, demo GIFs re-recorded
   AC: each listed behavior works in the browser as in the mock; a page arriving while another is open changes nothing but the badge; the pane state (width, collapsed) survives switching session tabs.
 - **FR-15**: Pages are per session - switching tabs switches the pane's contents, and two parallel sessions never mix - but the files are persistent: closing a session or restarting the container deletes nothing, and there is no age-based sweep. Artifacts are keyed by the agent's own conversation id (decided at the quality review gate, 2026-08-22), so ANY session that resumes a conversation - the marker-driven auto-resume after a container restart, or a manual resume the server never saw coming - adopts that conversation's page history, for all three agents.
   AC: two sessions publish pages and each tab shows only its own; after a container restart, the auto-resumed session's pane lists the pages published before the restart; a manual `claude --resume <id>` (and the codex/opencode equivalents) in a new web session brings that conversation's pages back; no cleanup timer touches the artifacts.
-- **FR-16**: A Claude skill (baked like the existing totopo skills) teaches when and how to publish well: long answers, plans, explanations, tables, diagrams; standalone HTML, dark theme matching the interface.
+- **FR-16**: A Claude skill (baked into the image like the other built-in skills) teaches when and how to publish well: long answers, plans, explanations, tables, diagrams; standalone HTML, dark theme matching the interface.
   AC: the skill is present in a claude session and its instructions produce pages that render correctly in the pane.
 - **FR-28**: The publish helper is part of the injected agent context for all three agents, so every agent is aware of it, and the guidance tells agents to prefer publishing a page when a question has more options or structure than their built-in question tooling allows (rich choice lists, tables of options, forms).
   AC: the injected context for claude, codex, and opencode names the helper and this guidance; asking any agent "how can you show me something rich?" gets an answer that names the pane.
 - **FR-17**: The artifacts route is key-gated and path-contained like the rest of the interface: containment resolves real paths (symlinks followed and checked), symlinks and non-regular files are refused outright, and pages are served as `text/html; charset=utf-8` with `X-Content-Type-Options: nosniff`.
   AC: fetching an artifact URL without the key is rejected; path traversal outside the artifacts root is rejected; a symlink inside the artifacts root pointing at any file outside it (workspace files, the key file) is refused.
 
-### Feedback channel
+### Feedback channel (stage 2 - chamba)
 
 - **FR-18**: A published page can carry a form; submitting it saves the answers as a feedback file on disk in the container, where the agent reads it as data submitted from the page. The endpoint is bounded and bound: a body size cap and a per-page debounce, with the target session, page id, and filename derived server-side from the artifact being served, never taken from the request body.
   AC: submitting the mock-style form writes a JSON file containing the page id, a timestamp, and the named field values; an oversized or rapid-fire submission is refused; a crafted request cannot write into another session's directory or nudge another session's agent.
 - **FR-19**: A submission also nudges the session's terminal: a short line typed into the agent's PTY saying feedback arrived and where it is.
   AC: after a submit, the agent's terminal receives one line naming the feedback file path; busy detection does not flag the echo as agent output (reuse the existing typed/paste path).
 
-### Status strip
+### Status strip (stage 2 - chamba)
 
 - **FR-20**: A claude session's tab shows a status strip above the composer rendering the session's snapshot data: model + effort, context tokens/window with a bar, quota remaining with a bar and recharge countdown, and Claude Code version - per session, live-updated as snapshots change.
   AC: two claude sessions show their own differing values; the strip updates within a few seconds of the snapshot changing; codex/opencode sessions show no strip.
 - **FR-21**: Snapshots are matched to sessions by pid ancestry: the server records each session's PTY leader pid and accepts a snapshot whose `claude_pid` is that pid or a descendant of it (walked via `/proc`), with `claude_pid_start` as the recycled-pid tiebreak. Plain equality is not assumed, because wrappers or shells between the PTY leader and the claude process would break it; the exact process shape is verified on the host during implementation.
   AC: with two concurrent claude sessions, each strip shows its own session's data, never the other's; the join still works when claude is not the direct PTY leader.
-- **FR-22**: The terminal status line stops rendering everywhere; the statusline script keeps running invisibly and keeps writing the per-session snapshots.
-  AC: no status line is visible in any claude session (web or plain terminal); snapshot files keep appearing and the `context-usage` helper keeps working.
+- **FR-22**: In chamba, the terminal status line stops rendering everywhere; the statusline script keeps running invisibly and keeps writing the per-session snapshots. Totopo is untouched: it keeps its visible terminal status line as today.
+  AC: in chamba, no status line is visible in any claude session (web or plain terminal); snapshot files keep appearing and the `context-usage` helper keeps working.
 
-### Cleanup and release
+### Cleanup and release (mixed - each requirement carries its stage)
 
-- **FR-23**: The webterm frontend is split into ES modules (terminal, tabs, composer, pane, strip, connection, and similar) with no build step, loaded via `<script type="module">`.
+- **FR-23** (stage 1 - totopo): The webterm frontend is split into ES modules (terminal, tabs, composer, connection, and similar; the pane and strip modules arrive in stage 2 on this structure) with no build step, loaded via `<script type="module">`.
   AC: `app.js` as a monolith is gone; each module is under roughly 600 lines; the interface works unchanged in the browser.
-- **FR-24**: The README is rewritten web-first: the web interface is a core feature with the quick start showing the browser flow; voice sections gone; settings list updated; statusline section describes the web strip.
-  AC: README review finds no mention of enabling the web interface, `webterm` as a start step, voice mode, or auto-start - except in the "Coming from v3" section (FR-27), which may name them as things that changed.
-- **FR-25**: Demo GIFs are re-recorded for the v4 flow (host-side task; the plan marks it as a user step).
-  AC: README's demo GIFs show the v4 session-to-browser flow, and no audio server output.
-- **FR-26**: The release ships as v4.0.0 through the standard RC process on an RC branch.
+- **FR-24** (stage 2 - chamba): Chamba gets a minimal personal README (decided 2026-08-23; chamba is private, so no public docs baggage): what chamba is, `npx chamba`, the web-first flow, and the web pane with its feedback file in a few lines. No demo GIFs, no marketing structure; totopo's full README does not carry over.
+  AC: the chamba README is short, current, and mentions no totopo-only concepts (web toggle, `webterm` start step, voice, auto-start); no demo assets exist in the chamba repo.
+- **FR-25** (stage 1 - totopo): The advanced demo GIF is re-recorded, since it currently stars the audio server (host-side task; the plan marks it as a user step). Totopo's README keeps its current structure, minus the voice sections (FR-08).
+  AC: totopo's README demos show no audio server output.
+- **FR-26** (stage 1 - totopo): Totopo's release ships as v4.0.0 through the standard RC process on an RC branch; chamba's release is FR-32.
   AC: `pnpm check` is green and the version boundary is a major bump.
-- **FR-29**: The whole repo - tests, comments, docs, scripts - is adapted to the v4 shape: tests covering removed features are removed, tests touching changed behavior are updated, and the new pieces (refuse-check, browser open, web pane server and client, status strip, helper) get tests in the repo's existing style (`tests/webterm*.test.ts` as the model for webterm code); no dead code, orphaned constants, or stale comments referring to the old shape remain.
-  AC: `pnpm check` is green; grepping for removed names (`audio`, `web_enabled`, `auto_start`, `runMigration`) finds no functional hits outside the FR-30 tidy-up and its tests, where the old names are deliberate hardcoded literals per the migration convention; each new module has a test file.
-- **FR-27**: The README carries a "Coming from v3" section for a v3.16 user: a v3.16 workspace just works - the first v4 run tidies the dead settings itself (FR-30) - and the section says what changes on that first run (no voice, web always on, no auto-start setting). Only older shapes need a step: run totopo v3 once to bring the workspace to the v3.16 shape, then return to v4.
+- **FR-29** (both stages): The whole repo - tests, comments, docs, scripts - is adapted to each stage's shape as that stage lands: tests covering removed features are removed, tests touching changed behavior are updated, and the new pieces (refuse-check, browser open, web pane server and client, status strip, helper) get tests in the repo's existing style (`tests/webterm*.test.ts` as the model for webterm code); no dead code, orphaned constants, or stale comments referring to the old shape remain.
+  AC: `pnpm check` is green in each stage; after stage 1, grepping for `audio` and `runMigration` finds no functional hits outside the FR-30 tidy-up and its tests, where the old names are deliberate hardcoded literals per the migration convention; after stage 2, grepping for `web_enabled`, `auto_start`, and `totopo` in the chamba repo finds no functional hits (the FR-31 rename AC carries the full list); each new module has a test file.
+- **FR-27** (stage 1 - totopo): The README carries a "Coming from v3" section for a v3.16 user: a v3.16 workspace just works - the first v4 run tidies the dead audio settings itself (FR-30) - and the section says what changes on that first run (voice is gone; everything else behaves as in v3.16). Only older shapes need a step: run totopo v3.16.0 once (`npx totopo@3.16.0`) to bring the workspace to the v3.16 shape - that run performs any previously needed migration - then return to v4.
   AC: a v3.16 user can follow the section alone to a working v4 workspace, without reading code or release notes; the run-v3-once instruction is presented as the path for pre-v3.16 shapes only.
+
+### Chamba identity (stage 2 - chamba)
+
+- **FR-31**: Everything is renamed totopo -> chamba, as the first work of stage 2 so every later phase builds already-branded: package name and bin (`chamba`, published as the existing `chamba` npm package, version 0.4.0), config file `chamba.yaml`, host cache `~/.chamba/`, container names `chamba-<id>`, docker labels `chamba.*`, env vars `CHAMBA_*`, the agent context text, skill names, webterm branding, repo rule files, and code identifiers where the name is load-bearing.
+  The tag-pinned GitHub README URL is dropped, not renamed (decided 2026-08-23): the CLI's Help entry loses its URL line and the injected `readme_url` context line is removed, because the chamba repo is private and tags are gone, so no such URL can resolve.
+  AC: `grep -ri totopo` across the chamba repo finds no functional hits (historical mentions in the README's provenance line and the git history excepted); no GitHub URL is printed by Help or injected into agent context; onboarding writes `chamba.yaml`; the container and cache paths carry the new name; `npx chamba` works end to end.
+- **FR-32**: Chamba's release process is the bare minimum (decided 2026-08-23): bump the version in `package.json` and `npm publish`. The RC branch process, git tags, `scripts/changelog.yaml`, the generated `CHANGELOG.md`, and the release skill are all removed; the git log is the history.
+  AC: no changelog files, release scripts, or tag references remain in the chamba repo; a release is exactly a version bump plus a publish.
+- **FR-33**: The generated `chamba.yaml` gets an editor-schema header (`# yaml-language-server: $schema=...`) pointing at the schema inside the published npm package via a public npm CDN (for example `unpkg.com/chamba@<version>/schema/...`).
+  Note for the implementer: no schema line exists in generated files today - v3 deliberately removed the header (v3.2.1 migration) because hand-maintained tag URLs went stale, and validation is in-process via ajv, which stays.
+  This requirement reintroduces the header, now safe because the URL is pinned by the package's own version, and it exists because the repo is private and tags are gone, so no GitHub URL can work.
+  AC: editor validation of a generated `chamba.yaml` resolves the schema; no GitHub or tag URL exists in generated files.
+- **FR-34**: Chamba and totopo coexist: separate config file, cache directory, container names, and labels mean the two tools can manage workspaces side by side on one host (including the same directory, each with its own config file), and neither reads the other's state. Port allocation stays dynamic as today, so the two tools draw from the pool without stepping on each other.
+  AC: a host with live totopo workspaces onboards and runs a chamba workspace with no interference in either direction; a directory holding both `totopo.yaml` and `chamba.yaml` opens correctly in each tool.
 
 ## Data and contracts
 
 These shapes are the spec's proposal; the implementer may adjust details that do not change behavior, and must keep the file-on-disk nature of both channels.
+All the contracts in this section belong to stage 2 and are written with totopo-era paths; once the FR-31 rename lands (which happens before any of this is built), read `~/.totopo/` as `~/.chamba/`, `totopo.yaml` as `chamba.yaml`, and so on.
 
 **Artifacts directory** (persistent, host-mounted, session-scoped):
 
@@ -194,7 +226,7 @@ The nudge is built from server-controlled text only: the title is sanitized (con
 
 **Sandbox model** (decided at the quality review gate, 2026-08-22): the pane shell - trusted interface code - fetches a page's content over the already key-gated channel and renders it into an iframe via `srcdoc` or a blob URL, with `sandbox="allow-scripts allow-forms"` and no `allow-same-origin`.
 The frame therefore has an opaque origin and no URL of its own carrying the key: agent-authored scripts run, but nothing they can reach holds the key or the parent's DOM.
-This is what makes the north-star claim ("never agent-written code running inside the totopo page") true by construction rather than by stripping.
+This is what makes the north-star claim ("never agent-written code running inside the chamba page") true by construction rather than by stripping.
 
 **Form wiring in published pages**: the pane shell injects a small script into the page content before rendering it that wires any `<form data-feedback>` to a `postMessage` to the parent shell; the shell, which alone holds the key, forwards the submission to the key-gated submit endpoint. Pages stay plain HTML; the agent writes no networking code, and no key ever appears inside the frame.
 
@@ -211,27 +243,30 @@ This is what makes the north-star claim ("never agent-written code running insid
 - Two live sessions claiming the same artifacts key (a second session resuming a conversation whose key is already attached to a running session): the server refuses the adoption for the second session, which starts with an empty pane and a plain notice - two writers on one directory would interleave page numbering.
 - Feedback submitted after the session's agent has exited: the file is still written (it is the durable channel); the nudge is skipped because there is no PTY to type into.
 - Old workspace shapes: refused with the v3-first message, nothing written (FR-10); a current v3.16 shape is not "old" - it is tidied in place (FR-30).
-- Port range exhausted or server down: same as v3 - say so, open the session without the web interface; the browser-open step is skipped.
+- Port range exhausted or server down: the same behavior totopo has today - say so, open the session without the web interface; the browser-open step is skipped.
 
 ## Decisions
 
 - **Pane transport: files on disk, server watches.** Chosen for robustness (history survives restarts and reconnects by construction) and universality (anything that writes a file publishes). Rejected: HTTP POST to the server - needs the server reachable at publish time and still has to persist somewhere; adds a failure mode without adding capability.
 - **Pane is a document viewer, not a canvas.** Chosen to keep v4's isolation story intact and the design small. Rejected: live previews/interactive content - reopens sandboxing questions; can be revisited later.
 - **Status strip mirrors the statusline snapshots.** Chosen because the data source already exists and matches the terminal line's freshness. Rejected: probing Claude Code directly - no supported interface for it.
-- **Terminal status line stops rendering everywhere.** The web is the product; the raw terminal is a service hatch. Rejected: per-session-type visibility - more states for a surface the product no longer treats as primary.
+- **Terminal status line stops rendering everywhere in chamba.** For chamba, the web is the product; the raw terminal is a service hatch. Totopo is out of scope for this bullet - the later coexistence bullet gives totopo its line. Rejected: per-session-type visibility within chamba - more states for a surface chamba no longer treats as primary.
 - **Refuse-check instead of migrations, plus one surviving migration.** One cheap detection (shape markers listed in the codebase analysis) replaces 712 lines, and a single v3.16-to-v4 tidy-up (FR-30, decided at the quality review gate) keeps current workspaces opening with no manual step. Rejected: silent re-onboard - confuses v3 users; keeping the migration chain - the very thing v4 sheds.
 - **Frontend split into ES modules, no build step.** Keeps the no-bundler simplicity while making the pane and strip reviewable additions. Rejected: appending to the monolith (a ~3,500-line file), or adopting a bundler (a build step webterm has deliberately avoided).
 - **Settings stay in the terminal menu.** Host-side operations need the host; the web does not pretend otherwise in v4.
 - **Published pages render in a sandboxed frame with no same-origin and no key inside.** Decided at the quality review gate. Chosen so agent scripts can run without any path to the interface key; forms talk to the shell by postMessage. Rejected: a key-gated iframe URL (the key rides into agent-readable territory) and blocking scripts outright (kills page interactivity and reinvents form handling).
 - **Artifacts are keyed by the agent's conversation id.** Decided at the quality review gate. Chosen so any resume - marker-driven or manual, any agent - finds its pages by identity rather than by a channel the server had to witness. Rejected: a server-generated key handed through the resume marker (misses manual resumes) and cwd keying (mixes parallel sessions).
 - **A new page never steals the pane.** Decided at the quality review gate. The unread badge invites the click; only an empty pane auto-selects its first page.
+- **Two products, two stages.** Decided with the user on 2026-08-23, after the spec was first finalized. The pivot ships as chamba (the user's separate npm package, private, no users) so totopo stays a stable terminal-first tool in its own right; the shared cleanup lands in totopo first so the fork diff is only the pivot plus the rename. The checkpoint between the stages is the user's: test the RC, release it here, force-push the branch by URL onto chamba's `main` (no remote added here, no extra branch here), and continue stage 2 in the chamba repo on its `main`. Rejected: doing the whole pivot inside totopo (breaks a working daily tool), and forking without the shared-cleanup stage (every cleanup line would need porting by hand across diverging repos).
+- **Chamba drops the release baggage.** Bare-minimum releases (version bump + npm publish), no tags, no changelog machinery - it is a private personal tool built for quick iteration. The schema line in generated `chamba.yaml` points at the npm package via a public CDN, which needs no tags and no public repo.
+- **Totopo keeps its terminal status line; the strip is chamba-only.** To each his own: the terminal-first tool keeps the terminal line, the web-first tool renders the strip and silences the line.
 
 ## Solution sketch
 
 > **This solution sketch is non-binding.** It is a suggested direction formed with limited knowledge during spec-writing, not a fixed instruction.
 > The implementing agent is free - and expected - to find the better design while building, and must flag any noticeable departure so the user stays informed.
 
-Rough shape of the change, by area:
+Rough shape of the change, by area (the audio/migration removals and the module split are stage 1 in totopo; everything web-default, pane, and strip is stage 2 in chamba, built after the FR-31 rename):
 
 - **Removals first** (audio, migrations, `web_enabled`, auto-start): mostly deletion guided by the codebase analysis below; `isImageStale` moves into `src/lib/` proper (e.g. a small `image-stale.ts` or into `dev.ts`'s orbit); the refuse-check becomes a small `src/lib/legacy-check.ts` called early in `bin/totopo.js`.
 - **Web default**: `dev.ts` loses the `readWebEnabled()` branch; the webterm launch moves from the once-per-start hook into the container start path unconditionally; a tiny cross-platform opener (`open`/`xdg-open`/`start`, best-effort) fires after the whole once-per-start block - not only after `startWebtermAndVerify`, since the connected-path branch with a healthy server never calls it - keyed on a resolved port plus a successful key read, before the blocking `docker exec`. The key is validated against its known shape (32 hex characters) before use, the URL is built host-side from validated parts only, and the opener is spawned argv-style with no shell, because the key file is writable by every container process and must not become a container-to-host command path. The resume marker is planted unconditionally (it no longer depends on the deleted auto-start setting), using the webterm default agent.
@@ -252,6 +287,7 @@ Approved: 2026-08-22
 
 Confirmed by the user on 2026-08-22.
 This section is the record of what the user confirmed, in interview order; where a bullet overlaps the Decisions section above, the Decisions section carries the design rationale and this one carries the confirmation.
+The bullets predate the 2026-08-23 two-product split: the web-first bullets now describe chamba (read `npx totopo` as `npx chamba` in them), while the audio and migration bullets describe totopo v4.
 
 - **The pane is a document viewer, plus feedback.** No live previews or arbitrary interactive canvas in v4. One addition to the pure viewer: a page can submit data back - the submission is saved as a special feedback file on disk in the container, which the agent reads as a response or as data submitted from the page. This makes published pages usable as forms and question sheets, not just reading material.
 - **The terminal status line stops rendering everywhere.** The web is the product; a raw terminal session is a service hatch and gets no status line. The statusline script still runs invisibly to collect the per-session data the web strip mirrors.
@@ -259,15 +295,15 @@ This section is the record of what the user confirmed, in interview order; where
 - **Submit nudges the terminal.** A page submission is saved to the feedback file, and the web server also types a short notification line into that agent's terminal, so the agent reacts immediately. The file holds the data; the nudge only says feedback arrived.
 - **Theme: dark only.** The new pieces (pane, published pages, status strip) inherit the existing webterm dark look and per-workspace hue.
 - **Devices: desktop first, usable on mobile.** The pane and strip degrade gracefully on a phone (pane as full-screen overlay, strip wraps); no mobile-specific features.
-- **Old workspace layouts are refused with a clear message.** v4 keeps one cheap detection check that recognizes a pre-v4 shape and says: run totopo v3 once to bring this workspace up to date, then return to v4. No migration code.
+- **Old workspace layouts are refused with a clear message.** v4 keeps one cheap detection check that recognizes a pre-v4 shape and says: run totopo v3.16.0 once to bring this workspace up to date, then return to v4. No migration code.
 - **The web server starts with the container.** No enable step, no `webterm` start step; every session banner prints the URL. The `webterm <agent>` command stays only to switch which agent new sessions start with.
 - **Opening a session opens the browser.** `npx totopo` -> Open session starts the container, brings up the web server, and opens the URL in the host's default browser. The terminal the user ran totopo in becomes a plain container shell (the service hatch). The auto-start-agent setting is deleted; the browser picks its agent per session.
-- **README rewritten web-first.** The web interface moves up into core features and the quick start shows the browser; the Voice Mode section, its troubleshooting entry, and the voice paragraph under "what totopo protects against" go.
+- **README rewritten web-first.** (Superseded by the 2026-08-23 recut: neither product gets this README. Chamba gets a minimal personal README instead - FR-24 - and totopo's README keeps its structure, losing only the voice sections - FR-08, FR-25.) The original confirmation: the web interface moves up into core features and the quick start shows the browser; the Voice Mode section, its troubleshooting entry, and the voice paragraph under "what totopo protects against" go.
 - **Demo GIFs re-recorded** for the v4 flow (the advanced demo currently stars the audio server).
 - **The status strip appears for claude sessions only.** Its data comes from Claude Code's statusline hook; codex and opencode sessions have no strip (nothing fake, nothing half-empty).
 - **Publishing works for all agents.** A small CLI helper inside the container (`webpane <file.html>`) publishes a page from any process; Claude additionally gets a skill that teaches it when and how to use the helper well. The feature is named "web pane" across UI, docs, context, skill, and helper, so users can refer to it naturally and the name itself triggers the skill.
 - **Settings stay in the terminal menu.** `npx totopo` still shows the workspace menu; Open session is what opens the browser. Git mode, shadow paths, rebuild, and reset remain terminal-menu operations - they are host-side and the container's web server cannot perform them. No settings UI in the web in v4.
-- **Settings menu slimmed.** The Voice / audio and Web interface entries go; the auto-start entry goes with its setting; agent context and injected docs stop mentioning voice and webterm setup.
+- **Settings menu slimmed.** (Split by the 2026-08-23 recut: the Voice / audio entry goes in stage 1 - totopo loses it too, FR-07 - while the Web interface and auto-start entries go only in chamba, stage 2 - totopo keeps both, per the Non-goals.) The original confirmation: the Voice / audio and Web interface entries go; the auto-start entry goes with its setting; agent context and injected docs stop mentioning voice and webterm setup.
 
 ## Codebase analysis
 
@@ -326,7 +362,7 @@ Guesses taken below the clarification bar, labeled so the implementer knows what
 - **The per-agent conversation-id discovery details** (the key's identity is decided - the conversation id - but the exact codex/opencode store reads and the rename timing are implementation work), as long as parallel sessions never mix and a resumed conversation reclaims its history.
 - **How the terminal status line is made invisible** (empty statusline output vs removed statusLine config plus a separate snapshot hook) is an implementation detail, chosen during implementation against how Claude Code behaves.
 - **The publish helper's session resolution** (pid ancestry against the server's PTY pids) may be refined during implementation, as long as any process in a session's tree can publish and a process outside any session gets a plain error.
-- **Success means**: `pnpm check` green, the v4 flow demonstrated end to end on the host (session opens browser, pane and strip work, no audio or migration code left), released through the standard RC process on an RC branch.
+- **Success means**: `pnpm check` green in both repos; totopo v4.0.0 released through the standard RC process with the cleanup verified on the host; the chamba flow demonstrated end to end on the host (session opens browser, pane and strip work) and published as 0.4.0 with the bare-minimum release.
 
 ## Constraints
 
@@ -336,7 +372,8 @@ Guesses taken below the clarification bar, labeled so the implementer knows what
 
 ## Success criteria
 
-- A new user runs `npx totopo`, opens a session, and is working with an agent in the browser without reading any setup docs.
-- A v3 user with an old workspace gets one clear sentence telling them what to do, and nothing breaks silently.
-- An agent asked for a plan publishes it as a page; the user answers the page's questions; the agent reacts to the answers - all without leaving the browser tab.
-- The repo carries no audio code, no migration chain beyond the single v3.16 tidy-up, and no web-interface toggle, and every remaining test passes.
+- Stage 1: totopo v4.0.0 releases with no audio code and no migration chain beyond the single v3.16 tidy-up, behaves exactly as v3.16 otherwise, and every remaining test passes.
+- Stage 1: a v3 user with an old workspace gets one clear sentence telling them what to do, and nothing breaks silently.
+- Stage 2: a user runs `npx chamba`, opens a session, and is working with an agent in the browser without reading any setup docs.
+- Stage 2: an agent asked for a plan publishes it as a page; the user answers the page's questions; the agent reacts to the answers - all without leaving the browser tab.
+- Stage 2: the chamba repo carries no totopo naming, no web-interface toggle, and no release baggage, runs side by side with totopo on the same host, and every test passes.

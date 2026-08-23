@@ -1,4 +1,4 @@
-# Quality review - v4 - web-first totopo
+# Quality review - totopo v4 cleanup and the chamba pivot (reviewed under its earlier title, "v4 - web-first totopo")
 
 - Run: 2026-08-22
 - Mode: fresh-context subagents
@@ -340,3 +340,98 @@ The reviewer verified the spec's codebase claims against the source and found ne
 - State: APPLIED
 - Reasoning: nothing failed - an improvement offer. By the time the final security reviewer arrives, the sandbox decision will already be implemented and load-bearing for phases 7-9.
 - Note: the user chose to add it. The plan now has a security-only checkpoint after phase 6, scoped to the sandbox attributes, key reachability, containment, endpoint bounds, and nudge sanitization.
+
+# Quality review, run 2 - after the 2026-08-23 two-product recut
+
+- Run: 2026-08-23
+- Mode: one fresh-context subagent, all lenses, with a special focus on revision residue (sentences still describing the pre-split single-product world, requirements on the wrong stage, claims made false by totopo keeping its web toggle and terminal status line, stage-2 statements that wrongly assume this repo)
+- Findings: 11 (RV-37..RV-47), of which 11 applied (2 via user decisions at the gate on 2026-08-23: RV-40 - chamba drops the Help/README URL entirely; RV-43 - stage 1's reviews consolidate into one 3-reviewer checkpoint after phase 4), 0 dismissed, 0 waiting on you
+
+Verified clean by the reviewer, for the record: spec and plan stage assignments agree everywhere; every Covers ID exists; no open clarification markers; every FR has an AC; the FR-30 key names, the `npx totopo@3.16.0` instruction, and the kept `web_enabled`/`auto_start_agent`/status-line claims all verify against the code; `cospec/` is git-tracked, so the spec and mock travel with the force-pushed branch into the chamba repo.
+
+### RV-37 - Decisions bullet "Terminal status line stops rendering everywhere" survived the recut unscoped
+
+- Severity: MEDIUM
+- Points at: SPEC.md, Decisions
+- State: APPLIED
+- Reasoning: revision residue - the bullet contradicted the recut's own "Totopo keeps its terminal status line" bullet three lines later. FR-22, Scope, and Non-goals were already scoped correctly.
+- Note: the bullet now reads "stops rendering everywhere in chamba" and points at the coexistence bullet for totopo's side.
+
+### RV-38 - FR-07's audio grep AC forbids the code FR-30 requires
+
+- Severity: MEDIUM
+- Points at: SPEC.md, FR-07 AC vs FR-30
+- State: APPLIED
+- Reasoning: FR-30 (narrowed in the recut) hardcodes the old `audio` key names as string literals, which the FR-07 grep would flag; FR-29's stage-1 AC already carried the right carve-out, FR-07's did not.
+- Note: FR-07's AC now carries the same FR-30 exception as FR-29's.
+
+### RV-39 - Interview bullets "README rewritten web-first" and "Settings menu slimmed" superseded by the recut, and the section preamble does not save them
+
+- Severity: MEDIUM
+- Points at: SPEC.md, Decisions from the interview
+- State: APPLIED
+- Reasoning: read as chamba (per the preamble), the README bullet contradicts FR-24; read as totopo, it contradicts FR-25 and the Non-goals. The settings bullet mixes both stages.
+- Note: both bullets now open with a superseded/split annotation naming the FRs that replaced them, with the original confirmation preserved after it.
+
+### RV-40 - Chamba's tag-pinned Help/README URL is a dead link after the rename, and nothing covers it
+
+- Severity: MEDIUM
+- Points at: SPEC.md FR-31/FR-33; code: GITHUB_README_URL (src/lib/totopo-yaml.ts:115), injected at agent-context.ts:145, printed by bin/totopo.js:214
+- State: APPLIED
+- Reasoning: the URL pattern is `github.com/asafratzon/totopo/blob/v<version>/README.md`; in chamba the repo is private and FR-32 deletes tags, so after the rename the Help entry and the injected `readme_url` point nowhere. FR-33 covers only the schema line.
+- Note: the user chose to drop the URL entirely (2026-08-23). FR-31 now says Help loses its URL line and the injected `readme_url` context line is removed, with a matching AC and phase-5 definition-of-done check.
+
+### RV-41 - FR-33 repoints a schema line that does not exist in generated files today
+
+- Severity: MEDIUM
+- Points at: SPEC.md, FR-33; code: writeTotopoYaml (src/lib/totopo-yaml.ts:134-160), the v3.2.1 header removal (migrate-to-latest.ts:589,602)
+- State: APPLIED
+- Reasoning: v3 deliberately removed the `yaml-language-server` header (stale tag URLs); validation is in-process via ajv. As written, an implementer greps for a schema line to change and finds nothing.
+- Note: FR-33 now says what it is - reintroducing the editor-schema header, safe because the npm-CDN URL is pinned by the package version - with an implementer note on the history.
+
+### RV-42 - FR-29 appears in no phase's Covers line
+
+- Severity: LOW
+- Points at: PLAN.md, Covers lines
+- State: APPLIED
+- Reasoning: convention breach, not a coverage hole - the plan's closing line makes FR-29 standing work in every phase, and phases 4 and 11 already carry its stage greps in their definitions of done.
+- Note: FR-29 added to the Covers lines of phases 4 and 11 as each stage's close-out.
+
+### RV-43 - Stage 1 releases totopo v4.0.0 with no correctness review before the checkpoint
+
+- Severity: MEDIUM
+- Points at: PLAN.md, review checkpoints
+- State: APPLIED
+- Reasoning: an improvement offer, nothing failed. The recut kept the phase-3 parity review but moved everything else past the checkpoint into the chamba repo, so the refuse-check, the FR-30 tidy-up, and the "Coming from v3" docs - the parts with real users - ship as a public major with only the host smoke test, and a stage-1 problem found by the final reviewers reaches totopo only by hand-cherry-pick.
+- Note: the user chose one end-of-stage review instead of a mid-stage one (2026-08-23): the phase-3 checkpoint moved to after phase 4 and widened to 3 reviewers (parity + module structure, correctness of the stage-1 changes, docs), before the user checkpoint.
+
+### RV-44 - Residual pre-split wording in chamba-scoped passages
+
+- Severity: LOW
+- Points at: SPEC.md - the sandbox model's "inside the totopo page" (twice), the "same as v3" edge case, FR-16's "existing totopo skills"
+- State: APPLIED
+- Reasoning: none changed meaning, all read as the single-product world.
+- Note: now "the chamba page", "the same behavior totopo has today", and "baked into the image like the other built-in skills".
+
+### RV-45 - The mock's expanded and collapsed states disagree on the unread count
+
+- Severity: LOW
+- Points at: mocks/pages-pane.html - spine badge "1" vs no chip carrying the `.new` badge (the CSS rule was defined and unused)
+- State: APPLIED
+- Reasoning: FR-14's AC is "as in the mock", so the one static document should be self-consistent.
+- Note: a fourth, newest chip now carries the `new` badge and is not selected (matching never-auto-select); the spine's 1 counts it.
+
+### RV-46 - The plan cites RV-36 for a checkpoint "after phase 8" while RV-36's record says "after phase 6"
+
+- Severity: LOW
+- Points at: PLAN.md review checkpoints vs REVIEW.md RV-36
+- State: APPLIED
+- Reasoning: pre-recut numbering; the point in the work is the same, but a reader could think the checkpoint moved without authority.
+- Note: the plan's citation now says the recut renumbered that point from phase 6 to phase 8.
+
+### RV-47 - Revision-added prose packs several sentences per physical line, against the AGENTS.md Markdown rule
+
+- Severity: LOW
+- Points at: SPEC.md - Products and stages bullets, FR-30, FR-24/FR-27, the FR-31..FR-34 block
+- State: APPLIED (in part)
+- Reasoning: the Products-and-stages bullets were the longest offenders and are prose, so they were reflowed one sentence per line. The multi-sentence FR bullets were left as they are: the pre-existing requirement bullets share that style and the first panel accepted it (RV-16 applied the rule to paragraphs, not to requirement bullets), so reflowing only the new FRs would split the artifact's idiom.
