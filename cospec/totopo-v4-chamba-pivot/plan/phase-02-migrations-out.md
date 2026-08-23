@@ -32,7 +32,8 @@ Two design calls worth naming, both within what the spec left to the implementer
 
 **The version stamp lives in the canonical lock writer.** `writeLockFileInternal` stamps `LOCK_VERSION` itself rather than taking it from the caller, so any lock this totopo writes names the shape it was written in - and a key retired from `LOCK_KEYS` disappears on the same write. That single mechanism is the whole of FR-30's lock half: the tidy-up just triggers a rewrite. No text surgery, no migration framework.
 
-**The tidy-up sweeps every registered workspace, not only the current one.** FR-30 is written in the singular, but a host-wide sweep means a user with several workspaces gets them all on the first v4 run instead of one per visit, and it matches how the `.lock` migrations always worked. It stays idempotent because a lock already at the current version is skipped, and a lock with no `root=` is left alone rather than rewritten into a broken one.
+**The tidy-up sweeps every registered workspace, not only the current one.** FR-30 is written in the singular, but a host-wide sweep means a user with several workspaces gets them all on the first v4 run instead of one per visit, and it matches how the `.lock` migrations always worked. It stays idempotent because a lock already at this shape or a newer one is skipped, and a lock with no `root=` is left alone rather than rewritten into a broken one.
+(The newer-lock half came out of the phase-4 review: the first cut compared for equality, which would have had an older totopo roll a newer lock back on every start.)
 
 `isImageStale` went to `dockerfile-builder.ts` rather than a new one-function module: that file already computes the build hash and stamps the label this function compares against, so the stamp and the check now live together.
 

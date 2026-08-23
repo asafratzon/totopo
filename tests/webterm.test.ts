@@ -34,7 +34,7 @@ import {
     webtermExecArgs,
 } from "../src/lib/webterm.js";
 import { initWorkspaceDir, readWebPort, writeWebPort } from "../src/lib/workspace-identity.js";
-import { cleanTempDir, createTempDir, overrideEnv, readWebtermClient } from "./helpers.js";
+import { blockAfter, cleanTempDir, createTempDir, overrideEnv, readWebtermClient } from "./helpers.js";
 
 const TEMPLATES_DIR = join(import.meta.dirname, "..", "templates");
 const SRC_DIR = join(import.meta.dirname, "..", "src");
@@ -435,7 +435,7 @@ describe("the key the URL carries", () => {
     test("the client sends its key on everything the server gates", () => {
         const app = readWebtermClient();
         assert.ok(app.includes('new URLSearchParams(location.search).get("k")'), "the window takes its key from its URL");
-        assert.ok(/const wsUrl = .*\/ws\$\{KEY_QUERY\}/.test(app), "the socket must carry the key");
+        assert.match(blockAfter(app, "function wsUrl"), /\/ws\$\{KEY_QUERY\}`/, "the socket must carry the key");
         assert.ok(/fetch\(`\/upload\$\{KEY_QUERY\}`/.test(app), "uploads must carry the key");
         assert.ok(/fetch\(`\/status\$\{KEY_QUERY\}`/.test(app), "the probe that tells a stale key from a dead container must carry it");
     });
@@ -456,6 +456,36 @@ describe("the key the URL carries", () => {
 });
 
 // ---- A page that cannot do anything says so ---------------------------------------------------------------------------------------------
+
+// ---- The page's module graph ------------------------------------------------------------------------------------------------------------
+
+describe("the page's module graph", () => {
+    const CLIENT_DIR = join(TEMPLATES_DIR, "webterm", "public", "app");
+
+    test("index.html loads the entry module", () => {
+        const html = readFileSync(join(TEMPLATES_DIR, "webterm", "public", "index.html"), "utf8");
+        // The drift tests below read the client's source, so nothing else would notice a page that loads
+        // no script at all, or one that points at a file that no longer exists.
+        assert.ok(/<script type="module" src="\/app\/main\.js">/.test(html), "the page must load /app/main.js as a module");
+    });
+
+    test("every module is reachable from the entry", () => {
+        const reached = new Set<string>();
+        const walk = (name: string): void => {
+            if (reached.has(name)) return;
+            reached.add(name);
+            const source = readFileSync(join(CLIENT_DIR, name), "utf8");
+            for (const match of source.matchAll(/["']\.\/([\w-]+\.js)["']/g)) walk(String(match[1]));
+        };
+        walk("main.js");
+
+        // Several modules exist for what they do when they load - the microphone button, the chevron panel's
+        // Escape key, the workspace colour. A module the entry cannot reach is simply not on the page, and
+        // without this test that happens silently.
+        const onDisk = readdirSync(CLIENT_DIR).filter((name) => name.endsWith(".js"));
+        assert.deepEqual([...reached].sort(), onDisk.sort(), "every module must be reachable from main.js");
+    });
+});
 
 describe("the curtain", () => {
     const APP = readWebtermClient();
@@ -516,7 +546,11 @@ describe("stop the container", () => {
         const app = readWebtermClient();
         // The click opens the card; only the card's own button sends the frame.
         assert.ok(app.includes('button.addEventListener("click", stopCard)'), "the power button must ask first");
-        assert.ok(/stopCard[\s\S]*?run: \(\) => sendFrame\(\{ t: "stop" \}\)/.test(app), "only the confirmed card may send the stop frame");
+        assert.match(
+            blockAfter(app, "function stopCard"),
+            /run: \(\) => sendFrame\(\{ t: "stop" \}\)/,
+            "only the confirmed card may send the stop frame",
+        );
     });
 
     test("the server announces the stop before it signals, and reports one that did not take", () => {

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, mock, test } from "node:test";
 import { pathToFileURL } from "node:url";
-import { readWebtermClient } from "./helpers.js";
+import { blockAfter, readWebtermClient } from "./helpers.js";
 
 // The registry ships inside the image as plain JS (the container runs it with the baked node-pty), so it
 // is loaded here the same way the server loads it. The PTY is injected, which is what makes it testable:
@@ -1325,7 +1325,7 @@ describe("replayed output cannot write the clipboard", () => {
     });
 
     test("the OSC 52 handler ignores a replay, and any window that is not in front", () => {
-        const handler = /registerOscHandler\(52,([\s\S]*?)\n {4}\}\);/.exec(app)?.[1] ?? "";
+        const handler = blockAfter(app, "registerOscHandler(52,");
         assert.ok(handler, "the client must handle OSC 52");
         assert.match(handler, /if \(pendingReplays > 0\) return true;/);
         assert.match(handler, /document\.hasFocus\(\)/);

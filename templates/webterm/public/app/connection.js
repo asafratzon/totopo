@@ -166,7 +166,12 @@ const RECONNECT_MAX_MS = 5_000;
 // answers in milliseconds; one the OS has not yet noticed is gone answers never.
 const PROBE_TIMEOUT_MS = 3_000;
 
-const wsUrl = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws${KEY_QUERY}`;
+// Built when a socket is opened, not when this module loads: reading another module's value at load time
+// would depend on that module being a leaf, and the graph has cycles.
+function wsUrl() {
+    return `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws${KEY_QUERY}`;
+}
+
 let ws = null;
 let reconnectDelay = RECONNECT_MIN_MS;
 let reconnectTimer = null;
@@ -203,7 +208,7 @@ function dropSocket() {
 
 export function connect() {
     dropSocket();
-    ws = new WebSocket(wsUrl);
+    ws = new WebSocket(wsUrl());
 
     ws.onopen = () => {
         // Read before the flag is set: this is the page's first socket, as opposed to a reconnect. It is

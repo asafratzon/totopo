@@ -22,6 +22,26 @@ export function readWebtermClient(): string {
         .join("\n");
 }
 
+/**
+ * The body of the block that follows a marker, found by matching braces.
+ *
+ * The drift tests read every module as one string, so a lazy regex looking for a closing brace can run out
+ * of the function it was reading and into the next module, and pass for the wrong reason. Counting braces
+ * ends where the block ends, wherever the function lives and however deeply it is nested.
+ */
+export function blockAfter(source: string, marker: string): string {
+    const start = source.indexOf(marker);
+    if (start === -1) return "";
+    const open = source.indexOf("{", start + marker.length);
+    if (open === -1) return "";
+    let depth = 0;
+    for (let i = open; i < source.length; i++) {
+        if (source[i] === "{") depth++;
+        else if (source[i] === "}" && --depth === 0) return source.slice(open + 1, i);
+    }
+    return "";
+}
+
 export function createTempDir(): string {
     return mkdtempSync(join(tmpdir(), "totopo-test-"));
 }

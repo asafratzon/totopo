@@ -58,20 +58,30 @@ A session with more features turned on: [AI CLIs get updated](#ai-clis), `claude
 
 ## Coming from v3
 
-**If you were on v3.16, there is nothing to do.** Run `npx totopo` as usual. The first v4 run drops the settings v4 no longer has, in place, and carries on.
+**If you were on v3.16, there is nothing to do.**
+Run `npx totopo` as usual.
+The first v4 run removes the voice settings from every workspace on this machine, says so in one line, and carries on.
 
-What changes on that run:
+What changes on that first run:
 
-- **Voice input is gone.** The host audio server, the **Settings → Voice / audio** menu, and the microphone bridge into the container were removed. The web interface still has browser dictation, which never used any of that.
-- Everything else behaves as it did in v3.16 - same workspaces, same containers, same `totopo.yaml`, same settings.
+- **Voice input is gone.** The host audio server, the **Settings → Voice / audio** menu, and the microphone bridge into the container were removed.
+  The web interface still has browser dictation, which never used any of that.
+- **One container rebuild.** The container image changed, so the first session offers a rebuild and you should take it.
+  It takes a few minutes and leaves agent memory, settings and your data alone.
+- Everything else behaves as it did in v3.16 - same workspaces, same `totopo.yaml`, same settings.
 
-**If your last totopo was older than v3.16**, run the last v3 release once first:
+**If your setup predates v3.16**, run the last v3 release once first:
 
 ```bash
 npx totopo@3.16.0
 ```
 
-Open its menu, let it finish, and quit - that run brings your setup up to the v3.16 layout. Then go back to `npx totopo`. v4 carries no migrations, so it refuses an older setup instead of guessing: it tells you the same thing and changes nothing on disk.
+Run it from the project directory you were using, open its menu, let it finish, and quit.
+That run brings your setup up to the v3.16 layout.
+Then go back to `npx totopo`.
+
+v4 carries no migrations, so it refuses an older setup instead of guessing: it prints the same instruction and changes nothing on disk.
+It goes by what it finds rather than by a version number, so a `totopo.yaml` still carrying a key v3 retired (`project_id`, `env_file`, `schema_version`) gets the same refusal - remove the key, or let the v3 run do it.
 
 ## Who this is for
 
@@ -116,7 +126,7 @@ On every run, totopo shows the workspace menu:
 
 - **Open session** - start or resume the dev container and connect
 - **Stop container** - stop the running container
-- **Settings** - git mode, shadow paths, auto-start agent, web interface, rebuild, reset config
+- **Settings** - git mode, shadow paths, web interface, auto-start agent, rebuild container, clean rebuild, reset config
 - **Advanced** - multi-workspace management (stop containers, clear memory, uninstall)
 
 ### Working directory
@@ -301,6 +311,8 @@ To clear memory: `npx totopo` → **Advanced > Clear agent memory**.
 
 ```
 ~/.totopo/
+├── global/
+│   └── config          # host-global settings shared by every workspace (auto-start agent, web interface)
 └── workspaces/
     └── <workspace_id>/
         ├── .lock       # workspace root path, active profile, git mode, web port, and layout version

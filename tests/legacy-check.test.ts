@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, test } from "node:test";
 import { GLOBAL_CONFIG_FILE, GLOBAL_DIR, LOCK_FILE, LOCK_VERSION, TOTOPO_DIR, TOTOPO_YAML, WORKSPACES_DIR } from "../src/lib/constants.js";
@@ -44,6 +44,11 @@ describe("legacy-check", () => {
 
     function writeWorkspaceYaml(content: string): void {
         writeFileSync(join(workspaceRoot, TOTOPO_YAML), content);
+    }
+
+    // Every path under a directory, sorted - so a test can assert that a step created nothing at all.
+    function listTree(dir: string): string[] {
+        return readdirSync(dir, { recursive: true }).map(String).sort();
     }
 
     function writeGlobalConfig(content: string): void {
@@ -121,6 +126,25 @@ describe("legacy-check", () => {
             assert.equal(detectLegacyShape(workspaceRoot), null);
         });
 
+        test("an indented retired key is not a top-level key - a dockerfile_hook may write one", () => {
+            registerWorkspace("yaml-ws", V3_16_LOCK(workspaceRoot));
+            writeWorkspaceYaml(
+                "workspace_id: yaml-ws\nprofiles:\n  gcloud:\n    dockerfile_hook: |\n" +
+                    "      RUN cat > /etc/gcloud.yaml <<'YAML'\n      project_id: my-gcp-project\n      YAML\n",
+            );
+            // v3.16 removes these keys at column 0 only, so refusing this file would send the user to a
+            // version that cannot fix it and the refusal would come back on every run.
+            assert.equal(detectLegacyShape(workspaceRoot), null);
+        });
+
+        test("the refusal says where to run v3, since one marker is scoped to this workspace", () => {
+            registerWorkspace("yaml-ws", V3_16_LOCK(workspaceRoot));
+            writeWorkspaceYaml("workspace_id: yaml-ws\nenv_file: .env\n");
+            const found = detectLegacyShape(workspaceRoot);
+            assert.ok(found);
+            assert.match(found.message, /from this same directory/);
+        });
+
         test("the refusal names totopo 3.16.0 exactly, so the user installs the right version", () => {
             mkdirSync(join(fakeHome, TOTOPO_DIR, "projects"), { recursive: true });
             const found = detectLegacyShape(workspaceRoot);
@@ -134,10 +158,13 @@ describe("legacy-check", () => {
             writeWorkspaceYaml("project_id: old-ws\n");
             const yamlBefore = readFileSync(join(workspaceRoot, TOTOPO_YAML), "utf8");
 
+            const treeBefore = listTree(join(fakeHome, TOTOPO_DIR));
+
             assert.ok(detectLegacyShape(workspaceRoot), "this fixture is legacy");
 
             assert.equal(readFileSync(lockPath, "utf8"), before, "the lock must be untouched");
             assert.equal(readFileSync(join(workspaceRoot, TOTOPO_YAML), "utf8"), yamlBefore, "totopo.yaml must be untouched");
+            assert.deepEqual(listTree(join(fakeHome, TOTOPO_DIR)), treeBefore, "nothing new may appear under ~/.totopo/");
         });
     });
 
@@ -201,6 +228,19 @@ describe("legacy-check", () => {
             const result = tidyV3Leftovers();
             assert.deepEqual(result.tidiedWorkspaces, []);
             assert.equal(result.removedAudioMode, false);
+        });
+
+        test("a lock from a newer totopo is left alone, keys and version intact", () => {
+            const lockPath = registerWorkspace(
+                "future-ws",
+                `root=${workspaceRoot}\nprofile=default\ngit_mode=strict\nweb_port=3901\nversion=99\nfuture_setting=keep-me\n`,
+            );
+            const before = readFileSync(lockPath, "utf8");
+
+            // Rewriting it would roll the version back and drop the key this version does not know,
+            // on every start of the older totopo.
+            assert.deepEqual(tidyV3Leftovers().tidiedWorkspaces, []);
+            assert.equal(readFileSync(lockPath, "utf8"), before);
         });
 
         test("a lock without a root is left alone rather than rewritten into a broken one", () => {

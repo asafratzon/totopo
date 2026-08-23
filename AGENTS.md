@@ -24,7 +24,7 @@ After editing `src/`, run `pnpm lint:fix` then `pnpm check`. Ask the user to run
 - **Comment lines start with a capital letter**
 - **Biome formatting:** 140 char line width, 4-space indent, double quotes
 - **TypeScript strict mode** with `exactOptionalPropertyTypes` and `noUncheckedIndexedAccess`
-- **Comment divider lines** must be exactly 141 chars (prefix `// ` + 138 `=` or `-`); enforced by `scripts/check.ts`
+- **Comment divider lines** must be exactly 140 chars (prefix `// ` + 137 `=` or `-`); enforced by `scripts/check.ts` for `src/`, `bin/`, `scripts/` and `tests/`
 
 ## Migration convention
 
@@ -32,7 +32,7 @@ v4 carries no migration chain. `src/lib/legacy-check.ts` does two things at star
 - **A paths** (source) - hardcode as string literals so the check still finds the old location if a constant changes later.
 - **B paths** (destination) - use constants from `constants.ts`.
 
-When a change moves the on-disk layout, bump `LOCK_VERSION` in `constants.ts` and decide there whether the old shape is tidied or refused.
+When a change moves the on-disk layout, bump `LOCK_VERSION` in `constants.ts` and decide in `legacy-check.ts` whether the old shape is tidied or refused.
 
 ## Security boundaries (non-negotiable)
 
@@ -56,4 +56,4 @@ Skills live in `.claude/skills/`. `.agents/skills/` contains symlinks - edit onl
 
 ## Release process
 
-RC development happens on a dedicated branch (e.g. `v3.1.0-rc-development`), not on `main`. `main` always points to the latest stable release. The source of truth for release notes is `scripts/changelog.yaml` (`CHANGELOG.md` is generated from it). RC entries are cumulative - describe the full release, not delta from previous RC. Use the `/release` skill to prepare; publishing and git push happen on the host via `pnpm release`.
+RC development happens on a dedicated branch (e.g. `v4.0.0-rc-development`), not on `main`. `main` always points to the latest stable release. The source of truth for release notes is `scripts/changelog.yaml` (`CHANGELOG.md` is generated from it). RC entries are cumulative - describe the full release, not delta from previous RC. Use the `/release` skill to prepare; publishing and git push happen on the host via `pnpm release`.

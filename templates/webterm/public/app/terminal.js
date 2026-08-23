@@ -1,7 +1,7 @@
 // terminal.js - the terminal itself: the attached session's live TUI, and the keystrokes that go back.
 //
-// xterm.js and its fit addon come from the page as globals (they are plain scripts under /vendor), so this is
-// the one module that reaches for something it did not import.
+// xterm.js and its fit addon come from the page as globals, since they are plain scripts under /vendor. A
+// module script is deferred, so both are on window by the time this runs.
 
 import { connected, isCurtainUp, sendFrame } from "./connection.js";
 import { input, overlay, termEl } from "./dom.js";

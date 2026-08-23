@@ -162,7 +162,7 @@ If the command fails or reports unfixable issues, stop and show the output to th
 
 Check the current branch with `git branch --show-current`.
 
-- For **Release candidate**: if the branch is `main`, warn the user - RC development should happen on a dedicated branch (e.g. `v3.1.0-rc-development`), not on `main`. Ask them to switch branches before committing.
+- For **Release candidate**: if the branch is `main`, warn the user - RC development should happen on a dedicated branch (e.g. `v4.0.0-rc-development`), not on `main`. Ask them to switch branches before committing.
 - For **Direct stable release**: committing from `main` is fine.
 - For **Promote rc to stable**: a commit may not be needed if changelog entries were already committed during the RC phase. Check if there are uncommitted changes first.
 

@@ -187,12 +187,19 @@ export function readLockVersion(workspaceId: string): string | null {
 
 /**
  * Rewrite the lock through the canonical writer so it carries the current shape version and only the
- * keys this totopo still knows. A no-op (returns false) when the lock is already at the current
- * version or does not exist, which is what makes the tidy-up safe to re-run.
+ * keys this totopo still knows. A no-op (returns false) when the lock does not exist or is already at
+ * this shape or a newer one, which is what makes the tidy-up safe to re-run.
+ *
+ * Only an older shape is brought forward. A lock written by a newer totopo is left exactly as it is:
+ * rewriting it would roll its version back and drop the keys this version has never heard of, on every
+ * single start. An unreadable version counts as older, since a lock this one cannot date is one it
+ * should rewrite.
  */
 export function stampLockVersion(workspaceId: string): boolean {
     const existing = parseLockFile(workspaceId);
-    if (!existing || existing.version === LOCK_VERSION) return false;
+    if (!existing) return false;
+    const stamped = Number(existing.version);
+    if (Number.isInteger(stamped) && stamped >= Number(LOCK_VERSION)) return false;
     writeLockFileInternal(workspaceId, existing);
     return true;
 }

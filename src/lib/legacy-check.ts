@@ -8,8 +8,11 @@
 //   tidyV3Leftovers   - the one surviving migration. A current v3.16 workspace opens with no manual
 //                       step; its dead audio settings are dropped in place on the first v4 run.
 //
-// Every old name below is a hardcoded string literal, per the repo's migration convention: the source
-// side of a migration must keep finding the old location even after the constant naming it is gone.
+// Every retired name below - the old directories, filenames and yaml keys these steps look for - is a
+// hardcoded string literal, per the repo's migration convention: the source side of a migration must keep
+// finding the old location even after the constant naming it is gone. The paths that still exist in v4
+// (~/.totopo/ and its workspaces directory, the lock and yaml filenames) come from constants.ts, since
+// those are destinations as much as sources.
 // =========================================================================================================================================
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
@@ -88,7 +91,10 @@ function retiredYamlKey(workspaceRoot: string): string | null {
         return null;
     }
     for (const key of RETIRED_YAML_KEYS) {
-        if (new RegExp(`^\\s*${key}\\s*:`, "m").test(content)) return key;
+        // Anchored at column 0, like the v3 migrations that removed these keys. An indented match would
+        // fire on a nested key or on a line inside a dockerfile_hook block, and v3.16 would not clear it -
+        // so the refusal would come back on every run with no way out through the product.
+        if (new RegExp(`^${key}\\s*:`, "m").test(content)) return key;
     }
     return null;
 }
@@ -112,7 +118,9 @@ export function detectLegacyShape(workspaceRoot: string | null): LegacyShape | n
             `This setup predates totopo v4 - found ${marker}.\n` +
             `  v4 carries no migrations. Run the last v3 once to bring it up to date:\n\n` +
             `    npx totopo@${LAST_V3_VERSION}\n\n` +
-            `  Open its menu, let it finish, quit, then run totopo again. Nothing here has been changed.`,
+            `  Run it from this same directory - one of the old shapes lives in ${TOTOPO_YAML}, and v3 only\n` +
+            `  looks at the workspace it was started in. Open its menu, let it finish, quit, then run\n` +
+            `  totopo again. Nothing here has been changed.`,
     };
 }
 

@@ -37,11 +37,30 @@
 // never calls into another module while the page is still loading. The graph has cycles on purpose - the frame
 // router talks to every feature and every feature answers back - so a module that ran another module's code at
 // load time would be reaching into something half-built. Everything with an order to it happens here.
+//
+// Reading at load time follows from the same thing: a module may read from one that imports nothing itself
+// (dom.js, state.js, theme.js), since a leaf is always finished by the time anything else runs, and never from
+// one inside the cycle, whose values may not exist yet.
+//
+// Every module is imported here, including the ones this file has nothing to call. Several exist for what they
+// do when they load - the microphone button, the chevron panel's Escape key, the workspace colour, the draft
+// that is saved when the page goes away - and reaching them only through whoever happens to import a function
+// from them would let an unrelated edit take a feature off the page with no test to notice. A test walks the
+// imports from this file and fails if a module is not reachable.
 
 import { refreshBrowserTab } from "./alerts.js";
 import { installClipboard } from "./clipboard.js";
 import { refreshComposer } from "./composer.js";
 import { connect } from "./connection.js";
+import "./cards.js";
+import "./dictation.js";
+import "./dom.js";
+import "./drafts.js";
+import "./frames.js";
+import "./new-session.js";
+import "./note.js";
+import "./state.js";
+import "./theme.js";
 import { renderBar } from "./tabs.js";
 import { mountTerminal, term } from "./terminal.js";
 
