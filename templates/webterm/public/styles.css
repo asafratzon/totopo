@@ -711,6 +711,77 @@ body.offline #tabbar {
     opacity: 0.55;
 }
 
+/* ---- Status strip ---- */
+
+/* One line between the terminal and the composer, out of the terminal's way: the attached session's model,
+   the context it is holding, what is left of its quota, and the version it runs. It wraps rather than
+   scrolls, because a number half off the edge of the window is worse than a second row. */
+#strip {
+    display: flex;
+    flex: none;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    padding: 6px 14px;
+    background: var(--panel);
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 12px;
+}
+
+#strip[hidden] {
+    display: none;
+}
+
+/* Everything the strip draws is scoped under #strip: these are ordinary words - seg, bar, name, fill - and
+   left global they would be the first thing a later rule collided with. */
+#strip .seg {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    white-space: nowrap;
+}
+
+/* The one value in a segment that the eye should land on; everything beside it is context for it. */
+#strip .seg .name {
+    color: var(--text);
+    font-weight: 600;
+}
+
+/* The icon and the values either side of the highlighted one. Both carry the strip's own colour, said here
+   rather than left to inherit so that changing #strip does not quietly change what these mean. */
+#strip .icon,
+#strip .dim {
+    color: var(--muted);
+}
+
+#strip .sep {
+    color: #3a4250;
+}
+
+#strip .bar {
+    width: 74px;
+    height: 6px;
+    overflow: hidden;
+    border-radius: 3px;
+    background: #262c36;
+}
+
+#strip .bar .fill {
+    display: block;
+    height: 100%;
+    background: var(--accent);
+}
+
+/* A meter that has moved far enough to be worth looking at, and one that is nearly out of room. */
+#strip .bar.warn .fill {
+    background: #d29922;
+}
+
+#strip .bar.low .fill {
+    background: var(--bad);
+}
+
 /* ---- Composer ---- */
 
 #composer {

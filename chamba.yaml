@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=https://unpkg.com/chamba@0.4.0/schema/chamba.schema.json
+# chamba workspace config - run 'npx chamba' from anywhere under this directory tree to start your dev container.
+# Every field is documented in the schema above, which your editor reads for completion and validation.
+# This file may be rewritten by chamba (repair, reset, settings changes). Custom comments will not be preserved.
+workspace_id: totopo
+
+# .gitignore-style patterns - agents see an empty, isolated copy instead of the real host data.
+shadow_paths:
+  - node_modules
+  - .env*
+
+env:
+  - CLAUDE_CODE_AUTO_COMPACT_WINDOW=384000

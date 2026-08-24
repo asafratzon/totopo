@@ -111,9 +111,11 @@ export WEBTERM_AGENT="$AGENT"
 export WEBTERM_STATE_FILE="$STATE_FILE"
 # Where the server publishes the key it mints for this run; every URL printed above is read back from it.
 export WEBTERM_KEY_FILE="$KEY_FILE"
-# Guarded like the sibling baked scripts: a detached `docker exec` need not carry HOME, and under
-# `set -u` a bare $HOME would abort the launcher before the server ever starts.
-export WEBTERM_RESUME_MARKER="${HOME:-/home/devuser}/.totopo-resume-pending"
+# Reopening the last conversation is part of the host's auto-start setting, which reaches the container as
+# TOTOPO_AUTOSTART. Without it (a hand-run `webterm <agent>`) every session starts fresh. The stamp file that
+# records which container start has already had its resume is config.js's own default - the shell auto-start
+# hook reaches the same decision without this launcher, so the path cannot live here.
+export WEBTERM_AUTO_RESUME="${TOTOPO_AUTOSTART:+1}"
 # The workspace name (host-injected as TOTOPO_WORKSPACE) labels the session bar and the browser tab.
 export WEBTERM_WORKSPACE="${TOTOPO_WORKSPACE:-}"
 # Where new sessions start. The host passes it (the directory `npx totopo` ran in), so a browser session

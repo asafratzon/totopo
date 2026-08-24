@@ -1,6 +1,6 @@
 {
     "name": "totopo",
-    "version": "4.0.0",
+    "version": "4.1.0",
     "description": "Run AI coding agents safely in your local codebase",
     "type": "module",
     "bin": {

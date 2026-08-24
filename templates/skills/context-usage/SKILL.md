@@ -20,10 +20,12 @@ The Claude Code status line writes a per-session snapshot on every prompt render
 
    ```
    session: 78b4025b-... (this session, updated 3s ago)
-   context: 70.8k tokens (7% of window)
+   context: 70.8k tokens (7% of 1M window)
    quota:   84% remaining, resets in 21m
    model:   Fable 5 (effort high)
    ```
+
+   The window size is named when the snapshot knows it, and left out ("7% of window") when it does not.
 
 2. Answer in ONE short line, in exactly this shape:
 
@@ -42,10 +44,12 @@ The Claude Code status line writes a per-session snapshot on every prompt render
 - The snapshot reflects usage as of the moment the current prompt was submitted; tokens consumed during the in-flight turn are not included yet.
   No need to mention this unless asked.
 - The `quota` line refers to the 5-hour rate-limit window and is absent when Claude Code did not report rate-limit data.
+- In the web interface the same numbers are already on screen, as a strip above the composer, so a session reached through a browser has no status line to read - the snapshot is still written and this still works.
 
 ## Fallback
 
-If the `context-usage` command is not found, read the snapshot directly: list `~/.claude/context-usage/*.json`, pick the most recently modified file, and interpret its fields - `context_tokens`, `context_used_pct`, `model`, `effort`, `quota_left_pct`, `quota_resets_at` (epoch seconds), `updated_at` (epoch seconds), `session_id`.
+If the `context-usage` command is not found, read the snapshot directly: list `~/.claude/context-usage/*.json`, pick the most recently modified file, and interpret its fields - `context_tokens`, `context_used_pct`, `context_window_size`, `model`, `effort`, `quota_left_pct`, `quota_resets_at` (epoch seconds), `version` (the installed Claude Code version), `updated_at` (epoch seconds), `session_id`.
+Any of them can be `null` or absent when Claude Code did not report it; leave that part of the answer out rather than guessing.
 
 If the command does not exist AND there are no snapshot files either, the container image predates this feature.
 In that case tell the user to rebuild the image: start a new totopo session on the host and accept the rebuild prompt.

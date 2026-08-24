@@ -32,6 +32,7 @@
 //   drafts.js       per-session unsent messages, and what was already sent
 //   clipboard.js    copy and paste, OSC 52, and the replay gate
 //   dictation.js    the microphone button
+//   status-strip.js the attached session's model, context, quota and version, above the composer
 //
 // One rule holds them together: a module defines things and hooks up its own listeners when it is loaded, and
 // never calls into another module while the page is still loading. The graph has cycles on purpose - the frame
@@ -60,6 +61,7 @@ import "./frames.js";
 import "./new-session.js";
 import "./note.js";
 import "./state.js";
+import "./status-strip.js";
 import "./theme.js";
 import { renderBar } from "./tabs.js";
 import { mountTerminal, term } from "./terminal.js";

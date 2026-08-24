@@ -28,11 +28,39 @@ export const DEFAULT_AGENT = isKnownAgent(process.env.WEBTERM_AGENT) ? process.e
 // so they mean nothing to any other agent the browser might start.
 export const AGENT_ARGS = (process.env.WEBTERM_AGENT_ARGS || "").split(/\s+/).filter(Boolean);
 
-// Resume marker: a host-written file whose content is the full command that resumes the most
-// recent conversation. The first session to consume it (rename-then-read, atomic) spawns that
-// command instead of the default agent; later sessions start fresh. Empty means resume is disabled,
-// so a standalone `node server.js` behaves exactly as before.
-export const RESUME_MARKER = process.env.WEBTERM_RESUME_MARKER || "";
+// The devuser home, guarded the way the baked shell scripts guard it: a detached `docker exec` need not
+// carry HOME, and every path below is built from this one.
+const HOME = process.env.HOME || "/home/devuser";
+
+// Resume stamp: the file that records which container start has already had its resume. The first session
+// after a container start reopens the most recent conversation; later sessions start fresh, and this is what
+// tells the two apart (see resume.js). It has a default rather than coming from the launcher, because the
+// shell auto-start hook reaches the same decision through resume-cli.js without the launcher ever running -
+// both doors have to name the same file or each would hand out a resume of its own.
+export const RESUME_STAMP = process.env.WEBTERM_RESUME_STAMP || `${HOME}/.totopo-resume-stamp`;
+
+// Whether reopening the last conversation is on at all. Set by the `webterm` launcher from the host's
+// auto-start setting: auto-resume is part of auto-start, so a hand-run `webterm claude` with auto-start off
+// starts fresh rather than picking up a conversation the user did not ask for. It is also what keeps a
+// standalone `node server.js` from resuming anything.
+export const AUTO_RESUME = process.env.WEBTERM_AUTO_RESUME === "1";
+
+// Where each agent keeps what it wrote about its own sessions, and where claude's status line leaves the
+// snapshot the strip is drawn from. These are container paths and they are read only in the container -
+// the layouts belong to CLIs that are installed here and nowhere else, so nothing on the host carries a
+// copy of them. Grouped rather than four constants because two features read from the same set.
+export const AGENT_STORES = {
+    claudeSnapshots: `${HOME}/.claude/context-usage`,
+    claudeProjects: `${HOME}/.claude/projects`,
+    codexSessions: `${HOME}/.codex/sessions`,
+    opencodeSessions: `${HOME}/.local/share/opencode/storage/session`,
+};
+
+// How often a session's snapshot file is looked at again for the strip above the composer. A poll because
+// the file is written into a mounted directory by a shell script and there is nothing to subscribe to.
+// Claude Code rewrites it on every prompt render, so this is really "how quickly the strip catches up",
+// and a frame goes out only when something the strip shows actually changed.
+export const STATUS_SCAN_MS = Number(process.env.WEBTERM_STATUS_SCAN_MS) || 2_000;
 
 // One-line file naming the agent new sessions get, written once the port is bound and again whenever the
 // default moves. The `webterm` launcher reads it so a second run can say what is live instead of just

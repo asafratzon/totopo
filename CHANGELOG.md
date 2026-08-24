@@ -7,6 +7,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ---
 
+## [4.1.0] - 2026-08-24
+
+### Added
+
+- The web interface now carries a status strip above the composer - model, context usage, the 5-hour quota gauge and the Claude Code version, per session, read from the snapshot the status line already writes. A browser session no longer draws the status line inside the terminal too, so the doubled text and the gaps it left behind are gone; a terminal session prints it exactly as before. Existing containers are offered a rebuild on next session start.
+
+### Changed
+
+- Agents in the container now redraw more steadily, so a long session no longer flickers on every prompt render. Existing containers are offered a recreate on next session start.
+
+---
+
 ## [4.0.0] - 2026-08-23
 
 ### Changed
