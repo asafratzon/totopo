@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, test } from "node:test";
-import { RESUME_MARKER_PATH, WEB_KEY_FILE_PATH } from "../src/lib/constants.js";
+import { AGENT_RESUME_CLI, WEB_KEY_FILE_PATH } from "../src/lib/constants.js";
 import { BAKED_TEMPLATE_DIRS, BAKED_TEMPLATE_FILES, buildDockerfile, computeBuildHash } from "../src/lib/dockerfile-builder.js";
 import { cleanTempDir, createTempDir } from "./helpers.js";
 
@@ -49,9 +49,8 @@ describe("buildDockerfile", () => {
         // The web greeting hint and the shell-autostart handoff both key off TOTOPO_WEB_URL.
         assert.ok(result.includes("$TOTOPO_WEB_URL"));
         assert.ok(result.includes("webterm"));
-        // The autostart hook consumes the host-planted resume marker (mv-claim, then run its content).
-        assert.ok(result.includes(RESUME_MARKER_PATH));
-        assert.ok(result.includes(`${RESUME_MARKER_PATH}.shell`));
+        // The autostart hook asks the container what reopens the last conversation, then runs what it printed.
+        assert.ok(result.includes(AGENT_RESUME_CLI));
         // Web on means the shell must not launch the agent - the gate includes the web env check.
         assert.ok(result.includes('[ -z "$TOTOPO_WEB_URL" ]'));
         // With auto-start on, the greeting announces the web interface (URL block), and the plain

@@ -204,7 +204,7 @@ An entry with `=` is an inline variable; an entry without `=` is an env-file pat
 - **A missing env file is skipped with a warning** - the session still starts.
 - **Changing `env` recreates the container** on the next session (editing an inline variable, or the contents or path of a referenced file, all count).
 
-totopo also injects privacy and sandbox environment variables into every container - a universal `DO_NOT_TRACK` opt-out plus switches that disable Claude Code telemetry, error reporting, and other non-essential traffic.
+totopo also injects privacy, sandbox and terminal-behaviour environment variables into every container - a universal `DO_NOT_TRACK` opt-out, switches that disable Claude Code telemetry, error reporting and other non-essential traffic, and a few that tune the CLIs for a container terminal (steadier redraws, no AFK timeout, no in-process updater).
 These always take precedence over your `env`.
 
 ### Published Ports
@@ -276,7 +276,7 @@ totopo keeps all three CLIs on their latest published versions, checking for upd
 
 #### Claude status line
 
-For convenience, every Claude session opens with a status line at the bottom of the terminal:
+For convenience, every Claude session in a terminal opens with a status line at the bottom:
 
 ```
 🤖 Opus 4.8 xhigh · 🧠 174k / 1M (17%) · ⚡ ▓▓▓▓▓▓▓▓░░ 83% (🔌 2h 15m) · Claude Code v2.1.132
@@ -285,6 +285,10 @@ For convenience, every Claude session opens with a status line at the bottom of 
 Four segments: the model name with its reasoning effort in purple (any parenthetical such as "(1M context)" is trimmed); context usage, as used tokens over the window size with a percentage; how much of the 5-hour rate-limit window is left - green while plenty is, then yellow and red as it drains - with a countdown to recharge on subscriber accounts; and the installed Claude Code CLI version, with a hint that gets more insistent as the install ages. Ask Claude `/totopo-statusline` to customize or restore the default.
 
 The same data is snapshotted to `~/.claude/context-usage/` on every prompt render, so you can ask Claude itself how much context or quota is left - it reads the snapshot via the bundled `context-usage` helper.
+
+In the [web agent interface](#web-agent-interface) the same four numbers are drawn as a strip above the composer, from that snapshot, and the line itself is not printed.
+A status line is redrawn inside the conversation, so in a browser it would scroll away with the output and say everything twice.
+The strip is the shorter reading: it names the installed version but not how old the install is, which is the one thing the terminal line says that it does not.
 
 ### Persistent Agent Memory
 
@@ -329,7 +333,8 @@ This is a host-global preference (stored in `~/.totopo/global/config`), so it ap
 When the [web agent interface](#web-agent-interface) is enabled, the same setting auto-starts the web terminal instead of launching an agent in the shell, with the chosen agent as the one its new sessions start with.
 
 With auto-start on, the first session after a container starts resumes your most recent conversation; later sessions start fresh.
-For claude, totopo picks the newest conversation that actually has messages and resumes it by id; opencode and codex use their own `--continue` / `resume --last` flags.
+For claude, the newest conversation that actually has messages is resumed by id; opencode and codex use their own `--continue` / `resume --last` flags.
+The choice is made inside the container, against the agent's own session store, because those stores are written by CLIs installed only there - so a workspace that has never run an agent starts fresh instead of being handed a conversation that does not exist.
 
 ## Migrating from v3
 

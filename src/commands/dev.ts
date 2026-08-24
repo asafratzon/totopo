@@ -48,10 +48,8 @@ import { buildShadowMountArgs, ensureShadowsInSync, expandShadowPatterns } from 
 import type { ProfileConfig } from "../lib/totopo-yaml.js";
 import { readTotopoYaml } from "../lib/totopo-yaml.js";
 import {
-    plantResumeMarker,
     readWebKey,
     resolveWebPort,
-    resumeCommandFor,
     setWebDefaultCwd,
     startWebtermAndVerify,
     webInterfaceAnswers,
@@ -672,28 +670,25 @@ export async function run(packageDir: string, ctx: WorkspaceContext, options?: {
         }
     }
 
-    // --- Once-per-container-start hooks (auto-resume marker + webterm auto-start) --------------------------------------------------------
+    // --- Once-per-container-start hooks (webterm auto-start) -----------------------------------------------------------------------------
     // Deliberately after the startup checks above: those update the AI CLIs inside the container, and the
     // interface spawns its agent the moment it comes up. Started any earlier, the browser would get a session
     // running the version the image was built with - a claude too old to know the current models - and the only
     // way out would be to wait for the update and start another session. The terminal never had this problem:
     // the login shell attaches below, after the update.
     //
-    // Runs on the created AND resumed (docker start) paths, never on connect to an already-running container -
-    // that is what makes the resume once-per-start. The marker is planted before the user's shell attaches, so
-    // whichever session launches first (webterm PTY or the .bashrc hook) consumes a fresh marker and resumes
-    // the most recent conversation; later sessions start fresh.
+    // Nothing here decides whether there is a conversation to reopen. The first session after a container
+    // start does reopen one, but that is settled inside the container, by whichever door opens it (the webterm
+    // server or the .bashrc hook) against a stamp naming this container start - see templates/webterm/resume.js.
     if (startResult.status !== "connected") {
         const autoStartAgent = readAutoStartAgent();
-        if (autoStartAgent !== AUTO_START.off) {
-            plantResumeMarker(containerName, resumeCommandFor(autoStartAgent, cacheDir, workdir));
-            if (webPort !== null) await launchWebInterface(containerName, autoStartAgent, webPort, workdir);
+        if (autoStartAgent !== AUTO_START.off && webPort !== null) {
+            await launchWebInterface(containerName, autoStartAgent, webPort, workdir);
         }
     } else if (webPort !== null) {
         // Connecting to a container that is already up: the interface it started with should still be
         // serving. When it is not (crashed, or stopped by hand) the greeting would advertise a URL that
-        // does not answer, so start it again. No resume marker here - this is not a container start, so
-        // the relaunched interface opens a fresh conversation rather than re-resuming an old one.
+        // does not answer, so start it again.
         const autoStartAgent = readAutoStartAgent();
         if (autoStartAgent !== AUTO_START.off && !(await webInterfaceAnswers(webPort))) {
             await launchWebInterface(containerName, autoStartAgent, webPort, workdir);

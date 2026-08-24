@@ -69,6 +69,38 @@ describe("claude-statusline.sh - context snapshot", { skip: !hasTools }, () => {
         await cleanTempDir(tmp);
     });
 
+    test("carries the window size and the installed version, which the strip draws and the line does not", async () => {
+        const tmp = createTempDir();
+        const result = runScript(
+            STATUSLINE_SCRIPT,
+            tmp,
+            statuslineInput({ context_window: { used_percentage: 12, total_input_tokens: 45000, context_window_size: 1000000 } }),
+        );
+        assert.equal(result.status, 0);
+        const snapshot = JSON.parse(readFileSync(join(snapshotDir(tmp), `${SESSION_ID}.json`), "utf8"));
+        assert.equal(snapshot.context_window_size, 1000000);
+        // The version is read from the installed package, so its value depends on the host: a string in a
+        // container that has Claude Code, null on a machine that does not. The field itself is the contract.
+        assert.ok("version" in snapshot);
+        assert.ok(snapshot.version === null || typeof snapshot.version === "string");
+        await cleanTempDir(tmp);
+    });
+
+    test("a browser session writes its snapshot and prints nothing at all", async () => {
+        const tmp = createTempDir();
+        // TOTOPO_WEB_SESSION is set by the webterm server on the agent it spawns. The strip above the composer
+        // draws the same data, so a rendered line here would say everything twice and scroll away besides.
+        const result = runScript(STATUSLINE_SCRIPT, tmp, statuslineInput(), { TOTOPO_WEB_SESSION: "1" });
+        assert.equal(result.status, 0);
+        assert.equal(result.stdout, "", "a browser session must print no status line");
+        assert.equal(result.stderr, "", "and nothing on stderr either - it would land in the terminal");
+        // The snapshot is the whole point of still running: it is what the strip is drawn from.
+        const snapshot = JSON.parse(readFileSync(join(snapshotDir(tmp), `${SESSION_ID}.json`), "utf8"));
+        assert.equal(snapshot.session_id, SESSION_ID);
+        assert.equal(snapshot.context_tokens, 45000);
+        await cleanTempDir(tmp);
+    });
+
     test("records the claude pid from the TOTOPO_CLAUDE_PID override", async () => {
         const tmp = createTempDir();
         const result = runScript(STATUSLINE_SCRIPT, tmp, statuslineInput(), { TOTOPO_CLAUDE_PID: "4242" });
@@ -209,6 +241,18 @@ describe("context-usage.sh", { skip: !hasTools }, () => {
         assert.match(result.stdout, /quota: {3}84% remaining, resets in 2\dm/);
         assert.match(result.stdout, /model: {3}Fable 5 \(effort high\)/);
         assert.doesNotMatch(result.stdout, /warning/);
+        await cleanTempDir(tmp);
+    });
+
+    test("names the window when the snapshot knows how big it is, and leaves it out when it does not", async () => {
+        const tmp = createTempDir();
+        const now = Math.floor(Date.now() / 1000);
+        const fields = { updated_at: now, context_tokens: 45000, context_used_pct: 12, model: "Fable 5" };
+        writeSnapshot(tmp, SESSION_ID, { ...fields, context_window_size: 1000000 }, Date.now());
+        assert.match(runScript(HELPER_SCRIPT, tmp).stdout, /context: 45\.0k tokens \(12% of 1M window\)/);
+        // A snapshot from before the field existed, or a release that stopped reporting it, reads as before.
+        writeSnapshot(tmp, SESSION_ID, fields, Date.now());
+        assert.match(runScript(HELPER_SCRIPT, tmp).stdout, /context: 45\.0k tokens \(12% of window\)/);
         await cleanTempDir(tmp);
     });
 

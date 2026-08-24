@@ -91,6 +91,7 @@ export const RUNTIME_ENV: Record<string, string> = {
     CLAUDE_CODE_DISABLE_FEEDBACK_SURVEY: "1", // Periodic feedback survey prompt is noise in ephemeral container sessions
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1", // Suppress non-essential network calls (autoupdate checks, telemetry pings)
     CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL: "1", // Skip automatic addition of the official plugin marketplace on first run
+    CLAUDE_CODE_NO_FLICKER: "1", // Steadier redraws: a container terminal is not the one Claude Code is tuned for, browser or not
     DISABLE_AUTOUPDATER: "1", // In-process updater fails (root-owned prefix); startup.mjs handles updates
     DISABLE_ERROR_REPORTING: "1", // Container errors include sandbox paths not useful to Anthropic
     DISABLE_INSTALLATION_CHECKS: "1", // npm install is by design; native installer is not applicable
@@ -123,17 +124,17 @@ export const WEB_RANGE_DEFAULT = "3900-3999";
 // host before it probes /status. Container-side path - the host only ever reads it through `docker exec`.
 export const WEB_KEY_FILE_PATH = "/tmp/webterm.key";
 
-// Resume marker: a host-written container file whose content is the full command that resumes the most
-// recent conversation. Planted by dev.ts on every container create/start when auto-start is on; consumed
-// (rename-then-read, atomic) by exactly one of the webterm server or the .bashrc autostart hook, so the
-// first session after a container start resumes and every later one starts fresh. Lives in the devuser
-// home, not /tmp - consumers execute the file's content, so it must not sit in a world-writable dir.
-export const RESUME_MARKER_PATH = `${CONTAINER_HOME}/.totopo-resume-pending`;
+// Resume stamp: the container file recording which container start has already reopened the last
+// conversation, so the first session after a container start resumes and every later one starts fresh.
+// Written and read entirely inside the container (templates/webterm/resume.js) - the host neither plants
+// nor reads it, because the conversation stores it is about belong to CLIs installed only there.
+// Flat in the devuser home so there is no directory to create before the first write can succeed.
+// Nothing on the host reads this: it is here as the pin the drift test in tests/webterm.test.ts holds the
+// container-side default (templates/webterm/config.js) against, so the two cannot part company unnoticed.
+export const RESUME_STAMP_PATH = `${CONTAINER_HOME}/.totopo-resume-stamp`;
 
-// Per-agent command that reopens the most recent conversation. Pinned against the real CLIs by the
-// drift test in tests/webterm.test.ts, which checks each flag/subcommand against the CLI's own help.
-export const AGENT_RESUME_COMMAND: Record<Exclude<AutoStartAgent, "off">, string> = {
-    claude: "claude --continue",
-    opencode: "opencode --continue",
-    codex: "codex resume --last",
-};
+// The container-side entry point that answers "what reopens this workspace's last conversation, if
+// anything" and spends this container start's one chance to do it. The .bashrc auto-start hook runs it for
+// the shell path; the webterm server imports the same module for the browser path. Baked with the rest of
+// the web interface directory, which is in every image whether that interface is enabled or not.
+export const AGENT_RESUME_CLI = "/usr/local/share/totopo/webterm/resume-cli.js";

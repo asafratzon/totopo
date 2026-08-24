@@ -34,12 +34,14 @@ find_claude_pid() {
   fcp_pid=$$
   while [ "$fcp_pid" -gt 1 ] 2>/dev/null; do
     fcp_comm=""
-    read -r fcp_comm < "/proc/$fcp_pid/comm" 2>/dev/null || return
+    # Redirection before the 2>/dev/null, as in claude-statusline.sh: the other order silences
+    # `read` but not the `open`, so a pid that has gone since prints "cannot open" to stderr.
+    read -r fcp_comm 2>/dev/null < "/proc/$fcp_pid/comm" || return
     case "$fcp_comm" in
       claude) printf '%s' "$fcp_pid"; return ;;
       node*) grep -aq "claude-code" "/proc/$fcp_pid/cmdline" 2>/dev/null && { printf '%s' "$fcp_pid"; return; } ;;
     esac
-    read -r fcp_stat < "/proc/$fcp_pid/stat" 2>/dev/null || return
+    read -r fcp_stat 2>/dev/null < "/proc/$fcp_pid/stat" || return
     fcp_rest="${fcp_stat##*) }"
     set -- $fcp_rest
     fcp_pid=$2
@@ -49,7 +51,7 @@ find_claude_pid() {
 # Start time of a process (jiffies since host boot, /proc/<pid>/stat field 22); mirrors
 # proc_start_time in claude-statusline.sh. Prints nothing when unavailable.
 proc_start_time() {
-  read -r pst_stat < "/proc/$1/stat" 2>/dev/null || return
+  read -r pst_stat 2>/dev/null < "/proc/$1/stat" || return
   pst_rest="${pst_stat##*) }"
   set -- $pst_rest
   printf '%s' "${20}"
@@ -111,6 +113,7 @@ parsed=$(jq -r '
     .updated_at // "",
     .context_tokens // 0,
     .context_used_pct // 0,
+    .context_window_size // 0,
     .model // "",
     .effort // "",
     .quota_left_pct // "",
@@ -127,6 +130,7 @@ fi
   IFS= read -r updated_at
   IFS= read -r tokens
   IFS= read -r used_pct
+  IFS= read -r window_size
   IFS= read -r model
   IFS= read -r effort
   IFS= read -r quota_left
@@ -162,14 +166,30 @@ case "$updated_at" in
     ;;
 esac
 
-# Tokens label mirrors the status line formatting: 45.0k below 100k, 245k above.
-case "$tokens" in
-  '' | *[!0-9]*) tokens_label="?" ;;
-  *) tokens_label=$(awk -v t="$tokens" 'BEGIN {
-       if (t == 0) printf "0k";
-       else if (t >= 100000) printf "%dk", int(t/1000 + 0.5);
-       else printf "%.1fk", t/1000;
-     }') ;;
+# Token counts read the way the status line and the web interface's strip say them: 45.0k below 100k, 245k
+# above, 1M above a million. A function because the window size is said the same way - and it is the same way
+# for every window that exists, since the smallest is 200k and only a window under 100k would read differently
+# here than in the status line, which says a size that small as a whole k.
+fmt_tokens() {
+  case "$1" in
+    '' | *[!0-9]*) printf '?' ;;
+    *) awk -v t="$1" 'BEGIN {
+         if (t == 0) printf "0k";
+         else if (t >= 1000000) { m = t/1000000; if (m == int(m)) printf "%dM", m; else printf "%.1fM", m; }
+         else if (t >= 100000) printf "%dk", int(t/1000 + 0.5);
+         else printf "%.1fk", t/1000;
+       }' ;;
+  esac
+}
+
+tokens_label=$(fmt_tokens "$tokens")
+
+# The window the tokens sit in, when the snapshot knows how big it is. Unknown (an older snapshot, or
+# a Claude Code release that stopped reporting it) just leaves it out, as the status line does.
+window_label=""
+case "$window_size" in
+  '' | 0 | *[!0-9]*) ;;
+  *) window_label=" $(fmt_tokens "$window_size")" ;;
 esac
 
 # The "this session" marker means the snapshot was matched by pid and is guaranteed to
@@ -179,7 +199,7 @@ if [ -n "$matched" ]; then
 else
   printf 'session: %s (updated %s)\n' "${session_id:-unknown}" "$age_label"
 fi
-printf 'context: %s tokens (%s%% of window)\n' "$tokens_label" "${used_pct:-?}"
+printf 'context: %s tokens (%s%% of%s window)\n' "$tokens_label" "${used_pct:-?}" "$window_label"
 
 # Quota line only when the snapshot carried rate-limit data.
 if [ -n "$quota_left" ]; then

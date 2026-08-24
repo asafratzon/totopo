@@ -11,6 +11,7 @@ On top of the terminal it adds a rich composer so you can paste images, drop or 
 - `server.js` serves the page, exposes `POST /upload`, and runs a WebSocket relay at `/ws`.
 - The URL carries a key (`/?k=<key>`) and every route that carries the relay demands it. The server mints a new one at each start, so the key lives exactly as long as the process that issued it.
 - `sessions.js` is the session registry: what a session is, who drives it, and what ends it. The PTY is injected, so the rules are unit-tested without `node-pty`.
+- `proc.js`, `snapshot.js` and `resume.js` are the parts that read the container rather than the browser: the process table, the status snapshots claude writes, and which conversation reopens here. They take their paths as arguments, so they are tested from the host against a fixture tree. `resume.js` also answers the shell auto-start hook, through `resume-cli.js`.
 - A session is one `node-pty` process running its own agent in a directory inside `/workspace`. Both are fixed for the life of the session - they are the process. Sessions belong to the container, not to the browser.
 - The page (`public/`) lists every live session as a tab, renders the attached one's TUI with xterm.js, and forwards keystrokes.
 - The page is plain ES modules under `public/app/`, one per subject (the bar, the composer, the socket and curtain, the frame router, the clipboard, and so on), loaded through `app/main.js`. No build step: what the browser runs is what is in the file. `main.js` lists the modules and holds the boot order, and it is the only place that calls into a module while the page is starting - the graph has cycles, so nothing else may.
@@ -80,6 +81,15 @@ Existing sessions are untouched - a session's directory never changes under it.
 totopo asks it when the last terminal session closes, so `exit` in the terminal warns before it stops a container with live browser sessions in it.
 A window whose socket dropped asks it too: an answer means the relay is fine, a `403` means this window's key is spent, and no answer at all means the container is gone - three different things to say, and this is what tells them apart.
 
+## The status strip
+
+Above the composer, a claude session shows what its terminal status line shows: the model with its reasoning effort, context usage as a bar, how much of the rate-limit window is left with a countdown to recharge, and the installed Claude Code version.
+
+- **Nothing is asked of the agent.** `claude-statusline.sh` already writes a snapshot to `~/.claude/context-usage/<session_id>.json` on every prompt render, and the strip is drawn from that file. The script also stops before rendering when `TOTOPO_WEB_SESSION` is set, which the server sets on every agent it spawns - so a browser session gets the strip and a terminal session (including `docker exec`) gets the line, and neither gets both.
+- **A snapshot belongs to a session when the process that wrote it does.** The file is named after claude's own session id, which the server never sees, so the match is by pid: the writer must be the session's PTY leader or something it started, and `(pid, start time)` must still name that same process. The directory is bind-mounted per workspace and outlives the container, so it holds files whose pids are live again as something else.
+- **Polled, not watched** (`WEBTERM_STATUS_SCAN_MS`, default 2s), and a payload that has not changed costs no frame. An attach forces one, so a switch, a reload and a reconnect all land on current numbers.
+- **A session's numbers only reach the window watching it**, and a field the strip cannot use takes its segment off rather than showing a blank one. An agent that writes no snapshots - codex, opencode - has no strip at all.
+
 ## Run
 
 webterm is baked into the totopo image with its dependencies preinstalled, and is off by default.
@@ -96,7 +106,13 @@ webterm is baked into the totopo image with its dependencies preinstalled, and i
 
 When the auto-start setting is on and the web interface is enabled, totopo starts the server automatically on every container start, with the chosen agent as the default.
 The first session after a container start resumes the most recent conversation; later sessions start fresh.
-Only a session running that same agent may claim the resume - the marker holds a command for it, and any other agent would consume the conversation without being able to open it.
+Only a session running the default agent may claim it - another agent cannot open a conversation this one wrote.
+
+`resume.js` answers both halves of that: what reopens the last conversation here, by reading the agent's own session store, and whether this session gets to, by stamping the start time of PID 1 (the container's keep-alive, so a different number on every `docker start`) into `WEBTERM_RESUME_STAMP`.
+It is the container's answer because the stores are written by CLIs installed only here - which also means a workspace with no history answers "nothing", and the session starts fresh rather than being handed a conversation that does not exist.
+The shell auto-start hook in `.bashrc` asks the same question through `resume-cli.js`, which prints the argv one token per line or prints nothing; the two never run at once, since the hook only fires when the interface is off.
+`WEBTERM_AUTO_RESUME` is what keeps the gate: the launcher sets it only when the host's auto-start setting is on, so with auto-start off a hand-run `webterm <agent>` always starts fresh.
+With auto-start on it is set however the launcher was run, which is the answer you want when the interface died and is being brought back up by hand in a container that has not restarted.
 
 Running `webterm <other-agent>` while it is up starts nothing and ends nothing: it moves what `+ New session` will start, and prints the URL.
 Sessions already open keep running the agent they were started with.
@@ -120,9 +136,10 @@ Sessions already open keep running the agent they were started with.
 
 ## Config
 
-`config.js` holds the knobs (port, agent list and default agent, key and key file, upload dir, size cap, sweep age/interval, paste framing, resume marker, state file, session limit, keepalive interval, stop timings, claude context file, workspace root and directory-scan limits).
-Env overrides: `WEBTERM_PORT`, `WEBTERM_CWD`, `WEBTERM_AGENT`, `WEBTERM_AGENT_ARGS`, `WEBTERM_KEY`, `WEBTERM_KEY_FILE`, `WEBTERM_RESUME_MARKER`, `WEBTERM_STATE_FILE`, `WEBTERM_MAX_SESSIONS`, `WEBTERM_PING_INTERVAL_MS`, `WEBTERM_WORKSPACE`, `WEBTERM_CONTEXT_FILE`.
+`config.js` holds the knobs (port, agent list and default agent, key and key file, upload dir, size cap, sweep age/interval, paste framing, resume stamp and whether resume is offered at all, the agents' session stores, status scan interval, state file, session limit, keepalive interval, stop timings, claude context file, workspace root and directory-scan limits).
+Env overrides: `WEBTERM_PORT`, `WEBTERM_CWD`, `WEBTERM_AGENT`, `WEBTERM_AGENT_ARGS`, `WEBTERM_KEY`, `WEBTERM_KEY_FILE`, `WEBTERM_RESUME_STAMP`, `WEBTERM_AUTO_RESUME`, `WEBTERM_STATUS_SCAN_MS`, `WEBTERM_STATE_FILE`, `WEBTERM_MAX_SESSIONS`, `WEBTERM_PING_INTERVAL_MS`, `WEBTERM_WORKSPACE`, `WEBTERM_CONTEXT_FILE`.
 `WEBTERM_KEY` pins the key instead of minting one, which is for tests and hand-run debugging - there is no way to turn the gate off.
+`WEBTERM_PROC_ROOT` points `proc.js` at a directory other than `/proc`, which is for tests only: the host running them has no container process table.
 `WEBTERM_CWD` is where new sessions start, not where they must stay: the browser can name another directory per session, and `POST /cwd` moves the default.
 `WEBTERM_AGENT` is the same shape: the agent new sessions start with, which the browser can override per session and `POST /agent` moves. A value that is not one of the three falls back to the first, so nothing arbitrary can be spawned through it.
 `WEBTERM_AGENT_ARGS` belongs to `WEBTERM_AGENT` alone - it comes from the same launcher run - so any other agent is spawned bare.

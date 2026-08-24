@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer as createHttpServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { createServer } from "node:net";
@@ -8,26 +8,22 @@ import { basename, join } from "node:path";
 import { afterEach, beforeEach, describe, test } from "node:test";
 import { pathToFileURL } from "node:url";
 import {
-    AGENT_RESUME_COMMAND,
     AUTO_START,
     AUTO_START_AGENTS,
     CONTAINER_KEEP_ALIVE,
     CONTAINER_USER,
     CONTAINER_WORKSPACE,
-    RESUME_MARKER_PATH,
+    RESUME_STAMP_PATH,
     WEB_CONTAINER_PORT,
     WEB_KEY_FILE_PATH,
 } from "../src/lib/constants.js";
 import {
     assignWebPortsToAllWorkspaces,
-    claudeProjectKey,
     collectAssignedWebPorts,
     ensureWebPort,
-    latestClaudeSessionId,
     nextFreeWebPort,
     reassignOutOfRangeWebPorts,
     resolveWebPort,
-    resumeCommandFor,
     setWebDefaultCwd,
     webPortUsable,
     webSessionInfo,
@@ -643,11 +639,23 @@ describe("the finish chime", () => {
 // are pinned here: a drift between them and constants.ts fails these tests instead of failing at runtime.
 
 describe("baked webterm literals stay in sync with constants", () => {
-    test("webterm.sh uses the fixed container port and the resume marker filename", () => {
+    test("webterm.sh uses the fixed container port", () => {
         const launcher = readFileSync(join(TEMPLATES_DIR, "webterm.sh"), "utf8");
         assert.ok(launcher.includes(String(WEB_CONTAINER_PORT)), `launcher must bind port ${WEB_CONTAINER_PORT}`);
-        // The launcher builds the path from $HOME (it always runs as devuser), so pin the filename.
-        assert.ok(launcher.includes(basename(RESUME_MARKER_PATH)), "launcher must export the resume marker path");
+    });
+
+    test("config.js names the resume stamp the host knows about, and both doors read it from there", () => {
+        // The stamp does not come from the launcher: the shell auto-start hook asks resume-cli.js without the
+        // launcher ever running, so the path lives in config.js and both doors import it from there. config.js
+        // builds it from $HOME (it always runs as devuser), so pin the filename.
+        const config = readFileSync(join(TEMPLATES_DIR, "webterm", "config.js"), "utf8");
+        assert.ok(config.includes(basename(RESUME_STAMP_PATH)), "config.js must default the resume stamp path");
+        const launcher = readFileSync(join(TEMPLATES_DIR, "webterm.sh"), "utf8");
+        assert.ok(!launcher.includes(basename(RESUME_STAMP_PATH)), "a second copy of the path in the launcher is a second stamp");
+        for (const door of ["server.js", "resume-cli.js"]) {
+            const source = readFileSync(join(TEMPLATES_DIR, "webterm", door), "utf8");
+            assert.ok(/RESUME_STAMP[\s\S]*?from "\.\/config\.js"/.test(source), `${door} must take the stamp from config.js`);
+        }
     });
 
     test("webterm/config.js defaults to the fixed container port", () => {
@@ -693,8 +701,12 @@ describe("baked webterm literals stay in sync with constants", () => {
         assert.ok(launcher.includes("export WEBTERM_AGENT="), "launcher must export WEBTERM_AGENT");
         assert.ok(config.includes("process.env.WEBTERM_AGENT"), "config.js must read WEBTERM_AGENT");
         // The agent is always named explicitly (host: `webterm <agent>`, user: same), so the launcher
-        // must not fall back to the auto-start setting or to a hardcoded agent.
-        assert.ok(!launcher.includes("TOTOPO_AUTOSTART"), "launcher must not infer the agent from TOTOPO_AUTOSTART");
+        // must not fall back to the auto-start setting or to a hardcoded agent. It does read
+        // TOTOPO_AUTOSTART for the resume gate, so what is checked is that no line uses it to name an agent.
+        for (const line of launcher.split("\n")) {
+            if (!line.includes("TOTOPO_AUTOSTART")) continue;
+            assert.ok(!line.includes("WEBTERM_AGENT"), `launcher must not infer the agent from TOTOPO_AUTOSTART: ${line.trim()}`);
+        }
     });
 
     test("nothing in the app ends a session because a browser went away", () => {
@@ -817,9 +829,9 @@ describe("the agents one server will run", () => {
         const server = readFileSync(join(TEMPLATES_DIR, "webterm", "server.js"), "utf8");
         assert.ok(/function spawnAgent\(\{ cwd, agent \}\)/.test(server), "the registry passes the agent through to the spawn");
         assert.ok(/agent === DEFAULT_AGENT \? AGENT_ARGS : \[\]/.test(server), "WEBTERM_AGENT_ARGS belong to the agent it was set for");
-        // The resume marker holds a command for the agent the host started the interface with, so no other agent
-        // may claim it - it would consume the conversation and then fail to open it.
-        assert.ok(/if \(!RESUME_MARKER \|\| agent !== DEFAULT_AGENT\) return null;/.test(server));
+        // The resume belongs to the agent the host started the interface with, so no other agent may spend it -
+        // it would claim the container start's one chance for a conversation it cannot open.
+        assert.ok(/if \(!AUTO_RESUME \|\| agent !== DEFAULT_AGENT\) return null;/.test(server));
     });
 
     test("a name the server does not run is refused before anything can be started", () => {
@@ -849,17 +861,22 @@ describe("the agents one server will run", () => {
 });
 
 // ---- Resume-flag drift ------------------------------------------------------------------------------------------------------------------
-// AGENT_RESUME_COMMAND hardcodes each CLI's resume flag; the CLIs update independently of totopo, so
-// verify each flag against the CLI's own help output. The last token is always the flag; everything
-// before it (binary + any subcommand) is what --help is asked of. Skips when the CLI is not installed
-// (host machines without the agents) - inside a totopo container all three are present and this runs.
+// templates/webterm/resume.js hardcodes each CLI's resume flag; the CLIs update independently of totopo, so
+// verify each flag against the CLI's own help output. The last token is always the flag; everything before it
+// (binary + any subcommand) is what --help is asked of. Skips when the CLI is not installed (host machines
+// without the agents) - inside a totopo container all three are present and this runs.
+// The module is loaded by file URL because it ships inside the image as plain JS: the container decides what
+// reopens a conversation, so this is where those flags live now.
 
-describe("AGENT_RESUME_COMMAND drift", () => {
-    for (const [agent, command] of Object.entries(AGENT_RESUME_COMMAND)) {
-        test(`${agent}: "${command}" still matches the CLI's help`, (t) => {
-            const parts = command.split(" ");
-            const flag = parts.at(-1) as string;
-            const [bin, ...subcommands] = parts.slice(0, -1) as [string, ...string[]];
+const { CONTINUE } = (await import(pathToFileURL(join(TEMPLATES_DIR, "webterm", "resume.js")).href)) as {
+    CONTINUE: Record<string, { argv: string[] }>;
+};
+
+describe("resume flag drift", () => {
+    for (const [agent, { argv }] of Object.entries(CONTINUE)) {
+        test(`${agent}: "${argv.join(" ")}" still matches the CLI's help`, (t) => {
+            const flag = argv.at(-1) as string;
+            const [bin, ...subcommands] = argv.slice(0, -1) as [string, ...string[]];
 
             const result = spawnSync(bin, [...subcommands, "--help"], { encoding: "utf8", stdio: "pipe", timeout: 30_000 });
             if (result.error) {
@@ -870,81 +887,22 @@ describe("AGENT_RESUME_COMMAND drift", () => {
             const help = `${result.stdout ?? ""}${result.stderr ?? ""}`;
             assert.ok(
                 help.includes(flag),
-                `"${bin} ${[...subcommands, "--help"].join(" ")}" no longer mentions "${flag}" - update AGENT_RESUME_COMMAND in constants.ts`,
+                `"${bin} ${[...subcommands, "--help"].join(" ")}" no longer mentions "${flag}" - update CONTINUE in templates/webterm/resume.js`,
             );
         });
     }
 
-    test('claude: "--resume <id>" (planted by resumeCommandFor) still matches the CLI\'s help', (t) => {
+    test('claude: "--resume <id>" (what resumeArgvFor builds) still matches the CLI\'s help', (t) => {
         const result = spawnSync("claude", ["--help"], { encoding: "utf8", stdio: "pipe", timeout: 30_000 });
         if (result.error) {
             t.skip("claude is not installed here");
             return;
         }
         const help = `${result.stdout ?? ""}${result.stderr ?? ""}`;
-        assert.ok(help.includes("--resume"), 'claude --help no longer mentions "--resume" - update resumeCommandFor in webterm.ts');
-    });
-});
-
-// ---- Resume session selection -----------------------------------------------------------------------------------------------------------
-// resumeCommandFor picks the claude session explicitly instead of trusting `claude --continue`,
-// whose picker takes the newest transcript by mtime and silently starts fresh when that transcript
-// has no real messages. These fixtures mirror the transcript shapes found in a real project dir.
-
-describe("latestClaudeSessionId / resumeCommandFor", () => {
-    let cacheDir: string;
-    let projectDir: string;
-
-    const REAL_LINE = `${JSON.stringify({ type: "user", isSidechain: false, message: { role: "user", content: "hi" } })}\n`;
-    const CONTENTLESS_LINES = `${JSON.stringify({ type: "mode", mode: "normal" })}\n${JSON.stringify({ type: "system", subtype: "local_command", isSidechain: false })}\n`;
-    const SIDECHAIN_LINE = `${JSON.stringify({ type: "user", isSidechain: true, message: { role: "user", content: "sub task" } })}\n`;
-
-    function addTranscript(sessionId: string, content: string, mtime: Date): void {
-        const file = join(projectDir, `${sessionId}.jsonl`);
-        writeFileSync(file, content);
-        utimesSync(file, mtime, mtime);
-    }
-
-    beforeEach(() => {
-        cacheDir = createTempDir();
-        projectDir = join(cacheDir, "agents", "claude", "projects", "-workspace");
-        mkdirSync(projectDir, { recursive: true });
-    });
-
-    afterEach(async () => {
-        await cleanTempDir(cacheDir);
-    });
-
-    test("returns null when the project dir is missing or holds no transcripts", () => {
-        assert.equal(latestClaudeSessionId(createTempDir()), null);
-        assert.equal(latestClaudeSessionId(cacheDir), null);
-    });
-
-    test("picks the newest transcript that has a real user message", () => {
-        addTranscript("11111111-1111-4111-8111-111111111111", REAL_LINE, new Date("2026-07-24T10:00:00Z"));
-        addTranscript("22222222-2222-4222-8222-222222222222", REAL_LINE, new Date("2026-07-24T12:00:00Z"));
-        assert.equal(latestClaudeSessionId(cacheDir), "22222222-2222-4222-8222-222222222222");
-    });
-
-    test("skips a newer contentless transcript (the silent-fresh trap of claude --continue)", () => {
-        addTranscript("11111111-1111-4111-8111-111111111111", REAL_LINE, new Date("2026-07-24T10:00:00Z"));
-        addTranscript("22222222-2222-4222-8222-222222222222", CONTENTLESS_LINES, new Date("2026-07-24T12:00:00Z"));
-        assert.equal(latestClaudeSessionId(cacheDir), "11111111-1111-4111-8111-111111111111");
-    });
-
-    test("skips newer sidechain (subagent) transcripts and non-session files", () => {
-        addTranscript("11111111-1111-4111-8111-111111111111", REAL_LINE, new Date("2026-07-24T10:00:00Z"));
-        addTranscript("22222222-2222-4222-8222-222222222222", SIDECHAIN_LINE, new Date("2026-07-24T12:00:00Z"));
-        writeFileSync(join(projectDir, "notes.jsonl"), REAL_LINE);
-        assert.equal(latestClaudeSessionId(cacheDir), "11111111-1111-4111-8111-111111111111");
-    });
-
-    test("resumeCommandFor resumes claude by id and falls back to the generic flag", () => {
-        assert.equal(resumeCommandFor("claude", cacheDir), AGENT_RESUME_COMMAND.claude);
-        addTranscript("11111111-1111-4111-8111-111111111111", REAL_LINE, new Date("2026-07-24T10:00:00Z"));
-        assert.equal(resumeCommandFor("claude", cacheDir), "claude --resume 11111111-1111-4111-8111-111111111111");
-        // Non-claude agents always use their generic flag; the transcript scan is claude-specific.
-        assert.equal(resumeCommandFor("codex", cacheDir), AGENT_RESUME_COMMAND.codex);
+        assert.ok(
+            help.includes("--resume"),
+            'claude --help no longer mentions "--resume" - update resumeArgvFor in templates/webterm/resume.js',
+        );
     });
 });
 
@@ -1087,88 +1045,5 @@ describe("the paths the app accepts for a session", () => {
     test("a directory reaches the browser relative to the workspace, with the root as an empty string", () => {
         assert.equal(helpers.workspaceLabel(root, root), "", "the root has no path worth showing on a tab");
         assert.equal(helpers.workspaceLabel(join(root, "apps", "api"), root), join("apps", "api"));
-    });
-});
-
-// ---- Resuming in a sub-directory --------------------------------------------------------------------------------------------------------
-// claude keeps a separate history per directory, so the resume command has to name a conversation from the
-// directory the session will actually run in. Handing it one from elsewhere either fails outright or drops
-// the user into another directory's history.
-
-describe("resuming a conversation in a sub-directory", () => {
-    const NESTED = "/workspace/apps/api";
-    const OLDER = new Date("2026-07-24T10:00:00Z");
-    const NEWER = new Date("2026-07-24T12:00:00Z");
-    const AT_ROOT = "11111111-1111-4111-8111-111111111111";
-    const AT_NESTED = "22222222-2222-4222-8222-222222222222";
-
-    let cacheDir: string;
-
-    // A transcript's one real user message, with or without the directory claude recorded on it (transcripts
-    // written before claude carried the field are the reason the fallback exists).
-    function userLine(cwd: string | null): string {
-        const record: Record<string, unknown> = { type: "user", isSidechain: false, message: { role: "user", content: "hi" } };
-        if (cwd !== null) record.cwd = cwd;
-        return `${JSON.stringify(record)}\n`;
-    }
-
-    function addTranscript(projectKey: string, sessionId: string, cwd: string | null, mtime: Date): void {
-        const dir = join(cacheDir, "agents", "claude", "projects", projectKey);
-        mkdirSync(dir, { recursive: true });
-        const file = join(dir, `${sessionId}.jsonl`);
-        writeFileSync(file, userLine(cwd));
-        utimesSync(file, mtime, mtime);
-    }
-
-    beforeEach(() => {
-        cacheDir = createTempDir();
-    });
-
-    afterEach(async () => {
-        await cleanTempDir(cacheDir);
-    });
-
-    test("claudeProjectKey names a directory's transcript dir the way claude does", () => {
-        assert.equal(claudeProjectKey(CONTAINER_WORKSPACE), "-workspace");
-        assert.equal(claudeProjectKey(NESTED), "-workspace-apps-api");
-        assert.equal(claudeProjectKey("/workspace/my.app_1"), "-workspace-my-app-1");
-    });
-
-    test("picks the newest conversation from that directory, not the newest overall", () => {
-        addTranscript("-workspace", AT_ROOT, CONTAINER_WORKSPACE, NEWER);
-        addTranscript("-workspace-apps-api", AT_NESTED, NESTED, OLDER);
-
-        assert.equal(latestClaudeSessionId(cacheDir, NESTED), AT_NESTED);
-        assert.equal(latestClaudeSessionId(cacheDir, CONTAINER_WORKSPACE), AT_ROOT);
-    });
-
-    test("finds it wherever claude filed it, because the recorded directory is what decides", () => {
-        // A dir name this code would never derive: if the naming ever changes, what the transcript says
-        // about itself still matches.
-        addTranscript("-workspace-apps-api-2", AT_NESTED, NESTED, OLDER);
-
-        assert.equal(latestClaudeSessionId(cacheDir, NESTED), AT_NESTED);
-    });
-
-    test("transcripts too old to record a directory fall back to the dir name", () => {
-        addTranscript("-workspace-apps-api", AT_NESTED, null, OLDER);
-        addTranscript("-workspace", AT_ROOT, null, NEWER);
-
-        assert.equal(latestClaudeSessionId(cacheDir, NESTED), AT_NESTED, "the root's newer history is not this directory's");
-        assert.equal(latestClaudeSessionId(cacheDir, CONTAINER_WORKSPACE), AT_ROOT);
-    });
-
-    test("resumeCommandFor plants that directory's own conversation", () => {
-        addTranscript("-workspace", AT_ROOT, CONTAINER_WORKSPACE, NEWER);
-        addTranscript("-workspace-apps-api", AT_NESTED, NESTED, OLDER);
-
-        assert.equal(resumeCommandFor("claude", cacheDir, NESTED), `claude --resume ${AT_NESTED}`);
-        assert.equal(resumeCommandFor("claude", cacheDir), `claude --resume ${AT_ROOT}`, "no directory given means the workspace root");
-    });
-
-    test("no history for the directory starts fresh rather than resuming another one's", () => {
-        addTranscript("-workspace", AT_ROOT, CONTAINER_WORKSPACE, NEWER);
-
-        assert.equal(resumeCommandFor("claude", cacheDir, NESTED), AGENT_RESUME_COMMAND.claude);
     });
 });

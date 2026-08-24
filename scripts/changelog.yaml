@@ -1,6 +1,19 @@
 in_progress:
-  base_version: 4.0.1
-  entries: []
+  base_version: 4.1.0
+  entries:
+    - rc_version: "4.1.0-rc-1"
+      date: "2026-08-24"
+      added:
+        - >-
+          The web interface now carries a status strip above the composer - model, context usage, the 5-hour quota
+          gauge and the Claude Code version, per session, read from the snapshot the status line already writes. A
+          browser session no longer draws the status line inside the terminal too, so the doubled text and the gaps it
+          left behind are gone; a terminal session prints it exactly as before. Existing containers are offered a
+          rebuild on next session start.
+      changed:
+        - >-
+          Agents in the container now redraw more steadily, so a long session no longer flickers on every prompt
+          render. Existing containers are offered a recreate on next session start.
 releases:
   - version: 4.0.0
     date: "2026-08-23"

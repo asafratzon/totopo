@@ -15,6 +15,7 @@ export const sendBtn = document.getElementById("send");
 export const attachBtn = document.getElementById("attach");
 export const fileInput = document.getElementById("file-input");
 export const note = document.getElementById("note");
+export const strip = document.getElementById("strip");
 
 // Every icon in the bar is drawn rather than shipped, because the bar is rebuilt from scratch on every frame.
 export const SVG_NS = "http://www.w3.org/2000/svg";

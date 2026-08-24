@@ -14,10 +14,16 @@
 # missing in a future Claude Code release is silently skipped rather than failing the script.
 # The Claude Code segment is also skipped silently when its data sources are unavailable.
 #
-# Side effect: writes a per-session snapshot of the parsed data to
-# ~/.claude/context-usage/<session_id>.json so agents can inspect their own context/quota
-# usage (see the context-usage helper). Best-effort: any failure is silent and the visible
-# line is never affected. Old snapshots are cleaned by startup.mjs at session start.
+# Writes a per-session snapshot of the parsed data to ~/.claude/context-usage/<session_id>.json
+# first, then renders. The snapshot is what the context-usage helper reads so an agent can inspect
+# its own context/quota, and what the web interface draws its status strip from. Best-effort: every
+# command in the write is silent, so the visible line is never affected either way. Old snapshots are
+# cleaned by startup.mjs at session start.
+#
+# The four segments are a terminal thing. A session reached through the web interface
+# (TOTOPO_WEB_SESSION, set by the webterm server on the agent it spawns) writes its snapshot and
+# stops: the strip above the composer draws the same data outside the terminal, where it does not
+# scroll away with the conversation or spend a row on every prompt render.
 #
 # To customize or revert, ask Claude: /totopo-statusline
 # =============================================================================
@@ -32,12 +38,14 @@ find_claude_pid() {
   fcp_pid=$$
   while [ "$fcp_pid" -gt 1 ] 2>/dev/null; do
     fcp_comm=""
-    read -r fcp_comm < "/proc/$fcp_pid/comm" 2>/dev/null || return
+    # Redirection before the 2>/dev/null on purpose: the other order silences `read` but not the
+    # `open`, so a pid that has gone since prints "cannot open" to stderr from a status line.
+    read -r fcp_comm 2>/dev/null < "/proc/$fcp_pid/comm" || return
     case "$fcp_comm" in
       claude) printf '%s' "$fcp_pid"; return ;;
       node*) grep -aq "claude-code" "/proc/$fcp_pid/cmdline" 2>/dev/null && { printf '%s' "$fcp_pid"; return; } ;;
     esac
-    read -r fcp_stat < "/proc/$fcp_pid/stat" 2>/dev/null || return
+    read -r fcp_stat 2>/dev/null < "/proc/$fcp_pid/stat" || return
     # Stat format is "pid (comm) state ppid ..." and comm may contain anything; strip
     # through the last ")" so the remainder starts with state, then take field 2.
     fcp_rest="${fcp_stat##*) }"
@@ -51,7 +59,7 @@ find_claude_pid() {
 # get recycled, so only the (pid, start time) pair identifies a process unambiguously.
 # Prints nothing when the pid or /proc is unavailable; readers then match on the pid alone.
 proc_start_time() {
-  read -r pst_stat < "/proc/$1/stat" 2>/dev/null || return
+  read -r pst_stat 2>/dev/null < "/proc/$1/stat" || return
   pst_rest="${pst_stat##*) }"
   set -- $pst_rest
   printf '%s' "${20}"
@@ -65,6 +73,13 @@ claude_pid_start=""
 [ -n "$claude_pid" ] && claude_pid_start="${TOTOPO_CLAUDE_PID_START:-$(proc_start_time "$claude_pid")}"
 case "$claude_pid_start" in *[!0-9]*) claude_pid_start="" ;; esac
 
+# Claude Code installed version, from the npm package metadata. Read here rather than beside the
+# freshness check further down because the snapshot carries it too, and the snapshot is built by the
+# single jq call below. Empty when the metadata is unreadable, which drops it from both.
+cc_pkg="/usr/lib/node_modules/@anthropic-ai/claude-code/package.json"
+cc_version=""
+[ -r "$cc_pkg" ] && cc_version=$(jq -r '.version // ""' "$cc_pkg" 2>/dev/null)
+
 # Single jq invocation for all fields, separated by newlines. Every path uses // fallbacks so a
 # missing or renamed field becomes an empty string, which downstream branches handle as "skip".
 # jq itself aborts (empty or partial parsed) on malformed input, which still produces a valid line.
@@ -74,7 +89,7 @@ case "$claude_pid_start" in *[!0-9]*) claude_pid_start="" ;; esac
 # 0..100 so an over-limit report never renders a negative percentage.
 # Each value is bound once and reused for both the render lines and the snapshot object, so the
 # visible line and what the context-usage helper reads can never disagree.
-parsed=$(jq -r --arg claude_pid "$claude_pid" --arg claude_pid_start "$claude_pid_start" '
+parsed=$(jq -r --arg claude_pid "$claude_pid" --arg claude_pid_start "$claude_pid_start" --arg version "$cc_version" '
     ((.model.display_name // "") | split(" (") | .[0]) as $model |
     ((.context_window.used_percentage // 0) | round) as $ctx_pct |
     (.context_window.total_input_tokens // 0) as $tokens |
@@ -92,10 +107,12 @@ parsed=$(jq -r --arg claude_pid "$claude_pid" --arg claude_pid_start "$claude_pi
         updated_at: (now | floor),
         context_tokens: $tokens,
         context_used_pct: $ctx_pct,
+        context_window_size: $ctx_size,
         model: $model,
         effort: $effort,
         quota_left_pct: (if $quota_left == "" then null else $quota_left end),
-        quota_resets_at: (if $resets == "" then null else $resets end)
+        quota_resets_at: (if $resets == "" then null else $resets end),
+        version: (if $version == "" then null else $version end)
     } | tojson)
 ' 2>/dev/null)
 
@@ -116,6 +133,31 @@ EOF
 # The session id becomes a filename below; allow only safe characters (Claude Code emits a
 # UUID). Anything unexpected (or an absent id) skips the snapshot write entirely.
 case "$session_id" in ''|*[!A-Za-z0-9-]*) session_id="" ;; esac
+
+# Persist the per-session snapshot before anything is rendered. It comes first because a web session
+# exits right below and never reaches the render, and because this whole block is silent - every
+# command in it is inside a 2>/dev/null group with an rm -f fallback - so it cannot corrupt the line
+# a terminal session prints after it. Temp file + mv in the same directory = atomic rename;
+# concurrent sessions write distinct files, so no locking is needed. Dotted temp names never match
+# the *.json globs used by readers; orphans and old snapshots are cleaned up by startup.mjs.
+# Each render is its own process, so $$ makes the temp name unique without spawning mktemp.
+if [ -n "$session_id" ] && [ -n "$snapshot_json" ]; then
+  snap_dir="${HOME:-/home/devuser}/.claude/context-usage"
+  snap_tmp="$snap_dir/.tmp.$$"
+  {
+    [ -d "$snap_dir" ] || mkdir -p "$snap_dir"
+    printf '%s\n' "$snapshot_json" > "$snap_tmp" &&
+    mv -f "$snap_tmp" "$snap_dir/$session_id.json"
+  } 2>/dev/null || rm -f "$snap_tmp" 2>/dev/null
+fi
+
+# In the web interface the same data is drawn as a strip above the composer, from the snapshot just
+# written, so rendering here too would say everything twice - and a status line is redrawn inside the
+# conversation, which in a browser means it scrolls away with the output and spends a terminal row on
+# something that is not conversation. TOTOPO_WEB_SESSION is set by the webterm server on the agent it
+# spawns (server.js), so it means "this session is reached through a browser" and nothing else; a
+# terminal session, including `docker exec`, never has it and renders the full line below.
+[ -n "${TOTOPO_WEB_SESSION:-}" ] && exit 0
 
 # Capture "now" once for both the rate-limit countdown and the Claude Code freshness check.
 # Status line runs on every prompt render, so avoid spawning `date` twice.
@@ -229,15 +271,11 @@ case "$rate_resets_at" in
     ;;
 esac
 
-# Claude Code installed version + freshness of last update.
-# Version comes from the npm package metadata; the timestamp file is written at image build time
-# (Dockerfile) and at session start by startup.mjs after a successful `npm install -g ... @latest`.
-# Both paths are stable and outside the default shadow patterns.
-cc_pkg="/usr/lib/node_modules/@anthropic-ai/claude-code/package.json"
+# Freshness of the last Claude Code update. The version itself was read before the jq call above,
+# because the snapshot carries it; the timestamp file is written at image build time (Dockerfile) and
+# at session start by startup.mjs after a successful `npm install -g ... @latest`. Both paths are
+# stable and outside the default shadow patterns.
 cc_ts_file="/home/devuser/.ai-cli-updated"
-
-cc_version=""
-[ -r "$cc_pkg" ] && cc_version=$(jq -r '.version // ""' "$cc_pkg" 2>/dev/null)
 
 # Days since last successful update; clamped to >= 0 to absorb clock skew.
 # Empty string when the timestamp file is missing or unparseable -- segment then omits the parens.
@@ -323,18 +361,3 @@ for seg in "$model_seg" "$ctx_seg" "$quota_seg" "$cc_seg"; do
 done
 
 printf '%b\n' "$out"
-
-# Persist the per-session snapshot AFTER the visible line is flushed, so nothing here can
-# corrupt the status line. Temp file + mv in the same directory = atomic rename; concurrent
-# sessions write distinct files, so no locking is needed. Dotted temp names never match the
-# *.json globs used by readers; orphans and old snapshots are cleaned up by startup.mjs.
-# Each render is its own process, so $$ makes the temp name unique without spawning mktemp.
-if [ -n "$session_id" ] && [ -n "$snapshot_json" ]; then
-  snap_dir="${HOME:-/home/devuser}/.claude/context-usage"
-  snap_tmp="$snap_dir/.tmp.$$"
-  {
-    [ -d "$snap_dir" ] || mkdir -p "$snap_dir"
-    printf '%s\n' "$snapshot_json" > "$snap_tmp" &&
-    mv -f "$snap_tmp" "$snap_dir/$session_id.json"
-  } 2>/dev/null || rm -f "$snap_tmp" 2>/dev/null
-fi

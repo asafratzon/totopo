@@ -1,8 +1,8 @@
 // frames.js - what to do with a frame the server sent.
 //
 // One function per frame kind and nothing else: every frame either moves this window to a session, writes to the
-// terminal, redraws the bar, or opens a card. It is the one module that talks to all the others, so nothing else
-// has to know what a frame looks like.
+// terminal, redraws the bar or the strip, or opens a card. It is the one module that talks to all the others, so
+// nothing else has to know what a frame looks like.
 
 import { refreshBrowserTab, scheduleChime } from "./alerts.js";
 import { badAgentCard, badDirCard, capCard, stopFailedCard, takenCard, takeoverCard } from "./cards.js";
@@ -13,6 +13,7 @@ import { stopDictation } from "./dictation.js";
 import { captureDraft, dropDraft, dropHistory, persistDrafts, pruneDrafts, pruneHistory, restoreDraft } from "./drafts.js";
 import { noteMsg } from "./note.js";
 import { adoptSessionsFrame, attachedSid, defaultAgent, sessions, setAttachedSid } from "./state.js";
+import { applySnapshot, pruneStatuses, refreshStrip } from "./status-strip.js";
 import { noteArrivals, renderBar } from "./tabs.js";
 import { focusTerminal, scheduleRefresh, sendResize, term } from "./terminal.js";
 
@@ -57,6 +58,10 @@ export function onFrame(msg) {
         sendResize();
         if (switching) restoreDraft(msg.sid);
         refreshComposer();
+        // The strip belongs to the session, so it moves with the screen.
+        refreshStrip();
+    } else if (msg.t === "snapshot") {
+        applySnapshot(msg);
     } else if (msg.t === "out") {
         // Output from a session this window has already left; the window that has it is showing it.
         if (msg.sid !== attachedSid) return;
@@ -73,6 +78,7 @@ export function onFrame(msg) {
         setAttachedSid(null);
         takenCard(msg.sid);
         refreshComposer();
+        refreshStrip();
     } else if (msg.t === "exit") {
         if (msg.sid === attachedSid) {
             setAttachedSid(null);
@@ -85,6 +91,7 @@ export function onFrame(msg) {
         dropDraft(msg.sid);
         dropHistory(msg.sid);
         refreshComposer();
+        refreshStrip();
     } else if (msg.t === "stopping") {
         // Sent to every window, not just the one that asked: the container is about to take them all.
         stoppingCurtain();
@@ -114,6 +121,9 @@ function applySessions(msg) {
     pruneDrafts();
     pruneHistory();
     refreshComposer();
+    // And their numbers: the strip belongs to a session, and that session is gone.
+    pruneStatuses(new Set(sessions.map((entry) => entry.id)));
+    refreshStrip();
     // A session can vanish from under this window: closed here, closed from another window, or the agent exited.
     // Where the server had a free session to move this window to, that session's replay has already painted over
     // it. Where it did not - every remaining session is being driven elsewhere - this is the only thing that says

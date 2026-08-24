@@ -10,13 +10,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spinner } from "@clack/prompts";
 import {
+    AGENT_RESUME_CLI,
     CONTAINER_HOME,
     CONTAINER_NAME_PREFIX,
     CONTAINER_STARTUP,
     CONTAINER_USER,
     LABEL_BUILD_HASH,
     LABEL_MANAGED,
-    RESUME_MARKER_PATH,
     WEB_KEY_FILE_PATH,
 } from "./constants.js";
 
@@ -61,11 +61,11 @@ RUN echo '__totopo_pwd() { local p="\${PWD#/workspace}"; printf "/%s" "\${p#/}";
     echo '# When the web interface is on (TOTOPO_WEB_URL set), the webterm server fronts the agent instead of the shell.' >> ${CONTAINER_HOME}/.bashrc && \\
     echo 'if [ -n "$TOTOPO_AUTOSTART" ] && [ -z "$TOTOPO_AUTOSTARTED" ] && [ -z "$TOTOPO_WEB_URL" ]; then' >> ${CONTAINER_HOME}/.bashrc && \\
     echo '    export TOTOPO_AUTOSTARTED=1' >> ${CONTAINER_HOME}/.bashrc && \\
-    echo '    # A host-planted resume marker means this is the first session since the container started:' >> ${CONTAINER_HOME}/.bashrc && \\
-    echo '    # claim it (the mv is atomic, so racing consumers cannot double-resume) and run its command.' >> ${CONTAINER_HOME}/.bashrc && \\
-    echo '    if mv "${RESUME_MARKER_PATH}" "${RESUME_MARKER_PATH}.shell" 2>/dev/null; then' >> ${CONTAINER_HOME}/.bashrc && \\
-    echo '        __totopo_resume=$(cat "${RESUME_MARKER_PATH}.shell")' >> ${CONTAINER_HOME}/.bashrc && \\
-    echo '        rm -f "${RESUME_MARKER_PATH}.shell"' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo '    # Ask the container what reopens the last conversation here, if anything. It answers once per' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo '    # container start and prints nothing otherwise, so a second shell session starts fresh. Word' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo '    # splitting is what turns the printed argv back into a command; every token comes from there.' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo '    __totopo_resume=$(node "${AGENT_RESUME_CLI}" "$TOTOPO_AUTOSTART" "$PWD" 2>/dev/null)' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo '    if [ -n "$__totopo_resume" ]; then' >> ${CONTAINER_HOME}/.bashrc && \\
     echo '        echo -e "\\033[32m●\\033[0m  \\033[90mAuto-start enabled: launching \\033[38;5;208m\${TOTOPO_AUTOSTART}\\033[90m (resuming most recent conversation).\\033[0m"' >> ${CONTAINER_HOME}/.bashrc && \\
     echo '        echo ""' >> ${CONTAINER_HOME}/.bashrc && \\
     echo '        $__totopo_resume' >> ${CONTAINER_HOME}/.bashrc && \\
@@ -74,6 +74,7 @@ RUN echo '__totopo_pwd() { local p="\${PWD#/workspace}"; printf "/%s" "\${p#/}";
     echo '        echo ""' >> ${CONTAINER_HOME}/.bashrc && \\
     echo '        "$TOTOPO_AUTOSTART"' >> ${CONTAINER_HOME}/.bashrc && \\
     echo '    fi' >> ${CONTAINER_HOME}/.bashrc && \\
+    echo '    unset __totopo_resume' >> ${CONTAINER_HOME}/.bashrc && \\
     echo 'fi' >> ${CONTAINER_HOME}/.bashrc
 
 CMD ["/bin/bash"]

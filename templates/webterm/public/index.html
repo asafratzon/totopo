@@ -20,6 +20,12 @@
         <span id="note"></span>
     </div>
 
+    <!-- The status strip, drawn by app/status-strip.js from the snapshot the attached session's status line
+         wrote: model and effort, context against the window, quota left with its recharge countdown, and the
+         Claude Code version. Hidden until that session has a snapshot, and no session but a claude one ever
+         does. -->
+    <div id="strip" hidden></div>
+
     <section id="composer">
         <div id="input-wrap">
             <textarea id="input" rows="2" placeholder="Type a message. Paste or drop an image. Enter sends, Shift+Enter for a newline, Up recalls the last one."></textarea>

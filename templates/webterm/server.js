@@ -11,7 +11,7 @@
 // container isolation it has in the terminal. Nothing here touches credentials.
 
 import { randomBytes } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { join, resolve, sep } from "node:path";
@@ -19,7 +19,9 @@ import express from "express";
 import { WebSocketServer } from "ws";
 import {
     AGENT_ARGS,
+    AGENT_STORES,
     AGENTS,
+    AUTO_RESUME,
     agentSpawnArgv,
     CHECK_INTERVAL_MS,
     CLIENT_PING_INTERVAL_MS,
@@ -38,9 +40,10 @@ import {
     PASTE_END,
     PASTE_START,
     PORT,
-    RESUME_MARKER,
+    RESUME_STAMP,
     resolveWorkspacePath,
     STATE_FILE,
+    STATUS_SCAN_MS,
     STOP_ANNOUNCE_MS,
     STOP_TIMEOUT_MS,
     SUBMIT,
@@ -52,7 +55,9 @@ import {
     WORKSPACE_ROOT,
     workspaceLabel,
 } from "./config.js";
+import { claimResumeChance, resumeArgvFor } from "./resume.js";
 import { createRegistry, WORK_TICK_MS } from "./sessions.js";
+import { statusFor, writesSnapshots } from "./snapshot.js";
 
 // node-pty is a native CommonJS addon; load it through createRequire under ESM.
 const require = createRequire(import.meta.url);
@@ -377,6 +382,9 @@ function handleEvent(event) {
         send(event.client, { t: "out", sid: event.sid, data: event.data });
     } else if (event.t === "replay") {
         send(event.client, { t: "replay", sid: event.sid, data: event.data });
+        // A window that just landed on a session needs its strip as well as its terminal, and this is the one
+        // event that means "this window is now looking at this session", reload or reconnect included.
+        sendStatus(event.sid, { force: true });
     } else if (event.t === "taken") {
         send(event.client, { t: "taken", sid: event.sid });
     } else if (event.t === "exit") {
@@ -393,6 +401,48 @@ const registry = createRegistry({
     maxBuffer: MAX_OUTPUT_BUFFER,
     onEvent: handleEvent,
 });
+
+// --- The status strip --------------------------------------------------------------------------------------------------------------------
+//
+// A claude session's own numbers, above the composer: the model, the context it is holding, what is left of
+// the quota, the version it runs. They come from the snapshot its status line writes (see snapshot.js), which
+// is a file, so this side is a poll and a comparison - look at what the session's snapshot says now, and send
+// a frame only when it says something different from the last one this window was told.
+
+// sid -> the payload last sent for it, serialised. Only so an unchanged snapshot costs nothing: the script
+// rewrites the file on every prompt render, and most rewrites move nothing the strip shows.
+const lastStatus = new Map();
+
+/**
+ * Push this session's status to the window watching it, when it has moved.
+ *
+ * Nothing is sent for an agent that writes no snapshots - there is no strip for a codex tab, and an empty
+ * frame would only tell the window to draw one and find nothing. `force` is for the two moments a window
+ * needs the current state whatever the server last sent: it just landed on the session, or it asked.
+ */
+function sendStatus(sid, { force = false } = {}) {
+    const session = registry.get(sid);
+    const pid = Number(session?.term?.pid);
+    if (!session?.client || !writesSnapshots(session.agent) || !Number.isInteger(pid)) return;
+    const status = statusFor({ pid }, AGENT_STORES.claudeSnapshots);
+    const serialised = JSON.stringify(status);
+    if (!force && lastStatus.get(sid) === serialised) return;
+    lastStatus.set(sid, serialised);
+    send(session.client, { t: "snapshot", sid, status });
+}
+
+// One pass over the sessions: whoever is watching one hears about it when its snapshot moved. Sessions that
+// are gone drop out of the map here, which is the only cleanup it needs.
+function sweepStatus() {
+    const live = new Set();
+    for (const entry of registry.list()) {
+        live.add(entry.id);
+        sendStatus(entry.id);
+    }
+    for (const sid of lastStatus.keys()) {
+        if (!live.has(sid)) lastStatus.delete(sid);
+    }
+}
 
 // What the host asks before it offers to stop the container. `sessions` is how many conversations are
 // alive (they all die with the container), `attached` how many a window is watching right now, `agent` the
@@ -455,36 +505,23 @@ app.post("/agent", requireKey, express.json({ limit: 4096 }), (req, res) => {
     res.json({ default: defaultAgent });
 });
 
-// Consume the host-planted resume marker, if any. The rename is the claim: of all racing consumers
-// (this server's sessions, the shell autostart hook) exactly one wins, so only one session resumes.
-// Returns the resume command as [cmd, ...args], or null when there is nothing to resume.
-// `agent` is what the session is about to start. The marker holds a resume command for the agent the host
-// started this interface with (DEFAULT_AGENT, not wherever the default has moved to since), so any other
-// agent leaves it alone rather than claiming a conversation it cannot open.
-function consumeResumeMarker(agent) {
-    if (!RESUME_MARKER || agent !== DEFAULT_AGENT) return null;
-    const claimed = `${RESUME_MARKER}.web`;
-    try {
-        renameSync(RESUME_MARKER, claimed);
-    } catch {
-        return null; // No marker, or another consumer claimed it first.
-    }
-    try {
-        const command = readFileSync(claimed, "utf8").trim();
-        unlinkSync(claimed);
-        const parts = command.split(/\s+/).filter(Boolean);
-        return parts.length > 0 ? parts : null;
-    } catch {
-        return null;
-    }
+// The argv that reopens this session's last conversation, or null. Three things have to hold, and each is a
+// different question: auto-resume is on at all (it is part of the host's auto-start setting), this session
+// runs the agent the interface was started with (DEFAULT_AGENT, not wherever the default has moved to since -
+// any other agent would spend the chance on a conversation it cannot open), and this container start has not
+// had its resume yet. Only then is the store read, in resume.js, which is the only side that knows its shape.
+function resumeArgv(agent, cwd) {
+    if (!AUTO_RESUME || agent !== DEFAULT_AGENT) return null;
+    if (!claimResumeChance(RESUME_STAMP)) return null;
+    return resumeArgvFor(agent, cwd, AGENT_STORES);
 }
 
 // Spawn a new session's agent, in the directory the registry was given. Env is inherited so subscription
-// auth flows through. The first session after a container start finds the host-planted marker and continues
-// the most recent conversation; every later session starts fresh, which is what the user wants once mid-work.
+// auth flows through. The first session after a container start reopens the most recent conversation; every
+// later session starts fresh, which is what the user wants once mid-work.
 // AGENT_ARGS belong to the agent the launcher named, so any other agent is spawned bare.
 function spawnAgent({ cwd, agent }) {
-    const resume = consumeResumeMarker(agent);
+    const resume = resumeArgv(agent, cwd);
     const [spawnCmd, ...baseArgs] = resume ?? [agent, ...(agent === DEFAULT_AGENT ? AGENT_ARGS : [])];
     if (resume) console.log(`[webterm] resuming most recent conversation: ${resume.join(" ")}`);
     // Append the browser-awareness flag for claude (fresh or resumed); every other agent is untouched.
@@ -494,7 +531,12 @@ function spawnAgent({ cwd, agent }) {
         cols: 80,
         rows: 24,
         cwd,
-        env: process.env,
+        // TOTOPO_WEB_SESSION is this session saying what it is, rather than something downstream sniffing a
+        // WEBTERM_* variable that happens to be around. claude's status line reads it and stops after writing
+        // its snapshot, because the strip above the composer draws the same data outside the terminal. A shell
+        // opened inside this terminal inherits it, which is right - it is still a browser session - and a
+        // `docker exec` terminal session never has it.
+        env: { ...process.env, TOTOPO_WEB_SESSION: "1" },
     });
 }
 
@@ -682,6 +724,13 @@ function handleFrame(ws, msg) {
             session.term.write(msg.data);
             return;
         }
+        case "snapshot": {
+            // The strip asking for its session's numbers again, after a reconnect. It gets the session this
+            // window is driving and never one the frame names.
+            const attached = registry.attachedSid(ws);
+            if (attached) sendStatus(attached, { force: true });
+            return;
+        }
         case "paste":
             if (typeof msg.data === "string") paste(ws, msg.data);
             return;
@@ -731,6 +780,10 @@ setInterval(checkUploads, CHECK_INTERVAL_MS).unref();
 // to ask it. The registry does the deciding; this only sets the pace, and only broadcasts when an answer
 // actually changed.
 setInterval(() => registry.tick(), WORK_TICK_MS).unref();
+
+// The strip's sweep, for a related reason: a snapshot file is written by a shell script into a mounted
+// directory, so the only way to know it moved is to look.
+setInterval(() => sweepStatus(), STATUS_SCAN_MS).unref();
 
 // Keepalive sweep. A window that stops answering is terminated, which releases the session it was
 // driving so the window that comes back can pick it up without a takeover prompt. Sessions themselves

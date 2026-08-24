@@ -1,21 +1,12 @@
 // =========================================================================================================================================
 // src/lib/webterm.ts - Host-side logic for the web agent interface (webterm)
-// Sticky per-workspace host-port assignment from the global web_range, plus the container hooks that
-// plant the resume marker and start the baked webterm server once per container start.
+// Sticky per-workspace host-port assignment from the global web_range, plus the container hook that starts
+// the baked webterm server once per container start. Whether there is a conversation to reopen is decided
+// inside the container (templates/webterm/resume.js), where the session stores are.
 // =========================================================================================================================================
 
 import { spawnSync } from "node:child_process";
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { basename, join } from "node:path";
-import {
-    AGENT_RESUME_COMMAND,
-    AGENTS_DIR,
-    type AutoStartAgent,
-    CONTAINER_USER,
-    CONTAINER_WORKSPACE,
-    RESUME_MARKER_PATH,
-    WEB_KEY_FILE_PATH,
-} from "./constants.js";
+import { type AutoStartAgent, CONTAINER_USER, WEB_KEY_FILE_PATH } from "./constants.js";
 import { canBind, containerPublishedPorts, dockerPublishedPorts, PORT_LOOPBACK_HOST, type WebRange } from "./ports.js";
 import { listWorkspaceIds, readWebPort, writeWebPort } from "./workspace-identity.js";
 
@@ -231,156 +222,7 @@ export async function webInterfaceAnswers(webPort: number): Promise<boolean> {
     }
 }
 
-// --- Resume command selection (host-side, over the mounted agent dirs) -------------------------------------------------------------------
-
-const SESSION_FILE_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$/;
-
-/**
- * Claude Code files its transcripts per directory, in a dir named after the directory it ran in with every
- * character that is not a letter or a digit turned into "-": /workspace -> -workspace, /workspace/apps/api ->
- * -workspace-apps-api. So a session in a sub-directory reads and writes a different dir from one at the root,
- * and a resume command built from the wrong one names an id that claude cannot find.
- * Only the fallback below relies on this naming; the main path reads what a transcript says about itself.
- */
-export function claudeProjectKey(containerPath: string): string {
-    return containerPath.replace(/[^a-zA-Z0-9]/g, "-");
-}
-
-/**
- * The resume command planted in the marker for a given agent, for a session that will run in `workdir`.
- * For claude the session is picked explicitly: `claude --continue` takes the newest transcript by mtime and
- * silently starts FRESH when that transcript has no real messages (e.g. a session that only ran a slash
- * command), so relying on it makes auto-resume fail quietly whenever such a session happens to be the newest.
- * Resuming by id sidesteps the picker entirely. Falls back to the generic flag when no resumable transcript
- * is found (claude then starts fresh, which is the right outcome for a blank history).
- */
-export function resumeCommandFor(
-    agent: Exclude<AutoStartAgent, "off">,
-    workspaceCacheDir: string,
-    workdir: string = CONTAINER_WORKSPACE,
-): string {
-    if (agent === "claude") {
-        const sessionId = latestClaudeSessionId(workspaceCacheDir, workdir);
-        if (sessionId !== null) return `claude --resume ${sessionId}`;
-    }
-    return AGENT_RESUME_COMMAND[agent];
-}
-
-/**
- * The most recent Claude Code conversation that can be resumed in `workdir`, read from the host-side mounted
- * agent dir: the newest transcript with a real (non-sidechain) user message that ran in that directory.
- *
- * The directory is matched on what the transcript records, not on which dir it sits in, so however claude
- * names those dirs we never hand back a conversation from somewhere else - resuming it would either fail or
- * drop the user into another directory's history. Transcripts old enough to record no directory at all are
- * the fallback, and for those the dir name is the only evidence there is.
- * Returns null when nothing qualifies.
- */
-export function latestClaudeSessionId(workspaceCacheDir: string, workdir: string = CONTAINER_WORKSPACE): string | null {
-    const projectsDir = join(workspaceCacheDir, AGENTS_DIR, "claude", "projects");
-    const byRecordedDir = newestResumableSessionId(transcriptsNewestFirst(projectsDir, projectDirNames(projectsDir)), workdir);
-    if (byRecordedDir !== null) return byRecordedDir;
-    return newestResumableSessionId(transcriptsNewestFirst(projectsDir, [claudeProjectKey(workdir)]), null);
-}
-
-// Every project dir claude has written under this workspace's cache. Read rather than derived: the point of
-// the walk is to find the transcript that says it ran where we are about to run.
-function projectDirNames(projectsDir: string): string[] {
-    try {
-        return readdirSync(projectsDir, { withFileTypes: true })
-            .filter((entry) => entry.isDirectory())
-            .map((entry) => entry.name);
-    } catch {
-        return [];
-    }
-}
-
-// Transcript paths from the given project dirs, newest first. Session files only - anything else in there
-// (subagent dirs, stray notes) is not a conversation. A missing or unreadable dir contributes nothing.
-function transcriptsNewestFirst(projectsDir: string, dirNames: string[]): string[] {
-    const found: Array<{ path: string; mtime: number }> = [];
-    for (const dirName of dirNames) {
-        const dir = join(projectsDir, dirName);
-        let names: string[];
-        try {
-            names = readdirSync(dir);
-        } catch {
-            continue;
-        }
-        for (const name of names) {
-            if (!SESSION_FILE_PATTERN.test(name)) continue;
-            const path = join(dir, name);
-            try {
-                found.push({ path, mtime: statSync(path).mtimeMs });
-            } catch {
-                // Vanished between the listing and the stat.
-            }
-        }
-    }
-    return found.sort((a, b) => b.mtime - a.mtime).map((entry) => entry.path);
-}
-
-// The first of these transcripts that can be resumed, in the order given. `requiredCwd` of null asks only
-// that the conversation has messages; a directory asks that it recorded that one too. Transcripts are read
-// in order and the walk stops at the first hit, so the usual case reads a single file.
-function newestResumableSessionId(transcriptPaths: string[], requiredCwd: string | null): string | null {
-    for (const path of transcriptPaths) {
-        const facts = transcriptFacts(path);
-        if (!facts.resumable) continue;
-        if (requiredCwd !== null && facts.cwd !== requiredCwd) continue;
-        return basename(path).slice(0, -".jsonl".length);
-    }
-    return null;
-}
-
-// What a transcript says about itself, in one pass: whether it holds a real user message, and the directory
-// that message was typed in. Sessions that only recorded UI state (mode changes, slash commands) have
-// nothing to resume; sidechain records belong to subagents. isSidechain is a field we do not own, so only an
-// explicit true excludes a record: a record that stopped carrying the field still counts as resumable, which
-// fails on the safe side. `cwd` is null for transcripts written before claude recorded it.
-function transcriptFacts(transcriptPath: string): { resumable: boolean; cwd: string | null } {
-    let content: string;
-    try {
-        content = readFileSync(transcriptPath, "utf8");
-    } catch {
-        return { resumable: false, cwd: null };
-    }
-    // Walked by index rather than split("\n") so a multi-MB transcript is not copied into an array of lines.
-    let start = 0;
-    while (start <= content.length) {
-        const end = content.indexOf("\n", start);
-        const line = content.slice(start, end === -1 ? content.length : end);
-        start = (end === -1 ? content.length : end) + 1;
-        // Cheap pre-filter so multi-MB transcripts are not JSON.parsed line by line.
-        if (!line.includes('"type":"user"')) continue;
-        try {
-            const record = JSON.parse(line) as { type?: string; isSidechain?: boolean; cwd?: string };
-            if (record.type === "user" && record.isSidechain !== true) {
-                return { resumable: true, cwd: typeof record.cwd === "string" ? record.cwd : null };
-            }
-        } catch {
-            // Skip malformed lines.
-        }
-    }
-    return { resumable: false, cwd: null };
-}
-
 // --- Container hooks (docker I/O, best-effort) --------------------------------------------------------------------------------------------
-
-/**
- * Plant the resume marker in the container: a devuser-owned file whose content is the full command that
- * resumes the most recent conversation. Called on every container create/start when auto-start is on;
- * the first launched session (webterm PTY or shell hook) consumes it atomically and runs the command.
- * Best-effort - a failure only means the session starts fresh. The command is always one of the
- * AGENT_RESUME_COMMAND constants, so interpolating it into the shell string is safe.
- */
-export function plantResumeMarker(containerName: string, resumeCommand: string): void {
-    spawnSync(
-        "docker",
-        ["exec", "-u", CONTAINER_USER, containerName, "bash", "-c", `printf %s "${resumeCommand}" > "${RESUME_MARKER_PATH}"`],
-        { stdio: "pipe" },
-    );
-}
 
 /**
  * The `docker exec` argv that starts the baked webterm server, with the given agent as the one its new
